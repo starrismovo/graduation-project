@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, Integer, Float, JSON, DateTime, Text
+from sqlalchemy import Column, String, Integer, Float, JSON, DateTime, Text, Boolean
 from database import Base
 from datetime import datetime
 
@@ -29,6 +29,8 @@ class InterviewResponse(Base):
     answer = Column(Text, nullable=False)  # 候选人回答
     answer_latency = Column(Float)  # 回答耗时（秒）
     emotion = Column(String(50))  # 检测到的情感（中性、焦虑、自信等）
+    answer_length = Column(Integer)
+    is_paste = Column(Boolean, default=False)
     created_at = Column(DateTime, default=datetime.utcnow)
 
 

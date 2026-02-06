@@ -174,12 +174,25 @@ async def save_response(
         question=request.question,
         answer=request.answer,
         answer_latency=request.answer_latency,
+        answer_length=getattr(request, 'answer_length', None),
+        is_paste=getattr(request, 'is_paste', False),
         emotion=request.emotion
     )
     
     db.add(response)
     db.commit()
     db.refresh(response)
+
+    # 简单的异常检测与日志
+    try:
+        if getattr(request, 'is_paste', False):
+            logger = __import__('logging').getLogger(__name__)
+            logger.warning('Detected paste for response %s candidate=%s', response.id, request.candidate_id)
+        if request.answer_latency is not None and request.answer_latency < 0.5:
+            logger = __import__('logging').getLogger(__name__)
+            logger.warning('Very short latency %.2fs for response %s', request.answer_latency, response.id)
+    except Exception:
+        pass
     
     return {
         "id": response.id,

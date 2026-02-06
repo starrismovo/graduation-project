@@ -66,6 +66,7 @@
           :disabled="isLoading"
           @keydown.ctrl.enter="submitAnswer"
           @keydown.meta.enter="submitAnswer"
+          @paste="handlePaste"
         ></el-input>
         
         <div class="input-hint">
@@ -124,9 +125,11 @@ const maxRounds = ref(3)
 const isLoading = ref(false)
 const inputRef = ref<any>(null)
 
-const messages = ref<Array<{ role: string; content: string; time: string; latency?: number }>>([])
+const messages = ref<Array<{ role: string; content: string; time: string; latency?: number; question_display_at?: number }>>([])
 const userInput = ref('')
 const answers = ref<Array<{ text: string; time: string; latency: number; emotion: string }>>([])
+const lastQuestionDisplayAt = ref<number | null>(null)
+const lastWasPaste = ref(false)
 
 // 计算动态占位符
 const inputPlaceholder = computed(() => {
@@ -187,12 +190,15 @@ function startConversation() {
     openingMessage = `你好，我是 HR 面试官。我们今天要讨论一个情景，重点考察你的${traits}。请根据上述情景，说出你的初步想法和处理方案。`
   }
   
+  const displayAt = Date.now()
+  lastQuestionDisplayAt.value = displayAt
   messages.value = [
     {
       role: 'agent',
       content: openingMessage,
       time: nowTime(),
-      latency: 0
+      latency: 0,
+      question_display_at: displayAt
     }
   ]
   
@@ -210,7 +216,8 @@ async function submitAnswer() {
   }
 
   isLoading.value = true
-  const startTime = Date.now()
+  // 使用上一次问题展示时间计算反应时，如果不存在则退回到提交时间
+  const startTime = lastQuestionDisplayAt.value || Date.now()
 
   try {
     const answer = userInput.value.trim()
@@ -224,6 +231,8 @@ async function submitAnswer() {
       question: messages.value[messages.value.length - 1]?.content || '',
       answer,
       answer_latency: parseFloat(latency),
+      answer_length: answer.length,
+      is_paste: lastWasPaste.value || false,
       emotion: 'neutral'
     }
 
@@ -258,6 +267,8 @@ async function submitAnswer() {
     })
 
     userInput.value = ''
+    // reset paste flag
+    lastWasPaste.value = false
 
     // 3. 检查是否可以继续
     if (currentRound.value < maxRounds.value) {
@@ -308,10 +319,13 @@ async function generateFollowUp() {
     })
 
     currentRound.value++
+    const displayAt = Date.now()
+    lastQuestionDisplayAt.value = displayAt
     messages.value.push({
       role: 'agent',
       content: followUpRes.data.question,
-      time: nowTime()
+      time: nowTime(),
+      question_display_at: displayAt
     })
 
     // 自动焦点到输入框
@@ -342,6 +356,10 @@ function cancelConversation() {
 onMounted(() => {
   loadScenario()
 })
+
+function handlePaste(e: ClipboardEvent) {
+  lastWasPaste.value = true
+}
 </script>
 
 <style scoped>

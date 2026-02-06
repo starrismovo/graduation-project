@@ -28,6 +28,9 @@ import os
 from typing import List, Dict, Any
 import json
 import logging
+import os
+import urllib.request
+import urllib.error
 
 logger = logging.getLogger(__name__)
 
@@ -102,15 +105,15 @@ class HRAgentLLM:
         
         if self.use_mock:
             return self._mock_follow_up_question(round_num, target_traits)
-        
-        # 实际调用 OpenAI API
+
+        # 实际调用 LLM（support deepseek 或 openai）
         conversation = self._build_conversation(
             scenario_description,
             target_traits,
             previous_answers
         )
-        
-        return self._call_openai(conversation)
+
+        return self._call_llm_for_followup(conversation, round_num=round_num, max_rounds=max_rounds)
     
     def score_answer(
         self,
@@ -137,16 +140,16 @@ class HRAgentLLM:
         
         if self.use_mock:
             return self._mock_score_answer(target_traits, current_answer)
-        
-        # 实际调用 OpenAI API
+
+        # 实际调用 LLM（support deepseek 或 openai）
         prompt = self._build_scoring_prompt(
             scenario_description,
             target_traits,
             current_answer,
             all_answers
         )
-        
-        return self._call_openai_scoring(prompt)
+
+        return self._call_llm_for_scoring(prompt)
     
     def _mock_follow_up_question(self, round_num: int, target_traits: List[str]) -> Dict[str, str]:
         """模拟生成追问问题（本地规则）
@@ -417,6 +420,74 @@ class HRAgentLLM:
                 "宜人性": "候选人强调了与团队的沟通和协作"
             }
         }
+
+    def _call_deepseek(self, endpoint: str, api_key: str, payload: Dict[str, Any], timeout: int = 10) -> Dict[str, Any]:
+        """调用 DeepSeek 风格的 LLM endpoint（使用 urllib，返回解析后的 JSON）。
+
+        约定：Deepseek 返回 JSON 且包含需要字段；适配层负责解析并返回项目期望格式。
+        """
+        headers = {
+            'Content-Type': 'application/json',
+        }
+        if api_key:
+            headers['Authorization'] = f'Bearer {api_key}'
+
+        data = json.dumps(payload, ensure_ascii=False).encode('utf-8')
+
+        req = urllib.request.Request(endpoint, data=data, headers=headers, method='POST')
+        try:
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
+                raw = resp.read().decode('utf-8')
+                return json.loads(raw)
+        except urllib.error.HTTPError as e:
+            logger.exception('Deepseek HTTPError: %s', e)
+            return {}
+        except Exception as e:
+            logger.exception('Deepseek request failed: %s', e)
+            return {}
+
+    def _call_llm_for_followup(self, conversation: List[Dict], round_num: int = 1, max_rounds: int = 3) -> Dict[str, Any]:
+        """统一调用 LLM 生成追问，优先 deepseek（若配置），否则回退到 openai stub。"""
+        deepseek_endpoint = os.getenv('DEEPSEEK_ENDPOINT', '')
+        deepseek_key = os.getenv('DEEPSEEK_API_KEY', '')
+        if deepseek_endpoint and deepseek_key:
+            payload = {
+                'type': 'follow_up',
+                'round_num': round_num,
+                'max_rounds': max_rounds,
+                'conversation': conversation
+            }
+            resp = self._call_deepseek(deepseek_endpoint, deepseek_key, payload)
+            # 解析 deepseek 返回（尝试常见字段）
+            if not resp:
+                return {"question": "请详细说明你的处理方案。", "reasoning": "deepseek 未返回有效结果，已回退"}
+            # deepseek 可能直接返回 {question, reasoning}
+            if isinstance(resp, dict) and resp.get('question'):
+                return {"question": resp.get('question'), "reasoning": resp.get('reasoning')}
+            # 或者嵌套在 choices/text
+            text = resp.get('text') or (resp.get('choices') and resp['choices'][0].get('text'))
+            if text:
+                return {"question": text, "reasoning": resp.get('reasoning')}
+            return {"question": "请具体说明你的下一步计划。", "reasoning": "deepseek 返回格式未知"}
+
+        # 回退到原始 openai stub
+        return self._call_openai(conversation)
+
+    def _call_llm_for_scoring(self, prompt: str) -> Dict[str, Any]:
+        """统一调用 LLM 进行评分，优先 deepseek（若配置），否则回退到 openai stub。"""
+        deepseek_endpoint = os.getenv('DEEPSEEK_ENDPOINT', '')
+        deepseek_key = os.getenv('DEEPSEEK_API_KEY', '')
+        if deepseek_endpoint and deepseek_key:
+            payload = {'type': 'scoring', 'prompt': prompt}
+            resp = self._call_deepseek(deepseek_endpoint, deepseek_key, payload)
+            if not resp:
+                return {"scores": {}, "reasoning": {}}
+            # 期待 deepseek 返回 JSON 包含 scores 与 reasoning
+            if 'scores' in resp:
+                return {'scores': resp.get('scores', {}), 'reasoning': resp.get('reasoning', {})}
+            # 否则尝试解析文本
+            # 这里简单回退到 openai stub
+            return self._call_openai_scoring(prompt)
 
 
 # 创建全局实例
