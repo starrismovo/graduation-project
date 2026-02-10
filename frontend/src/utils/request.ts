@@ -53,6 +53,17 @@ export const getRecommendedJobs = (params?: {
   return request.get('/jobs/recommended/cards', { params })
 }
 
+// ??????????????????
+export const getHotJobsTable = (params?: {
+  category?: string
+  city?: string
+  salary_range?: string
+  limit?: number
+}) => {
+  return request.get('/jobs/hot/table', { params })
+}
+
+
 // 获取面试统计信息
 export const getInterviewStats = () => {
   return request.get('/jobs/stats/candidate')
@@ -105,5 +116,28 @@ export const getJobs = (params?: {
 export const getJobDetail = (jobId: number) => {
   return request.get(`/jobs/${jobId}`)
 }
+// 获取故事模板
+export function getStoryTemplate(jobId: string) {
+  return request({
+    url: `/api/story/${jobId}`,
+    method: 'get'
+  })
+}
 
+// 保存探索进度
+export function saveJourneyProgress(data: any) {
+  return request({
+    url: '/api/journey/progress',
+    method: 'post',
+    data
+  })
+}
+
+// 生成报告
+export function generateJourneyReport(journeyId: string) {
+  return request({
+    url: `/api/journey/${journeyId}/report`,
+    method: 'get'
+  })
+}
 export default request

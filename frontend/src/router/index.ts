@@ -23,6 +23,41 @@ const router = createRouter({
       ,
     }
     ,
+    // 虚拟形象创建页
+    {
+      path: '/avatar-creator',
+      name: 'AvatarCreator',
+      component: () => import('../views/AvatarCreatorView.vue'),
+      meta: { requiresAuth: true }
+    },
+    // 自我发现测试页
+    // {
+    //   path: '/self-discovery',
+    //   name: 'SelfDiscovery',
+    //   component: () => import('../views/SelfDiscoveryView.vue'),
+    //   meta: { requiresAuth: true }
+    // },
+    // 星际航程（故事评估）- 新的核心页面
+    {
+      path: '/journey/:id',
+      name: 'Journey',
+      component: () => import('../views/JourneyView.vue'),
+      meta: { requiresAuth: true }
+    },
+    // 航行日志（报告页）
+    {
+      path: '/journey-report/:jobId',
+      name: 'JourneyReport',
+      component: () => import('../views/JourneyReportView.vue'),
+      meta: { requiresAuth: true }
+    },
+    // 我的星图（个人中心）
+    // {
+    //   path: '/constellation-map',
+    //   name: 'ConstellationMap',
+    //   component: () => import('../views/ConstellationMapView.vue'),
+    //   meta: { requiresAuth: true }
+    // },
     {
       path: '/assessment/:id',
       component: AssessmentView,
