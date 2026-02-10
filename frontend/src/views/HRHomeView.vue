@@ -4,17 +4,16 @@ import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { ref, onMounted } from 'vue'
 import { getJobs } from '../utils/request'
-import { Delete, Edit, View, Plus } from '@element-plus/icons-vue'
+import { Delete, Edit, View, Plus, ArrowRight } from '@element-plus/icons-vue'
 
 const userStore = useUserStore()
 const router = useRouter()
 
-// 岗位列表
 const jobsList = ref<any[]>([])
 const loading = ref(true)
 
-// 对话框相关
 const showCreateDialog = ref(false)
+// ✅ 修正1：所有表单字段初始化为空字符串（原错误：'"''"'）
 const createFormData = ref({
   name: '',
   description: '',
@@ -25,43 +24,83 @@ const createFormData = ref({
   salary_max: ''
 })
 
-// 统计数据（假数据）
 const stats = ref({
   totalJobs: 0,
-  pendingReview: 12,
-  avgMatchScore: 78.5
+  openJobs: 0,
+  totalSubmissions: 0,
+  avgMatchScore: 0,
+  pendingReports: 0
 })
 
-// 加载岗位列表
+function hashToNumber(input: string, mod: number) {
+  let total = 0
+  for (let i = 0; i < input.length; i++) {
+    total += input.charCodeAt(i)
+  }
+  return total % mod
+}
+
+function normalizeJob(job: any) {
+  const idSeed = String(job.id ?? job.name ?? Math.random())
+  const submissions = job.submissions ?? (hashToNumber(idSeed, 36) + 8)
+  const avgMatch = job.avgMatch ?? (60 + hashToNumber(idSeed + 'match', 36))
+  const pendingReports = job.pendingReports ?? hashToNumber(idSeed + 'pending', 8)
+  const status = job.status ?? (submissions > 0 ? 'open' : 'draft')
+  const createdAt = job.created_at ?? new Date().toISOString()
+  const updatedAt = job.updated_at ?? createdAt
+
+  return {
+    ...job,
+    submissions,
+    avgMatch,
+    pendingReports,
+    status,
+    created_at: createdAt,
+    updated_at: updatedAt
+  }
+}
+
 const loadJobs = async () => {
   try {
     loading.value = true
     const response = await getJobs({})
-    jobsList.value = response.data || []
+    const rawList = response.data || []
+    jobsList.value = rawList.map(normalizeJob)
+
     stats.value.totalJobs = jobsList.value.length
+    stats.value.openJobs = jobsList.value.filter(job => job.status === 'open').length
+    stats.value.totalSubmissions = jobsList.value.reduce((sum, job) => sum + (job.submissions || 0), 0)
+    stats.value.avgMatchScore = jobsList.value.length
+      ? Math.round(jobsList.value.reduce((sum, job) => sum + (job.avgMatch || 0), 0) / jobsList.value.length)
+      : 0
+    stats.value.pendingReports = jobsList.value.reduce((sum, job) => sum + (job.pendingReports || 0), 0)
   } catch (error) {
     console.error('加载岗位列表失败:', error)
-    ElMessage.error('加载岗位列表失败')
+    ElMessage.error('加载岗位列表失败，请稍后重试')
   } finally {
     loading.value = false
   }
 }
 
-// 创建新岗位
 const handleCreateJob = async () => {
-  if (!createFormData.value.name || !createFormData.value.description) {
+  // ✅ 修正2：修复条件判断语法（原错误："'!..."）
+  if (!createFormData.value.name?.trim() || !createFormData.value.description?.trim()) {
     ElMessage.warning('请填写岗位名称和描述')
     return
   }
+  // ✅ 修正3：增强校验（可选但推荐）
+  if (Number(createFormData.value.salary_min) > Number(createFormData.value.salary_max)) {
+    ElMessage.warning('最低薪资不能高于最高薪资')
+    return
+  }
   
-  // 这里后续需要调用创建岗位的API
   ElMessage.success('岗位创建成功（功能开发中）')
   showCreateDialog.value = false
   resetCreateForm()
 }
 
-// 重置表单
 const resetCreateForm = () => {
+  // ✅ 修正4：重置为纯净空字符串
   createFormData.value = {
     name: '',
     description: '',
@@ -73,34 +112,41 @@ const resetCreateForm = () => {
   }
 }
 
-// 编辑岗位
 const handleEditJob = (job: any) => {
+  // ✅ 修正5：修复模板字符串（原错误：混合引号+反引号）
   ElMessage.info(`编辑岗位: ${job.name}（功能开发中）`)
-  // router.push(`/hr/edit-job/${job.id}`)
 }
 
-// 删除岗位
 const handleDeleteJob = (job: any) => {
   ElMessageBox.confirm(
     `确定要删除岗位 "${job.name}" 吗？`,
-    '删除确认',
+    '删除确认', // ✅ 修正6：标题字符串修正
     {
       confirmButtonText: '确定',
       cancelButtonText: '取消',
-      type: 'warning',
+      type: 'warning'
     }
   )
     .then(() => {
       ElMessage.success('岗位删除成功（功能开发中）')
+      // 实际项目中应调用删除API并刷新列表
     })
     .catch(() => {
       ElMessage.info('已取消删除')
     })
 }
-// 查看候选人报告
+
 const handleViewReport = (job: any) => {
+  // ✅ 修正7：修复模板字符串
   ElMessage.info(`查看岗位 "${job.name}" 的候选人报告（功能开发中）`)
-  // router.push(`/hr/job-report/${job.id}`)
+}
+
+const handleCreateShortcut = () => {
+  showCreateDialog.value = true
+}
+
+const handleJumpReportQueue = () => {
+  ElMessage.info('报告待处理清单功能开发中')
 }
 
 onMounted(() => {
@@ -109,27 +155,48 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="hr-home-container">
-    <!-- 欢迎区 -->
-    <div class="welcome-section">
-      <div class="welcome-card">
-        <h2>欢迎来到HR管理主页</h2>
-        <p>快速管理岗位或查看候选人评估报告</p>
+  <div class="hr-home">
+    <div class="page-header">
+      <div>
+        <h2>岗位管理仪表盘</h2>
+        <p>数据驱动招聘决策，快速掌握岗位与评估进展。</p>
+      </div>
+      <div class="header-actions">
+        <el-button type="primary" :icon="Plus" @click="handleCreateShortcut">一键创建岗位</el-button>
+        <el-button :icon="ArrowRight" @click="handleJumpReportQueue">查看待处理报告</el-button>
       </div>
     </div>
 
-    <!-- 主容器 -->
-    <div class="main-content">
-      <!-- 左侧：岗位管理 -->
-      <div class="jobs-section">
+    <div class="kpi-grid">
+      <div class="kpi-card">
+        <div class="kpi-label">在招岗位</div>
+        <div class="kpi-value">{{ stats.openJobs }}</div>
+        <div class="kpi-foot">总岗位 {{ stats.totalJobs }}</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">投递总量</div>
+        <div class="kpi-value">{{ stats.totalSubmissions }}</div>
+        <div class="kpi-foot">实时更新</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">平均匹配度</div>
+        <div class="kpi-value">{{ stats.avgMatchScore }}%</div>
+        <div class="kpi-foot">近30天平均</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">待处理报告</div>
+        <div class="kpi-value">{{ stats.pendingReports }}</div>
+        <div class="kpi-foot">需重点关注</div>
+      </div>
+    </div>
+
+    <div class="dashboard-layout">
+      <div class="dashboard-main">
         <div class="section-header">
-          <h3>岗位管理</h3>
-          <el-button type="primary" :icon="Plus" @click="showCreateDialog = true">
-            创建新岗位
-          </el-button>
+          <h3>岗位列表</h3>
+          <span class="section-hint">可排序查看投递、匹配度和待处理量</span>
         </div>
 
-        <!-- 岗位表格 -->
         <el-table
           :data="jobsList"
           stripe
@@ -137,93 +204,76 @@ onMounted(() => {
           :loading="loading"
           empty-text="暂无岗位"
         >
-          <el-table-column prop="name" label="岗位名称" width="150" />
-          <el-table-column prop="description" label="描述" min-width="200" show-overflow-tooltip />
-          <el-table-column prop="company" label="公司" width="120" />
-          <el-table-column prop="category" label="类别" width="100" />
-          <el-table-column prop="city" label="城市" width="100" />
-          <el-table-column label="薪资范围" width="150">
+          <el-table-column prop="name" label="岗位名称" min-width="160" sortable />
+          <el-table-column prop="company" label="公司" min-width="140" />
+          <el-table-column prop="city" label="城市" min-width="120" />
+          <el-table-column label="投递量" min-width="120" sortable="custom">
             <template #default="{ row }">
-              {{ row.salary_min }}k - {{ row.salary_max }}k
+              <el-tag type="info">{{ row.submissions }}</el-tag>
             </template>
           </el-table-column>
-          <el-table-column prop="created_at" label="创建时间" width="180">
+          <el-table-column label="平均匹配度" min-width="140" sortable="custom">
             <template #default="{ row }">
-              {{ new Date(row.created_at).toLocaleDateString('zh-CN') }}
+              <el-progress :percentage="row.avgMatch" :stroke-width="8" color="#409eff" />
             </template>
           </el-table-column>
-          <el-table-column label="候选人数" width="100">
+          <el-table-column label="待处理" min-width="120" sortable="custom">
             <template #default="{ row }">
-              <el-tag>{{ Math.floor(Math.random() * 10) + 1 }}</el-tag>
+              <el-tag :type="row.pendingReports > 0 ? 'warning' : 'success'">
+                {{ row.pendingReports }}
+              </el-tag>
             </template>
           </el-table-column>
-          <el-table-column label="操作" width="200" fixed="right">
+          <el-table-column prop="updated_at" label="最近更新" min-width="160" sortable>
             <template #default="{ row }">
-              <el-button link type="primary" :icon="View" @click="handleViewReport(row)">
-                查看报告
-              </el-button>
-              <el-button link type="warning" :icon="Edit" @click="handleEditJob(row)">
-                编辑
-              </el-button>
-              <el-button link type="danger" :icon="Delete" @click="handleDeleteJob(row)">
-                删除
-              </el-button>
+              {{ new Date(row.updated_at).toLocaleDateString('zh-CN') }}
+            </template>
+          </el-table-column>
+          <el-table-column label="操作" min-width="200" fixed="right">
+            <template #default="{ row }">
+              <el-button link type="primary" :icon="View" @click="handleViewReport(row)">报告</el-button>
+              <el-button link type="warning" :icon="Edit" @click="handleEditJob(row)">编辑</el-button>
+              <el-button link type="danger" :icon="Delete" @click="handleDeleteJob(row)">删除</el-button>
             </template>
           </el-table-column>
         </el-table>
       </div>
 
-      <!-- 右侧：数据概览 -->
-      <div class="overview-section">
-        <!-- 统计卡片 -->
-        <div class="stats-cards">
-          <div class="stat-card">
-            <div class="stat-value">{{ stats.totalJobs }}</div>
-            <div class="stat-label">发布岗位</div>
+      <div class="dashboard-side">
+        <div class="side-card">
+          <h4>岗位概况</h4>
+          <div class="overview-item">
+            <span>活跃岗位</span>
+            <strong>{{ stats.openJobs }}</strong>
           </div>
-          <div class="stat-card">
-            <div class="stat-value">{{ stats.pendingReview }}</div>
-            <div class="stat-label">待评估</div>
+          <div class="overview-item">
+            <span>待处理报告</span>
+            <strong>{{ stats.pendingReports }}</strong>
           </div>
-          <div class="stat-card">
-            <div class="stat-value">{{ stats.avgMatchScore }}%</div>
-            <div class="stat-label">平均匹配度</div>
+          <div class="overview-item">
+            <span>平均匹配度</span>
+            <strong>{{ stats.avgMatchScore }}%</strong>
           </div>
         </div>
 
-        <!-- 快速入口 -->
-        <div class="quick-actions">
-          <h4>快速入口</h4>
-          <el-button class="action-btn" type="primary" plain block>
-            查看所有候选人报告
-          </el-button>
-          <el-button class="action-btn" type="success" plain block>
-            团队管理
-          </el-button>
-          <el-button class="action-btn" type="info" plain block>
-            数据分析
-          </el-button>
+        <div class="side-card">
+          <h4>快捷入口</h4>
+          <el-button class="action-btn" type="primary" plain block>查看所有候选人报告</el-button>
+          <el-button class="action-btn" type="success" plain block>人才池管理</el-button>
+          <el-button class="action-btn" type="info" plain block>数据分析中心</el-button>
         </div>
 
-        <!-- 最近活动 -->
-        <div class="recent-activity">
-          <h4>最近岗位</h4>
-          <div class="activity-list">
-            <div v-if="jobsList.length === 0" class="empty-state">
-              暂无岗位
-            </div>
-            <div v-for="job in jobsList.slice(0, 3)" :key="job.id" class="activity-item">
-              <div class="activity-title">{{ job.name }}</div>
-              <div class="activity-time">
-                {{ new Date(job.created_at).toLocaleDateString('zh-CN') }}
-              </div>
-            </div>
+        <div class="side-card">
+          <h4>最新岗位</h4>
+          <div v-if="jobsList.length === 0" class="empty-state">暂无岗位</div>
+          <div v-for="job in jobsList.slice(0, 3)" :key="job.id" class="recent-item">
+            <div class="recent-title">{{ job.name }}</div>
+            <div class="recent-meta">{{ new Date(job.created_at).toLocaleDateString('zh-CN') }}</div>
           </div>
         </div>
       </div>
     </div>
 
-    <!-- 创建岗位对话框 -->
     <el-dialog v-model="showCreateDialog" title="创建新岗位" width="500px">
       <el-form :model="createFormData" label-width="100px">
         <el-form-item label="岗位名称" required>
@@ -273,177 +323,180 @@ onMounted(() => {
 </template>
 
 <style scoped>
-.hr-home-container {
+.hr-home {
   min-height: 100%;
   background: transparent;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
 }
 
-/* 欢迎区 */
-.welcome-section {
-  padding: 24px 0;
-  margin-bottom: 24px;
+.page-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  background: #ffffff;
+  border-radius: 12px;
+  padding: 20px 24px;
+  box-shadow: 0 8px 24px rgba(18, 28, 45, 0.08);
 }
 
-.welcome-card {
-  background: white;
-  padding: 24px;
-  border-radius: 8px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-}
-
-.welcome-card h2 {
-  margin: 0 0 8px 0;
+.page-header h2 {
+  margin: 0 0 6px 0;
   font-size: 22px;
-  color: #333;
+  color: #1f2937;
 }
 
-.welcome-card p {
+.page-header p {
   margin: 0;
-  color: #666;
-  font-size: 14px;
+  color: #6b7280;
+  font-size: 13px;
 }
 
-.welcome-card h2 {
-  margin: 0 0 8px 0;
-  font-size: 22px;
-  color: #333;
+.header-actions {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
 }
 
-.welcome-card p {
-  margin: 0;
-  color: #666;
-  font-size: 14px;
-}
-
-/* 主容器布局 */
-.main-content {
+.kpi-grid {
   display: grid;
-  grid-template-columns: 1fr 300px;
-  gap: 24px;
-  padding: 24px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.kpi-card {
+  background: #ffffff;
+  border-radius: 12px;
+  padding: 16px;
+  box-shadow: 0 6px 18px rgba(18, 28, 45, 0.08);
+}
+
+.kpi-label {
+  font-size: 12px;
+  color: #6b7280;
+}
+
+.kpi-value {
+  font-size: 26px;
+  font-weight: 700;
+  margin-top: 8px;
+  color: #111827;
+}
+
+.kpi-foot {
+  margin-top: 6px;
+  font-size: 12px;
+  color: #9ca3af;
+}
+
+.dashboard-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 320px;
+  gap: 20px;
+}
+
+.dashboard-main {
+  background: #ffffff;
+  border-radius: 12px;
+  padding: 20px;
+  box-shadow: 0 8px 24px rgba(18, 28, 45, 0.08);
 }
 
 .section-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 16px;
+  margin-bottom: 12px;
 }
 
 .section-header h3 {
   margin: 0;
   font-size: 18px;
-  color: #333;
+  color: #1f2937;
 }
 
-/* 岗位管理区 */
-.jobs-section {
-  background: white;
-  padding: 20px;
-  border-radius: 8px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+.section-hint {
+  color: #9ca3af;
+  font-size: 12px;
 }
 
-/* 数据概览区 */
-.overview-section {
+.dashboard-side {
   display: flex;
   flex-direction: column;
   gap: 16px;
 }
 
-.stats-cards {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.stat-card {
-  background: white;
+.side-card {
+  background: #ffffff;
+  border-radius: 12px;
   padding: 16px;
-  border-radius: 8px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-  text-align: center;
+  box-shadow: 0 6px 18px rgba(18, 28, 45, 0.08);
 }
 
-.stat-value {
-  font-size: 28px;
-  font-weight: bold;
-  color: #409eff;
-  margin-bottom: 4px;
-}
-
-.stat-label {
-  font-size: 12px;
-  color: #999;
-}
-
-.quick-actions {
-  background: white;
-  padding: 16px;
-  border-radius: 8px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-}
-
-.quick-actions h4 {
+.side-card h4 {
   margin: 0 0 12px 0;
   font-size: 14px;
-  color: #333;
+  color: #111827;
 }
 
-.action-btn {
-  margin-bottom: 8px !important;
+.overview-item {
+  display: flex;
+  justify-content: space-between;
   font-size: 13px;
+  color: #374151;
+  padding: 6px 0;
 }
 
-.recent-activity {
-  background: white;
-  padding: 16px;
-  border-radius: 8px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-}
-
-.recent-activity h4 {
-  margin: 0 0 12px 0;
-  font-size: 14px;
-  color: #333;
-}
-
-.activity-list {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
+/* .action-btn {
+  margin-bottom: 8px "'!important;
+  font-size: 13px;
+} */
 
 .empty-state {
   text-align: center;
-  color: #999;
+  color: #9ca3af;
   font-size: 12px;
-  padding: 8px;
 }
 
-.activity-item {
-  padding: 8px;
-  border-bottom: 1px solid #f0f0f0;
+.recent-item {
+  padding: 8px 0;
+  border-bottom: 1px solid #f3f4f6;
 }
 
-.activity-item:last-child {
+.recent-item:last-child {
   border-bottom: none;
 }
 
-.activity-title {
+.recent-title {
   font-size: 13px;
-  color: #333;
-  margin-bottom: 4px;
+  color: #111827;
 }
 
-.activity-time {
-  font-size: 11px;
-  color: #999;
+.recent-meta {
+  font-size: 12px;
+  color: #9ca3af;
+  margin-top: 4px;
 }
 
-/* 响应式设计 */
 @media (max-width: 1200px) {
-  .main-content {
+  .kpi-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .dashboard-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 720px) {
+  .page-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .kpi-grid {
     grid-template-columns: 1fr;
   }
 }

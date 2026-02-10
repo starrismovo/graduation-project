@@ -2,6 +2,7 @@ import { createRouter, createWebHistory } from 'vue-router'
 import LoginView from '@/views/LoginView.vue'
 import IndexView from '@/views/IndexView.vue'
 import AssessmentView from '@/views/AssessmentView.vue'
+import JobManageView from '@/views/position/JobManageView.vue'
 import { useUserStore } from '@/stores/user'
 
 const router = createRouter({
@@ -19,6 +20,7 @@ const router = createRouter({
       path: '/home', 
       component: IndexView,
       meta: { requiresAuth: true }  // 统一主页
+      ,
     }
     ,
     {
@@ -26,6 +28,20 @@ const router = createRouter({
       component: AssessmentView,
       meta: { requiresAuth: true }
     }
+    ,
+    {
+      path: '/job-manage',
+      component: JobManageView,
+      meta: { 
+        requiresHR: true,
+      }
+    }
+    ,
+    {
+  path: '/views/position/:id/edit',
+  component: () => import('@/views/position/JobEditView.vue')
+}
+
   ]
 })
 

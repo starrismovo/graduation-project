@@ -1,27 +1,27 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
   <defs>
-    <!-- 背景渐变 -->
+    <!-- 背景渐变 - 紫色系 -->
     <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" style="stop-color:#0f172a"/>
-      <stop offset="100%" style="stop-color:#1e1b4b"/>
+      <stop offset="0%" style="stop-color:#667eea"/>
+      <stop offset="100%" style="stop-color:#764ba2"/>
     </linearGradient>
 
-    <!-- 主色渐变 -->
+    <!-- 主色渐变 - 浅紫到深紫 -->
     <linearGradient id="accent" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" style="stop-color:#6366f1"/>
-      <stop offset="100%" style="stop-color:#06b6d4"/>
+      <stop offset="0%" style="stop-color:#8b5cf6"/>
+      <stop offset="100%" style="stop-color:#6366f1"/>
     </linearGradient>
     
-    <!-- 脉动动画渐变 -->
+    <!-- 脉动动画渐变 - 紫色系 -->
     <linearGradient id="pulse" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#6366f1">
+      <stop offset="0%" stop-color="#8b5cf6">
         <animate attributeName="stop-color" 
-                 values="#6366f1;#06b6d4;#6366f1" 
+                 values="#8b5cf6;#a78bfa;#8b5cf6" 
                  dur="3s" repeatCount="indefinite"/>
       </stop>
-      <stop offset="100%" stop-color="#06b6d4">
+      <stop offset="100%" stop-color="#a78bfa">
         <animate attributeName="stop-color" 
-                 values="#06b6d4;#6366f1;#06b6d4" 
+                 values="#a78bfa;#8b5cf6;#a78bfa" 
                  dur="3s" repeatCount="indefinite"/>
       </stop>
     </linearGradient>
@@ -32,12 +32,12 @@
       <feComposite in="SourceGraphic" in2="blur" operator="over"/>
     </filter>
     
-    <!-- 数据流动画效果 -->
+    <!-- 数据流动画效果 - 紫色系 -->
     <linearGradient id="data-flow" x1="0%" y1="0%" x2="100%" y2="0%">
       <stop offset="0%" stop-color="transparent" stop-opacity="0.3">
         <animate attributeName="offset" values="0;1;0" dur="2s" repeatCount="indefinite"/>
       </stop>
-      <stop offset="50%" stop-color="#22d3ee" stop-opacity="0.8">
+      <stop offset="50%" stop-color="#c4b5fd" stop-opacity="0.8">
         <animate attributeName="offset" values="0.2;1.2;0.2" dur="2s" repeatCount="indefinite"/>
       </stop>
       <stop offset="100%" stop-color="transparent" stop-opacity="0.3">
@@ -48,29 +48,29 @@
 
   <!-- 带发光效果的背景容器 -->
   <rect x="5" y="5" width="90" height="90" rx="20"
-        fill="url(#bg)" stroke="#6366f1" stroke-width="2.5"
+        fill="url(#bg)" stroke="rgba(255,255,255,0.3)" stroke-width="2.5"
         filter="url(#glow)"/>
   
   <!-- 六维心理雷达 -->
   <path d="M50 18 L70 32 L66 56 L50 68 L34 56 L30 32 Z"
         fill="none"
-        stroke="url(#accent)"
+        stroke="rgba(255,255,255,0.8)"
         stroke-width="3.5"
         stroke-linejoin="round"/>
 
   <!-- 人 / 岗 双核心 -->
-  <circle cx="44" cy="42" r="5" fill="#06b6d4">
+  <circle cx="44" cy="42" r="5" fill="#c4b5fd">
     <animate attributeName="r" values="5;6;5" dur="2s" repeatCount="indefinite"/>
   </circle>
   
-  <circle cx="56" cy="42" r="5" fill="#6366f1">
+  <circle cx="56" cy="42" r="5" fill="#e0e7ff">
     <animate attributeName="r" values="5;6;5" dur="2s" repeatCount="indefinite" begin="0.5s"/>
   </circle>
 
   <!-- Match 匹配弧线 -->
   <path d="M38 62 Q50 72 62 62"
         fill="none"
-        stroke="#22d3ee"
+        stroke="rgba(255,255,255,0.9)"
         stroke-width="3"
         stroke-linecap="round">
     <animate attributeName="stroke-width" values="3;4;3" dur="1.5s" repeatCount="indefinite"/>
@@ -97,27 +97,26 @@
         stroke="url(#data-flow)" stroke-width="1.5" opacity="0.5"/>
 
   <!-- 数据节点（带脉动效果） -->
-  <circle cx="18" cy="50" r="3.5" fill="#22d3ee">
+  <circle cx="18" cy="50" r="3.5" fill="rgba(255,255,255,0.85)">
     <animate attributeName="r" values="3.5;4.5;3.5" dur="1.8s" repeatCount="indefinite"/>
   </circle>
   
-  <circle cx="82" cy="50" r="3.5" fill="#22d3ee">
+  <circle cx="82" cy="50" r="3.5" fill="rgba(255,255,255,0.85)">
     <animate attributeName="r" values="3.5;4.5;3.5" dur="1.8s" repeatCount="indefinite" begin="0.3s"/>
   </circle>
   
-  <circle cx="50" cy="82" r="3.5" fill="#22d3ee">
+  <circle cx="50" cy="82" r="3.5" fill="rgba(255,255,255,0.85)">
     <animate attributeName="r" values="3.5;4.5;3.5" dur="1.8s" repeatCount="indefinite" begin="0.6s"/>
   </circle>
   
-  <!-- 微妙的粒子效果（可选） -->
-  <circle cx="25" cy="25" r="0.8" fill="#06b6d4" opacity="0.6">
+  <!-- 微妙的粒子效果 -->
+  <circle cx="25" cy="25" r="0.8" fill="rgba(255,255,255,0.6)" opacity="0.6">
     <animate attributeName="opacity" values="0.2;0.6;0.2" dur="3s" repeatCount="indefinite"/>
     <animate attributeName="cx" values="22;28;22" dur="4s" repeatCount="indefinite"/>
   </circle>
   
-  <circle cx="75" cy="75" r="0.8" fill="#6366f1" opacity="0.6">
+  <circle cx="75" cy="75" r="0.8" fill="rgba(255,255,255,0.6)" opacity="0.6">
     <animate attributeName="opacity" values="0.2;0.6;0.2" dur="3s" repeatCount="indefinite" begin="1s"/>
     <animate attributeName="cy" values="72;78;72" dur="4s" repeatCount="indefinite" begin="1s"/>
   </circle>
-
 </svg>

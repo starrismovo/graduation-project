@@ -20,7 +20,14 @@ app.use(router)
 for (const [key, component] of Object.entries(ElementPlusIconsVue)) {
   app.component(key, component)
 }
-
+// main.ts 或某个初始化文件
+window.addEventListener('error', (event) => {
+  if (event.message.includes('A listener indicated an asynchronous response')) {
+    event.preventDefault()
+    event.stopPropagation()
+    console.warn('Ignored Vue Devtools async channel error')
+  }
+})
 // 在挂载前恢复用户状态
 const userStore = useUserStore()
 userStore.restoreFromLocal()

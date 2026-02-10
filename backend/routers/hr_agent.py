@@ -1,5 +1,6 @@
 from fastapi import APIRouter, HTTPException, Depends
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import SQLAlchemyError
 from database import get_db
 from models.hr_agent import Scenario, InterviewResponse, TraitScore, ScenarioSummary
 from schemas import hr_agent as schemas_hr_agent
@@ -11,6 +12,9 @@ from schemas.hr_agent import (
 from prompts.hr_agent_llm import hr_agent_llm
 from datetime import datetime
 import uuid
+import logging
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/interview", tags=["HR-Agent"])
 
@@ -117,6 +121,11 @@ async def score_answer(
         current_answer=request.answer,
         all_answers=previous_answers
     )
+
+    if not isinstance(result, dict):
+        raise HTTPException(status_code=500, detail="LLM scoring failed: empty result")
+    if "scores" not in result or result.get("scores") is None:
+        raise HTTPException(status_code=500, detail="LLM scoring failed: missing scores")
     
     # 保存评分到数据库
     for trait_name, score in result["scores"].items():
@@ -166,30 +175,37 @@ async def save_response(
     if not scenario:
         raise HTTPException(status_code=404, detail="情景不存在")
     
-    response = InterviewResponse(
-        id=f"resp_{uuid.uuid4().hex[:12]}",
-        candidate_id=request.candidate_id,
-        scenario_id=request.scenario_id,
-        round_num=request.round_num,
-        question=request.question,
-        answer=request.answer,
-        answer_latency=request.answer_latency,
-        answer_length=getattr(request, 'answer_length', None),
-        is_paste=getattr(request, 'is_paste', False),
-        emotion=request.emotion
-    )
-    
-    db.add(response)
-    db.commit()
-    db.refresh(response)
+    try:
+        response = InterviewResponse(
+            id=f"resp_{uuid.uuid4().hex[:12]}",
+            candidate_id=request.candidate_id,
+            scenario_id=request.scenario_id,
+            round_num=request.round_num,
+            question=request.question,
+            answer=request.answer,
+            answer_latency=request.answer_latency,
+            answer_length=getattr(request, 'answer_length', None),
+            is_paste=getattr(request, 'is_paste', False),
+            emotion=request.emotion
+        )
+
+        db.add(response)
+        db.commit()
+        db.refresh(response)
+    except SQLAlchemyError as e:
+        db.rollback()
+        logger.exception("save_response db error: %s", e)
+        raise HTTPException(status_code=500, detail="Database error while saving response")
+    except Exception as e:
+        db.rollback()
+        logger.exception("save_response unexpected error: %s", e)
+        raise HTTPException(status_code=500, detail="Unexpected error while saving response")
 
     # 简单的异常检测与日志
     try:
         if getattr(request, 'is_paste', False):
-            logger = __import__('logging').getLogger(__name__)
             logger.warning('Detected paste for response %s candidate=%s', response.id, request.candidate_id)
         if request.answer_latency is not None and request.answer_latency < 0.5:
-            logger = __import__('logging').getLogger(__name__)
             logger.warning('Very short latency %.2fs for response %s', request.answer_latency, response.id)
     except Exception:
         pass

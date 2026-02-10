@@ -34,6 +34,83 @@ import urllib.error
 
 logger = logging.getLogger(__name__)
 
+BASE_ROLE_PROMPTS = {
+    "sales": (
+        "You are a virtual interviewer for a sales role. "
+        "You are assessing responsibility and communication strategy. "
+        "Based on the candidate's answer, ask one open-ended follow-up question "
+        "focused on interpersonal communication and problem solving in sales scenarios. "
+        "Keep it concise (no more than two sentences)."
+    ),
+    "engineering": (
+        "You are a virtual interviewer for an engineering role. "
+        "You are assessing logical thinking and technical ability. "
+        "Based on the candidate's answer, ask one open-ended follow-up question "
+        "focused on technical problem solving and logical analysis. "
+        "Keep it concise (no more than two sentences)."
+    ),
+}
+
+
+def build_followup_prompt(role_type: str, round_num: int, history: List[Dict[str, str]], max_rounds: int = 3) -> str:
+    role_key = (role_type or "").strip().lower()
+    base_prompt = BASE_ROLE_PROMPTS.get(role_key, BASE_ROLE_PROMPTS["engineering"])
+
+    # Keep recent rounds only to control length
+    recent_history = history[-3:] if history else []
+    history_lines = []
+    for i, item in enumerate(recent_history, 1):
+        q = (item.get("question") or "").strip()
+        a = (item.get("answer") or "").strip()
+        if q:
+            history_lines.append(f"Round {i}:\nInterviewer: {q}")
+        if a:
+            history_lines.append(f"Candidate: {a}")
+
+    history_block = "\n".join(history_lines).strip()
+    suffix = f"\n\nCurrent round {round_num}/{max_rounds}. Ask the next question based on the dialogue above:"
+
+    if history_block:
+        return f"{base_prompt}\n\n{history_block}{suffix}"
+    return f"{base_prompt}{suffix}"
+
+
+def safe_load_json(raw: str) -> Dict[str, Any]:
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError:
+        logger.exception("DeepSeek invalid JSON response")
+        return {"_error": "invalid_json", "_raw": raw}
+
+
+def extract_followup_question(resp: Dict[str, Any]) -> Dict[str, Any]:
+    if not resp:
+        return {"question": None, "reasoning": None, "error": "empty_response"}
+    if resp.get("_error"):
+        return {"question": None, "reasoning": None, "error": resp.get("_error")}
+    if isinstance(resp.get("error"), dict):
+        message = resp["error"].get("message") or "api_error"
+        return {"question": None, "reasoning": None, "error": message}
+
+    if resp.get("question"):
+        return {"question": resp.get("question"), "reasoning": resp.get("reasoning"), "error": None}
+
+    choices = resp.get("choices")
+    if isinstance(choices, list):
+        if not choices:
+            return {"question": None, "reasoning": None, "error": "empty_choices"}
+        choice0 = choices[0] or {}
+        message = choice0.get("message") or {}
+        content = message.get("content") or choice0.get("text")
+        if isinstance(content, str) and content.strip():
+            return {"question": content.strip(), "reasoning": resp.get("reasoning"), "error": None}
+
+    text = resp.get("text")
+    if isinstance(text, str) and text.strip():
+        return {"question": text.strip(), "reasoning": resp.get("reasoning"), "error": None}
+
+    return {"question": None, "reasoning": None, "error": "missing_content"}
+
 
 class HRAgentLLM:
     """HR-Agent 大模型接口
@@ -422,10 +499,7 @@ class HRAgentLLM:
         }
 
     def _call_deepseek(self, endpoint: str, api_key: str, payload: Dict[str, Any], timeout: int = 10) -> Dict[str, Any]:
-        """调用 DeepSeek 风格的 LLM endpoint（使用 urllib，返回解析后的 JSON）。
-
-        约定：Deepseek 返回 JSON 且包含需要字段；适配层负责解析并返回项目期望格式。
-        """
+        """Call DeepSeek-style endpoint and return parsed JSON."""
         headers = {
             'Content-Type': 'application/json',
         }
@@ -437,17 +511,29 @@ class HRAgentLLM:
         req = urllib.request.Request(endpoint, data=data, headers=headers, method='POST')
         try:
             with urllib.request.urlopen(req, timeout=timeout) as resp:
-                raw = resp.read().decode('utf-8')
-                return json.loads(raw)
+                raw = resp.read().decode('utf-8', errors='replace')
+                parsed = safe_load_json(raw)
+                if isinstance(parsed, dict):
+                    parsed['_http_status'] = getattr(resp, 'status', 200)
+                return parsed
         except urllib.error.HTTPError as e:
+            raw = ''
+            try:
+                raw = e.read().decode('utf-8', errors='replace')
+            except Exception:
+                raw = ''
+            parsed = safe_load_json(raw) if raw else {"_error": "http_error"}
+            if isinstance(parsed, dict):
+                parsed['_http_status'] = getattr(e, 'code', None)
+                parsed['_http_error'] = str(e)
             logger.exception('Deepseek HTTPError: %s', e)
-            return {}
+            return parsed
         except Exception as e:
             logger.exception('Deepseek request failed: %s', e)
-            return {}
+            return {"_error": "request_failed", "message": str(e)}
 
     def _call_llm_for_followup(self, conversation: List[Dict], round_num: int = 1, max_rounds: int = 3) -> Dict[str, Any]:
-        """统一调用 LLM 生成追问，优先 deepseek（若配置），否则回退到 openai stub。"""
+        """Call LLM to generate follow-up question, prefer deepseek if configured."""
         deepseek_endpoint = os.getenv('DEEPSEEK_ENDPOINT', '')
         deepseek_key = os.getenv('DEEPSEEK_API_KEY', '')
         if deepseek_endpoint and deepseek_key:
@@ -458,19 +544,17 @@ class HRAgentLLM:
                 'conversation': conversation
             }
             resp = self._call_deepseek(deepseek_endpoint, deepseek_key, payload)
-            # 解析 deepseek 返回（尝试常见字段）
-            if not resp:
-                return {"question": "请详细说明你的处理方案。", "reasoning": "deepseek 未返回有效结果，已回退"}
-            # deepseek 可能直接返回 {question, reasoning}
-            if isinstance(resp, dict) and resp.get('question'):
-                return {"question": resp.get('question'), "reasoning": resp.get('reasoning')}
-            # 或者嵌套在 choices/text
-            text = resp.get('text') or (resp.get('choices') and resp['choices'][0].get('text'))
-            if text:
-                return {"question": text, "reasoning": resp.get('reasoning')}
-            return {"question": "请具体说明你的下一步计划。", "reasoning": "deepseek 返回格式未知"}
+            parsed = extract_followup_question(resp if isinstance(resp, dict) else {})
+            if parsed.get('question'):
+                return {
+                    'question': parsed.get('question'),
+                    'reasoning': parsed.get('reasoning')
+                }
+            return {
+                'question': 'Please describe how you would proceed with the current plan.',
+                'reasoning': f"deepseek response error: {parsed.get('error')}"
+            }
 
-        # 回退到原始 openai stub
         return self._call_openai(conversation)
 
     def _call_llm_for_scoring(self, prompt: str) -> Dict[str, Any]:
@@ -489,6 +573,7 @@ class HRAgentLLM:
             # 这里简单回退到 openai stub
             return self._call_openai_scoring(prompt)
 
+        return self._call_openai_scoring(prompt)
 
 # 创建全局实例
 # 支持以下配置方式：
