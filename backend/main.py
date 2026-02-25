@@ -6,11 +6,14 @@ from models.job import Job
 from models.interview import Interview
 from models.candidate import Candidate
 from models.hr_agent import Scenario, InterviewResponse, TraitScore, ScenarioSummary
+from models.assessment import AssessmentRecord, CandidatePersonalityProfile, AssessmentMatchAnalysis, PersonalityTraitDescription
 from routers.auth import router as auth_router
 from routers.job import router as job_router
 from routers.interview import router as interview_router
 from routers.candidate import router as candidate_router
 from routers.hr_agent import router as hr_agent_router
+from routers.assessment import router as assessment_router
+from routers.interviewer import router as interviewer_router
 
 app = FastAPI(title="人岗匹配心理评估系统后端")
 
@@ -38,6 +41,8 @@ app.include_router(job_router)
 app.include_router(interview_router)
 app.include_router(candidate_router)
 app.include_router(hr_agent_router)
+app.include_router(assessment_router)
+app.include_router(interviewer_router)
 
 @app.get("/")
 def read_root():

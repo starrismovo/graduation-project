@@ -5,6 +5,7 @@
         <el-steps :active="activeStep" finish-status="success" align-center>
           <el-step title="基本信息"></el-step>
           <el-step title="情境问答"></el-step>
+          <el-step title="多角色对话" v-if="showImmersiveMode"></el-step>
           <el-step title="认知任务"></el-step>
           <el-step title="特质量表"></el-step>
           <el-step title="生成报告"></el-step>
@@ -18,8 +19,9 @@
             <div class="task-header">
               <h3 v-if="activeStep === 1">当前模块：基础信息</h3>
               <h3 v-else-if="activeStep === 2">当前模块：情境问答</h3>
-              <h3 v-else-if="activeStep === 3">当前模块：认知任务</h3>
-              <h3 v-else-if="activeStep === 4">当前模块：特质量表</h3>
+              <h3 v-else-if="activeStep === 3 && showImmersiveMode">当前模块：多角色对话</h3>
+              <h3 v-else-if="(activeStep === 3 && !showImmersiveMode) || (activeStep === 4 && showImmersiveMode)">当前模块：认知任务</h3>
+              <h3 v-else-if="(activeStep === 4 && !showImmersiveMode) || (activeStep === 5 && showImmersiveMode)">当前模块：特质量表</h3>
               <h3 v-else>当前模块：报告生成</h3>
             </div>
 
@@ -186,21 +188,36 @@
             @next="handleNext"
           />
 
-          <!-- Step 3: 认知任务 -->
-          <CognitiveTask v-else-if="activeStep === 3" :hr-scores="latestScores" @next="handleNext" />
+          <!-- Step 3: 多角色沉浸式对话（新增） -->
+          <div v-else-if="activeStep === 3 && showImmersiveMode" class="immersive-wrapper">
+            <ImmersiveRoleDialogue
+              :candidate-id="candidateId"
+              :target-position="candidate.desired_job"
+              :initial-context="candidate"
+              @complete="handleImmersiveComplete"
+              @update-scores="handleImmersiveScores"
+            />
+          </div>
 
-          <!-- Step 4: 特质量表 -->
+          <!-- Step 3/4: 认知任务 -->
+          <CognitiveTask 
+            v-else-if="(activeStep === 3 && !showImmersiveMode) || (activeStep === 4 && showImmersiveMode)" 
+            :hr-scores="immersiveScores && Object.keys(immersiveScores).length > 0 ? immersiveScores : latestScores" 
+            @next="handleNext" 
+          />
+
+          <!-- Step 4/5: 特质量表 -->
           <PersonalityScale 
-            v-else-if="activeStep === 4"
+            v-else-if="(activeStep === 4 && !showImmersiveMode) || (activeStep === 5 && showImmersiveMode)"
             @save="handleScoresSave"
             @next="handleNext"
           />
 
-          <!-- Step 5: 报告生成 -->
+          <!-- Step 5/6: 报告生成 -->
           <ReportGenerate 
-            v-else-if="activeStep === 5"
+            v-else-if="(activeStep === 5 && !showImmersiveMode) || (activeStep === 6 && showImmersiveMode)"
             :candidate="candidate"
-            :personalityScores="personalityScores"
+            :personalityScores="allScores"
             @finish="handleFinish"
           />
         </div>
@@ -215,6 +232,7 @@ import { useRouter, useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import BasicInfo from './assessment/BasicInfo.vue'
 import SituationalQA from './assessment/components/SituationalQA.vue'
+import ImmersiveRoleDialogue from './assessment/ImmersiveRoleDialogue.vue'
 import CognitiveTask from './assessment/components/CognitiveTask.vue'
 import PersonalityScale from './assessment/components/PersonalityScale.vue'
 import ReportGenerate from './assessment/components/ReportGenerate.vue'
@@ -235,11 +253,21 @@ const currentScenario = ref<Record<string, any> | null>(null)
 // 评估数据
 const answers = ref<Array<{ text: string; time: string; latency: number; emotion: string }>>([])
 const personalityScores = ref<Record<string, number>>({})
+const showImmersiveMode = ref(true)
+const immersiveData = ref<any>(null)
+const immersiveScores = ref<Record<string, number>>({})
 
 // AI 分析数据
 const latestScores = ref<Record<string, number> | null>(null)
 const latestReasonings = ref<Record<string, string> | null>(null)
 const maxRounds = ref(3)
+
+// 合并所有评分用于最终报告
+const allScores = computed(() => ({
+  ...(latestScores.value || {}),
+  ...immersiveScores.value,
+  ...personalityScores.value
+}))
 
 // 根据路由 param 填充 demo 数据
 if (route.params.id === 'demo' || !route.params.id) {
@@ -262,7 +290,8 @@ function handleSave(updated: Record<string, any>) {
 }
 
 function handleNext() {
-  if (activeStep.value < 5) {
+  const maxStep = showImmersiveMode.value ? 6 : 5
+  if (activeStep.value < maxStep) {
     activeStep.value += 1
   } else {
     ElMessage.success('评估已完成！')
@@ -297,6 +326,20 @@ function getScoreColor(score: number): string {
 // 接收情景信息（动态更新左侧情景描述）
 function handleScenarioUpdate(scenario: Record<string, any>) {
   currentScenario.value = scenario
+}
+
+// 处理多角色对话完成回调
+function handleImmersiveComplete(data: any) {
+  immersiveData.value = data
+  if (data.scores) {
+    immersiveScores.value = data.scores
+  }
+  ElMessage.success('多角色对话已完成，正在生成综合评分...')
+}
+
+// 处理多角色对话的评分更新
+function handleImmersiveScores(scores: Record<string, number>) {
+  immersiveScores.value = scores
 }
 
 function handleScoresSave(scores: Record<string, number>) {
@@ -504,5 +547,17 @@ function startModule() {
     width: 100%;
   }
   .chat-card { height: 400px; }
+}
+
+/* 多角色对话包装样式 */
+.immersive-wrapper {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.immersive-wrapper > * {
+  width: 100%;
+  height: 100%;
 }
 </style>

@@ -23,7 +23,7 @@ const handleMenuSelect = (index: string) => {
       ElMessage.info('个人中心功能开发中')
       break
     case 'jobs':
-      ElMessage.info('浏览岗位功能开发中')
+      router.push('/immersive')  
       break
     case 'interviews':
       ElMessage.info('我的面试功能开发中')

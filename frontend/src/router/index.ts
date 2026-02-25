@@ -19,75 +19,88 @@ const router = createRouter({
     { 
       path: '/home', 
       component: IndexView,
-      meta: { requiresAuth: true }  // 统一主页
-      ,
-    }
-    ,
-    // 虚拟形象创建页
-    {
-      path: '/avatar-creator',
-      name: 'AvatarCreator',
-      component: () => import('../views/AvatarCreatorView.vue'),
       meta: { requiresAuth: true }
     },
-    // 自我发现测试页
-    // {
-    //   path: '/self-discovery',
-    //   name: 'SelfDiscovery',
-    //   component: () => import('../views/SelfDiscoveryView.vue'),
-    //   meta: { requiresAuth: true }
-    // },
-    // 星际航程（故事评估）- 新的核心页面
+    // 候选人首页（重新设计）
     {
-      path: '/journey/:id',
-      name: 'Journey',
-      component: () => import('../views/JourneyView.vue'),
+      path: '/candidate-home',
+      name: 'CandidateHome',
+      component: () => import('../views/HomeView.vue'),
       meta: { requiresAuth: true }
     },
-    // 航行日志（报告页）
+    
+    // 沉浸式对话评估（新用户或快速开始）
     {
-      path: '/journey-report/:jobId',
-      name: 'JourneyReport',
-      component: () => import('../views/JourneyReportView.vue'),
-      meta: { requiresAuth: true }
+      path: '/immersive',
+      name: 'ImmersiveAssessment',
+      component: () => import('../views/assessment/ImmersiveRoleDialogue.vue'),
+      meta: { 
+        requiresAuth: true,
+        mode: 'immersive',
+        title: '沉浸式对话评估'
+      }
     },
-    // 我的星图（个人中心）
-    // {
-    //   path: '/constellation-map',
-    //   name: 'ConstellationMap',
-    //   component: () => import('../views/ConstellationMapView.vue'),
-    //   meta: { requiresAuth: true }
-    // },
+    // 固有的评估流程（带岗位参数）
     {
       path: '/assessment/:id',
+      name: 'Assessment',
       component: AssessmentView,
       meta: { requiresAuth: true }
-    }
-    ,
+    },
+    // 评估集成页面
+    {
+      path: '/assessment-integration/:id',
+      name: 'AssessmentIntegration',
+      component: () => import('../views/assessment/AssessmentViewIntegration.vue'),
+      meta: { requiresAuth: true }
+    },
+    // 星际航程（故事评估）- 新的核心页面
+    
+    // 评估报告页（新增）
+    {
+      path: '/report/:recordId',
+      name: 'AssessmentReport',
+      component: () => import('../views/assessment/ReportPage.vue'),
+      meta: { requiresAuth: true }
+    },
+    // 岗位管理（HR）
     {
       path: '/job-manage',
+      name: 'JobManage',
       component: JobManageView,
       meta: { 
-        requiresHR: true,
+        requiresAuth: true,
+        requiresHR: true
       }
-    }
-    ,
+    },
+    // 岗位编辑
     {
-  path: '/views/position/:id/edit',
-  component: () => import('@/views/position/JobEditView.vue')
-}
-
+      path: '/views/position/:id/edit',
+      name: 'JobEdit',
+      component: () => import('@/views/position/JobEditView.vue'),
+      meta: { requiresAuth: true }
+    }
   ]
 })
 
 // 路由守卫
 router.beforeEach((to, from, next) => {
   const userStore = useUserStore()
+  
+  // 检查认证
   if (to.meta.requiresAuth && !userStore.token) {
     next('/login')
-  } else {
-    next()
+    return
   }
+  
+  // 检查HR权限
+  if (to.meta.requiresHR && !userStore.isHR) {
+    // 跳回首页或显示权限不足
+    next('/home')
+    return
+  }
+  
+  next()
 })
 
 export default router

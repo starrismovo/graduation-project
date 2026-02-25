@@ -116,6 +116,68 @@ export const getJobs = (params?: {
 export const getJobDetail = (jobId: number) => {
   return request.get(`/jobs/${jobId}`)
 }
+
+// ============ 候选人首页专用 API ============
+
+/**
+ * 获取候选人的心理画像
+ * @param candidateId 候选人ID
+ * @returns 五大人格评分数据 [{name: '外向性', score: 8}, ...]
+ */
+export const fetchPortrait = async (candidateId: string | number) => {
+  try {
+    const response = await request.get(`/assessment/portrait/${candidateId}`)
+    return response.data?.data || response.data || []
+  } catch (error) {
+    console.warn('获取心理画像失败，返回空数组:', error)
+    return []
+  }
+}
+
+/**
+ * 获取候选人的历史评估记录
+ * @param candidateId 候选人ID
+ * @returns 评估记录列表 [{id, job_id, job_title, match_score, created_at}, ...]
+ */
+export const fetchHistory = async (candidateId: string | number) => {
+  try {
+    const response = await request.get(`/assessment/history/${candidateId}`)
+    return response.data?.data || response.data || []
+  } catch (error) {
+    console.warn('获取评估历史失败，返回空数组:', error)
+    return []
+  }
+}
+
+/**
+ * 获取推荐岗位
+ * @param candidateId 候选人ID
+ * @returns 推荐岗位列表 [{id, title, match_score, description}, ...]
+ */
+export const fetchJobs = async (candidateId: string | number) => {
+  try {
+    const response = await request.get(`/assessment/recommended-jobs/${candidateId}`)
+    return response.data?.data || response.data || []
+  } catch (error) {
+    console.warn('获取推荐岗位失败，返回空数组:', error)
+    return []
+  }
+}
+
+/**
+ * 获取最新的评估报告详情
+ * @param recordId 评估记录ID
+ */
+export const fetchReportDetail = async (recordId: string | number) => {
+  try {
+    const response = await request.get(`/assessment/report/${recordId}`)
+    return response.data?.data || response.data || {}
+  } catch (error) {
+    console.error('获取报告详情失败:', error)
+    throw error
+  }
+}
+
 // 获取故事模板
 export function getStoryTemplate(jobId: string) {
   return request({
@@ -140,4 +202,5 @@ export function generateJourneyReport(journeyId: string) {
     method: 'get'
   })
 }
+
 export default request
