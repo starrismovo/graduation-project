@@ -40,21 +40,6 @@ const router = createRouter({
         title: '沉浸式对话评估'
       }
     },
-    // 固有的评估流程（带岗位参数）
-    {
-      path: '/assessment/:id',
-      name: 'Assessment',
-      component: AssessmentView,
-      meta: { requiresAuth: true }
-    },
-    // 评估集成页面
-    {
-      path: '/assessment-integration/:id',
-      name: 'AssessmentIntegration',
-      component: () => import('../views/assessment/AssessmentViewIntegration.vue'),
-      meta: { requiresAuth: true }
-    },
-    // 星际航程（故事评估）- 新的核心页面
     
     // 评估报告页（新增）
     {

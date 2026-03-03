@@ -1,5 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware 
+from dotenv import load_dotenv
 from database import Base, engine
 from models.user import User
 from models.job import Job
@@ -15,6 +16,9 @@ from routers.hr_agent import router as hr_agent_router
 from routers.assessment import router as assessment_router
 from routers.interviewer import router as interviewer_router
 
+# 加载环境变量
+load_dotenv()
+
 app = FastAPI(title="人岗匹配心理评估系统后端")
 
 # CORS 配置 - 必须在路由之前添加
@@ -23,6 +27,10 @@ app.add_middleware(
     allow_origins=[
         "http://localhost:5173",
         "http://127.0.0.1:5173",
+        "http://localhost:5175",
+        "http://127.0.0.1:5175",
+        "http://localhost:5176",
+        "http://127.0.0.1:5176",
         "http://localhost:3000",
         "http://127.0.0.1:3000"
     ],

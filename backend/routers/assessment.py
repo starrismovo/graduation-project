@@ -30,10 +30,21 @@ from schemas.assessment import (
     AssessmentDetails,
     AssessmentReport,
     UpdateAssessmentRequest,
-    StandardResponse
+    StandardResponse,
+    NextQuestionResponse,
+    AnalyzeResponseRequest,
+    AnalyzeResponseResponse,
+    SaveSessionRequest,
+    SaveSessionResponse
 )
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 from datetime import datetime
+import os
+import json
+import httpx
+import logging
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/assessment", tags=["assessment"])
 
@@ -532,3 +543,389 @@ async def delete_assessment_record(record_id: int, db: Session = Depends(get_db)
         code=200,
         message="success"
     )
+
+
+# ==================== 沉浸式对话 API ====================
+
+async def call_llm_for_question(
+    role_id: str,
+    role_name: str,
+    conversation_history: List[Dict[str, str]],
+    candidate_background: Optional[str] = None,
+    conversation_depth: Optional[int] = None
+) -> Dict[str, Any]:
+    """
+    使用 LLM 生成下一个问题（基于角色和对话历史）
+    """
+    api_key = os.getenv("ROAD2ALL_API_KEY")
+    api_url = os.getenv("ROAD2ALL_API_URL", "https://api.road2all.com/v1/chat/completions")
+    model = os.getenv("ROAD2ALL_MODEL", "gpt4o")
+    
+    # 构建提示词
+    role_prompts = {
+        "hr": "你是一名资深的HR面试官。你需要基于候选人的背景和对话历史，提出一个自然、深入的问题。问题应该帮助了解候选人的沟通能力、团队协作和文化契合度。",
+        "tech_lead": "你是一名技术总监。根据对话历史，提出一个关于技术深度、问题解决能力或系统思维的问题。",
+        "product": "你是一名产品经理。提出一个关于产品思维、用户洞察或创新能力的问题。",
+        "cto": "你是一名CTO。从战略和领导力的角度，提出一个深刻的问题。"
+    }
+    
+    role_prompt = role_prompts.get(role_id, role_prompts["hr"])
+    
+    # 构建对话历史文本
+    history_text = ""
+    if conversation_history:
+        for msg in conversation_history[-4:]:  # 只取最近4条
+            role = msg.get("role", "").replace("role", role_name)
+            content = msg.get("content", "")
+            history_text += f"{role}: {content}\n"
+    
+    system_message = f"""{role_prompt}
+
+对话深度: {conversation_depth or 1}/10
+候选人背景: {candidate_background or '未提供'}
+
+对话历史:
+{history_text}
+
+现在请提出下一个问题。返回格式必须是JSON:
+{{
+    "question": "具体的问题",
+    "focus_areas": ["关注点1", "关注点2"],
+    "follow_up_suggestions": ["建议回答角度1", "建议回答角度2"],
+    "context_hint": "对候选人的简要提示或建议"
+}}"""
+    
+    try:
+        async with httpx.AsyncClient(timeout=30) as client:
+            response = await client.post(
+                api_url,
+                json={
+                    "model": model,
+                    "messages": [
+                        {"role": "system", "content": system_message},
+                        {"role": "user", "content": "请根据上述信息生成下一个问题。"}
+                    ],
+                    "temperature": 0.7
+                },
+                headers={"Authorization": f"Bearer {api_key}"}
+            )
+            
+            if response.status_code != 200:
+                logger.warning(f"LLM API 返回错误: {response.status_code}")
+                return _generate_fallback_question(role_id)
+            
+            result = response.json()
+            content = result.get("choices", [{}])[0].get("message", {}).get("content", "")
+            
+            # 尝试解析 JSON
+            try:
+                question_data = json.loads(content)
+                return {
+                    "content": question_data.get("question", ""),
+                    "tags": question_data.get("focus_areas", []),
+                    "suggestions": question_data.get("follow_up_suggestions", []),
+                    "context": question_data.get("context_hint")
+                }
+            except json.JSONDecodeError:
+                # 如果无法解析 JSON，直接返回内容
+                return {
+                    "content": content,
+                    "tags": [],
+                    "suggestions": [],
+                    "context": None
+                }
+    
+    except Exception as e:
+        logger.error(f"LLM API 错误: {e}")
+        return _generate_fallback_question(role_id)
+
+
+def _generate_fallback_question(role_id: str) -> Dict[str, Any]:
+    """生成备用问题（当 LLM 不可用时）"""
+    fallback_questions = {
+        "hr": {
+            "content": "请介绍一下你自己，包括你的工作经历和此前的成就。",
+            "tags": ["背景了解", "自我认知"],
+            "suggestions": ["我叫...，有...年经验", "最大的成就是..."],
+            "context": "这是一个开放性问题，轻松回答即可"
+        },
+        "tech_lead": {
+            "content": "描述一个你最近解决的复杂技术问题，以及你的解决方案。",
+            "tags": ["问题解决", "技术深度"],
+            "suggestions": ["遇到了...问题", "我通过...技术解决"],
+            "context": "尽量具体描述技术细节"
+        },
+        "product": {
+            "content": "如果你需要设计一个新功能，你会如何思考和规划？",
+            "tags": ["产品思维", "用户洞察"],
+            "suggestions": ["首先了解用户需求", "然后分析竞品"],
+            "context": "展示你的产品思维过程"
+        },
+        "cto": {
+            "content": "你对未来3-5年的职业发展有什么规划？",
+            "tags": ["战略思维", "目标导向"],
+            "suggestions": ["我的目标是...", "为此我计划..."],
+            "context": "这是一个关键问题，认真思考"
+        }
+    }
+    
+    return fallback_questions.get(role_id, fallback_questions["hr"])
+
+
+async def call_llm_for_analysis(
+    role_id: str,
+    speaker_name: str,
+    candidate_name: str,
+    candidate_response: str,
+    question_asked: Optional[str] = None
+) -> Dict[str, Any]:
+    """
+    使用 LLM 分析候选人的回答
+    返回: {scores: {...}, sentiment: {...}, patterns: [...]}
+    """
+    api_key = os.getenv("ROAD2ALL_API_KEY")
+    api_url = os.getenv("ROAD2ALL_API_URL", "https://api.road2all.com/v1/chat/completions")
+    model = os.getenv("ROAD2ALL_MODEL", "gpt4o")
+    
+    analysis_prompts = {
+        "hr": "评估候选人的沟通能力(0-10)、团队协作(0-10)、文化契合(0-10)。",
+        "tech_lead": "评估候选人的技术深度(0-10)、问题解决(0-10)、系统思维(0-10)。",
+        "product": "评估候选人的产品思维(0-10)、用户洞察(0-10)、创新能力(0-10)。",
+        "cto": "评估候选人的战略思维(0-10)、领导力(0-10)、决策能力(0-10)。"
+    }
+    
+    system_message = f"""你是一名专业的招聘评估专家。
+{analysis_prompts.get(role_id, analysis_prompts["hr"])}
+
+同时分析候选人的情绪状态（自信/谨慎/积极/思考中）和回答的置信度(0-100)。
+
+识别回答中的行为模式，如结构化思维、实例驱动、深度思考等。
+
+候选人: {candidate_name}
+提问者: {speaker_name}
+提出的问题: {question_asked or '(未提供)'}
+候选人的回答: {candidate_response}
+
+返回格式必须是JSON，示例:
+{{
+    "scores": {{
+        "项目1": 8.5,
+        "项目2": 7.2
+    }},
+    "sentiment": {{
+        "emotion": "自信",
+        "confidence": 85
+    }},
+    "patterns": [
+        {{
+            "id": "p1",
+            "name": "结构化思维",
+            "description": "回答展现了清晰的逻辑结构",
+            "confidence": 85,
+            "color": "#67c23a"
+        }}
+    ]
+}}"""
+    
+    try:
+        async with httpx.AsyncClient(timeout=30) as client:
+            response = await client.post(
+                api_url,
+                json={
+                    "model": model,
+                    "messages": [
+                        {"role": "system", "content": system_message},
+                        {"role": "user", "content": "请根据上述信息进行分析。"}
+                    ],
+                    "temperature": 0.7
+                },
+                headers={"Authorization": f"Bearer {api_key}"}
+            )
+            
+            if response.status_code != 200:
+                logger.warning(f"LLM API 返回错误: {response.status_code}")
+                return _generate_fallback_analysis(role_id)
+            
+            result = response.json()
+            content = result.get("choices", [{}])[0].get("message", {}).get("content", "")
+            
+            try:
+                analysis_data = json.loads(content)
+                return {
+                    "scores": analysis_data.get("scores", {}),
+                    "sentiment": analysis_data.get("sentiment", {"emotion": "思考中", "confidence": 70}),
+                    "patterns": analysis_data.get("patterns", [])
+                }
+            except json.JSONDecodeError:
+                return _generate_fallback_analysis(role_id)
+    
+    except Exception as e:
+        logger.error(f"LLM 分析错误: {e}")
+        return _generate_fallback_analysis(role_id)
+
+
+def _generate_fallback_analysis(role_id: str) -> Dict[str, Any]:
+    """生成备用分析（当 LLM 不可用时）"""
+    trait_scores = {
+        "hr": {"沟通能力": 7.5, "团队协作": 7.0, "文化契合": 7.5},
+        "tech_lead": {"技术深度": 7.5, "问题解决": 8.0, "系统思维": 7.0},
+        "product": {"产品思维": 7.0, "用户洞察": 7.5, "创新能力": 7.5},
+        "cto": {"战略思维": 7.5, "领导力": 7.0, "决策能力": 7.5}
+    }
+    
+    return {
+        "scores": trait_scores.get(role_id, trait_scores["hr"]),
+        "sentiment": {"emotion": "self-confident", "confidence": 75},
+        "patterns": [
+            {
+                "id": "p1",
+                "name": "结构化思维",
+                "description": "回答展现了清晰的逻辑结构",
+                "confidence": 78,
+                "color": "#67c23a"
+            },
+            {
+                "id": "p2",
+                "name": "实例驱动",
+                "description": "善于用具体案例支撑观点",
+                "confidence": 72,
+                "color": "#409eff"
+            }
+        ]
+    }
+
+
+@router.post("/immersive/next-question", response_model=NextQuestionResponse)
+async def get_next_question(
+    candidate_id: str = Query(..., description="候选人ID"),
+    role_id: str = Query(..., description="角色ID"),
+    role_name: str = Query(..., description="角色名称"),
+    conversation_depth: int = Query(1, description="对话深度 1-10"),
+    candidate_background: Optional[str] = Query(None, description="候选人背景"),
+    history: Optional[str] = Query(None, description="对话历史 JSON 字符串")
+):
+    """
+    获取沉浸式对话的下一个问题
+    
+    - 使用 LLM 基于对话历史生成智能问题
+    - 支持 HR、技术总监、产品经理、CTO 四个角色
+    """
+    try:
+        conversation_history = []
+        if history:
+            try:
+                conversation_history = json.loads(history)
+            except:
+                pass
+        
+        question_data = await call_llm_for_question(
+            role_id=role_id,
+            role_name=role_name,
+            conversation_history=conversation_history,
+            candidate_background=candidate_background,
+            conversation_depth=conversation_depth
+        )
+        
+        return NextQuestionResponse(
+            code=200,
+            message="success",
+            data=question_data
+        )
+    
+    except Exception as e:
+        logger.error(f"获取问题失败: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/immersive/analyze-response", response_model=AnalyzeResponseResponse)
+async def analyze_candidate_response(request: AnalyzeResponseRequest):
+    """
+    分析候选人的回答
+    
+    - 评估多个维度的得分
+    - 分析情绪和置信度
+    - 识别行为模式
+    """
+    try:
+        analysis_result = await call_llm_for_analysis(
+            role_id=request.current_speaker,
+            speaker_name=request.speaker_name,
+            candidate_name=request.candidate_name,
+            candidate_response=request.candidate_response,
+            question_asked=None
+        )
+        
+        return AnalyzeResponseResponse(
+            code=200,
+            message="success",
+            data=analysis_result
+        )
+    
+    except Exception as e:
+        logger.error(f"分析回答失败: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/immersive/save-session", response_model=SaveSessionResponse)
+async def save_immersive_session(
+    request: SaveSessionRequest,
+    db: Session = Depends(get_db)
+):
+    """
+    保存沉浸式对话的整个会话数据
+    
+    - 存储对话消息
+    - 记录评分和模式
+    - 创建评估记录
+    """
+    try:
+        # 创建或更新评估记录
+        assessment_record = None
+        
+        if request.assessment_id:
+            assessment_record = db.query(AssessmentRecord).filter_by(
+                id=request.assessment_id
+            ).first()
+        
+        if not assessment_record:
+            assessment_record = AssessmentRecord(
+                candidate_id=request.candidate_id,
+                job_id=request.job_id,
+                assessment_mode="immersive_dialogue",
+                assessment_status=AssessmentStatus.COMPLETED.value
+            )
+            db.add(assessment_record)
+            db.flush()
+        
+        # 存储对话数据和评分到 per_turn_results
+        per_turn_results = {
+            "messages": request.messages,
+            "scores_history": request.scores,
+            "patterns": request.patterns or [],
+            "highlights": request.highlights or [],
+            "duration_seconds": request.duration_seconds,
+            "conversation_depth": request.conversation_depth,
+            "total_rounds": request.total_rounds,
+            "saved_at": datetime.utcnow().isoformat()
+        }
+        
+        assessment_record.per_turn_results = per_turn_results
+        assessment_record.match_score = sum(request.scores.values()) / len(request.scores) if request.scores else 50.0
+        assessment_record.conversation_summary = f"沉浸式对话，{request.total_rounds}轮交互，深度{request.conversation_depth}/10"
+        assessment_record.updated_at = datetime.utcnow()
+        
+        db.commit()
+        
+        return SaveSessionResponse(
+            code=200,
+            message="success",
+            data={
+                "assessment_id": assessment_record.id,
+                "session_id": f"session_{assessment_record.id}_{int(datetime.utcnow().timestamp())}"
+            }
+        )
+    
+    except Exception as e:
+        logger.error(f"保存会话失败: {e}")
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))

@@ -144,3 +144,75 @@ class StandardResponse(BaseModel):
     code: int
     message: str
     data: Optional[Any] = None
+
+
+# ==================== 沉浸式对话相关 schemas ====================
+
+class DetailedScore(BaseModel):
+    """详细评分"""
+    trait_name: str
+    score: float  # 0-10
+    confidence: float  # 0-100 百分比
+
+
+class BehaviorPattern(BaseModel):
+    """行为模式"""
+    id: str
+    name: str
+    description: str
+    confidence: float  # 0-100
+    color: str
+
+
+class SentimentAnalysis(BaseModel):
+    """情绪分析"""
+    emotion: str  # 自信、谨慎、积极、思考中等
+    confidence: float  # 0-100
+
+
+class NextQuestionResponse(BaseModel):
+    """获取下一个问题的响应"""
+    code: int = 200
+    message: str = "success"
+    data: Optional[Dict[str, Any]] = None  # {content, tags, suggestions, context}
+
+
+class AnalyzeResponseRequest(BaseModel):
+    """分析回答的请求"""
+    candidate_id: str
+    candidate_name: str
+    candidate_background: Optional[str] = None
+    current_speaker: str  # hr, tech_lead, product, cto
+    speaker_name: str
+    speaker_title: str
+    candidate_response: str
+    previous_messages: Optional[List[Dict[str, str]]] = None  # 先前的对话历史
+    conversation_depth: Optional[int] = None
+
+
+class AnalyzeResponseResponse(BaseModel):
+    """分析回答的响应"""
+    code: int = 200
+    message: str = "success"
+    data: Optional[Dict[str, Any]] = None  # {scores, sentiment, patterns}
+
+
+class SaveSessionRequest(BaseModel):
+    """保存会话数据的请求"""
+    candidate_id: str
+    assessment_id: Optional[int] = None
+    job_id: Optional[int] = None
+    messages: List[Dict[str, Any]]
+    scores: Dict[str, float]
+    patterns: Optional[List[Dict[str, Any]]] = None
+    duration_seconds: int
+    conversation_depth: int
+    total_rounds: int
+    highlights: Optional[List[str]] = None
+
+
+class SaveSessionResponse(BaseModel):
+    """保存会话数据的响应"""
+    code: int = 200
+    message: str = "success"
+    data: Optional[Dict[str, Any]] = None  # {session_id, assessment_id}

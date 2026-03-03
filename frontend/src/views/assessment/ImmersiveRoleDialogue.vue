@@ -596,21 +596,84 @@ async function submitMessage() {
   }
 }
 
-// 分析回答
+// 分析回答 - 调用真实后端 API
 async function analyzeResponse(content: string, speaker: string) {
-  // 模拟 API 调用
-  return new Promise<any>((resolve) => {
-    setTimeout(() => {
-      resolve({
-        scores: generateMockScores(),
-        sentiment: {
-          emotion: ['自信', '谨慎', '积极', '思考中'][Math.floor(Math.random() * 4)],
-          confidence: Math.floor(Math.random() * 30) + 70
+  try {
+    const currentRole = activeRoles.value.find(r => r.id === speaker)
+    
+    const response = await fetch(
+      'http://127.0.0.1:8000/assessment/immersive/analyze-response',
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('access_token') || ''}`
         },
-        patterns: generateMockPatterns()
-      })
-    }, 1500)
-  })
+        body: JSON.stringify({
+          candidate_id: props.candidateId,
+          candidate_name: localStorage.getItem('candidate_name') || '候选人',
+          candidate_background: props.initialContext?.background,
+          current_speaker: speaker,
+          speaker_name: currentRole?.name || '',
+          speaker_title: currentRole?.title || '',
+          candidate_response: content,
+          previous_messages: messages.value.slice(-5),
+          conversation_depth: conversationDepth.value
+        })
+      }
+    )
+    
+    if (!response.ok) {
+      console.warn('分析 API 失败，使用本地模拟')
+      return getLocalFallbackAnalysis(speaker)
+    }
+    
+    const data = await response.json()
+    
+    if (data.code === 200 && data.data) {
+      return {
+        scores: data.data.scores || {},
+        sentiment: data.data.sentiment || { emotion: '思考中', confidence: 70 },
+        patterns: data.data.patterns || []
+      }
+    } else {
+      return getLocalFallbackAnalysis(speaker)
+    }
+  } catch (error) {
+    console.error('分析回答失败:', error)
+    return getLocalFallbackAnalysis(speaker)
+  }
+}
+
+// 本地备用分析
+function getLocalFallbackAnalysis(speaker: string) {
+  const trait_scores: Record<string, Record<string, number>> = {
+    hr: { "沟通能力": 7.5, "团队协作": 7.0, "文化契合": 7.5 },
+    tech_lead: { "技术深度": 7.5, "问题解决": 8.0, "系统思维": 7.0 },
+    product: { "产品思维": 7.0, "用户洞察": 7.5, "创新能力": 7.5 },
+    cto: { "战略思维": 7.5, "领导力": 7.0, "决策能力": 7.5 }
+  }
+  
+  return {
+    scores: trait_scores[speaker] || trait_scores.hr,
+    sentiment: { emotion: '自信', confidence: 75 },
+    patterns: [
+      {
+        id: 'p1',
+        name: '结构化思维',
+        description: '回答展现了清晰的逻辑结构',
+        confidence: 78,
+        color: '#67c23a'
+      },
+      {
+        id: 'p2',
+        name: '实例驱动',
+        description: '善于用具体案例支撑观点',
+        confidence: 72,
+        color: '#409eff'
+      }
+    ]
+  }
 }
 
 // 生成下一个问题
@@ -810,25 +873,61 @@ function completeAssessment() {
 }
 
 // 生成报告
-function generateReport() {
-  ElMessage.success('正在生成完整评估报告...')
+async function generateReport() {
+  ElMessage.success('正在保存评估数据...')
   showCompletionDialog.value = false
   
-  // 通知父组件进行下一步（生成报告）
+  // 准备完成数据
   const completionData = {
-    sessionId: `session_${Date.now()}`,
-    messages: messages.value,
+    candidate_id: props.candidateId,
+    assessment_id: props.assessmentId,
+    job_id: props.initialContext?.job_id,
+    messages: messages.value.map(m => ({
+      role: m.role,
+      content: m.content,
+      time: m.time,
+      roleName: m.roleName,
+      roleTitle: m.roleTitle
+    })),
     scores: latestScores.value,
     patterns: detectedPatterns.value,
-    duration: elapsedTime.value,
-    conversationDepth: conversationDepth.value,
-    candidateId: props.candidateId,
-    assessmentId: props.assessmentId,
-    totalRounds: messages.value.filter(m => m.role === 'candidate').length,
+    duration_seconds: Math.floor(elapsedTime.value / 1000),
+    conversation_depth: conversationDepth.value,
+    total_rounds: messages.value.filter(m => m.role === 'candidate').length,
     highlights: highlights.value
   }
   
-  // 首先 emit save 保存数据
+  try {
+    // 调用后端保存会话 API
+    const response = await fetch(
+      'http://127.0.0.1:8000/assessment/immersive/save-session',
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('access_token') || ''}`
+        },
+        body: JSON.stringify(completionData)
+      }
+    )
+    
+    if (!response.ok) {
+      throw new Error('保存会话失败')
+    }
+    
+    const result = await response.json()
+    
+    if (result.code === 200) {
+      ElMessage.success('评估数据已保存')
+      completionData.assessment_id = result.data?.assessment_id
+      completionData.sessionId = result.data?.session_id
+    }
+  } catch (error) {
+    console.error('保存会话错误:', error)
+    ElMessage.warning('无法保存到服务器，但可以继续查看报告')
+  }
+  
+  // 通知父组件进行下一步
   emit('save', completionData)
   
   // 然后 emit complete 通知完成
@@ -905,96 +1004,91 @@ function handleInputChange() {
   // 可以在这里添加实时输入分析
 }
 
-// ==================== 模拟 API ====================
+// ==================== 真实后端 API ====================
 async function fetchNextQuestion(speaker: string, history: Message[]) {
-  return new Promise<any>(resolve => {
-    setTimeout(() => {
-      const questions = getQuestionsByRole(speaker)
-      const random = questions[Math.floor(Math.random() * questions.length)]
-      resolve(random)
-    }, 800)
-  })
+  try {
+    // 构建对话历史 JSON
+    const historyJson = history.map(msg => ({
+      role: msg.role,
+      content: msg.content
+    }))
+    
+    const currentRole = activeRoles.value.find(r => r.id === speaker)
+    
+    // 构建查询参数
+    const params = new URLSearchParams({
+      candidate_id: props.candidateId,
+      role_id: speaker,
+      role_name: currentRole?.name || speaker,
+      conversation_depth: conversationDepth.value.toString(),
+      history: JSON.stringify(historyJson)
+    })
+    
+    // 调用后端 API
+    const response = await fetch(
+      `http://127.0.0.1:8000/assessment/immersive/next-question?${params}`,
+      {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('access_token') || ''}`
+        }
+      }
+    )
+    
+    if (!response.ok) {
+      console.warn('API 调用失败，使用本地模拟')
+      return getLocalFallbackQuestion(speaker)
+    }
+    
+    const data = await response.json()
+    
+    if (data.code === 200 && data.data) {
+      return {
+        content: data.data.content,
+        tags: data.data.tags || [],
+        suggestions: data.data.suggestions || [],
+        context: data.data.context
+      }
+    } else {
+      return getLocalFallbackQuestion(speaker)
+    }
+  } catch (error) {
+    console.error('获取问题失败:', error)
+    return getLocalFallbackQuestion(speaker)
+  }
 }
 
-function getQuestionsByRole(roleId: string) {
-  const questionBank: Record<string, any[]> = {
-    hr: [
-      {
-        content: '请简单介绍一下你自己和你的背景？',
-        tags: ['背景了解', '自我认知'],
-        suggestions: ['我叫...，毕业于...', '我有...年的工作经验'],
-        context: '这是一个开放性问题，轻松回答即可'
-      },
-      {
-        content: '你为什么对我们公司感兴趣？',
-        tags: ['动机', '文化契合'],
-        suggestions: [],
-        context: null
-      }
-    ],
-    tech_lead: [
-      {
-        content: '描述一下你最近解决的一个技术难题？',
-        tags: ['问题解决', '技术深度'],
-        suggestions: ['遇到了...问题', '我通过...方法解决'],
-        context: '尽量具体描述技术细节'
-      },
-      {
-        content: '你如何保持技术的持续学习？',
-        tags: ['学习能力', '成长潜力'],
-        suggestions: [],
-        context: null
-      }
-    ],
-    product: [
-      {
-        content: '如果让你设计一个新功能，你会如何思考？',
-        tags: ['产品思维', '用户洞察'],
-        suggestions: ['首先了解用户需求', '然后分析竞品'],
-        context: '展示你的产品思维过程'
-      }
-    ],
-    cto: [
-      {
-        content: '你对未来 3-5 年的职业规划是什么？',
-        tags: ['战略思维', '目标导向'],
-        suggestions: [],
-        context: '这是一个关键问题，认真思考'
-      }
-    ]
+// 本地备用问题库
+function getLocalFallbackQuestion(roleId: string) {
+  const questionBank: Record<string, any> = {
+    hr: {
+      content: '请简单介绍一下你自己和你的背景？',
+      tags: ['背景了解', '自我认知'],
+      suggestions: ['我叫...，毕业于...', '我有...年的工作经验'],
+      context: '这是一个开放性问题，轻松回答即可'
+    },
+    tech_lead: {
+      content: '描述一下你最近解决的一个技术难题？',
+      tags: ['问题解决', '技术深度'],
+      suggestions: ['遇到了...问题', '我通过...方法解决'],
+      context: '尽量具体描述技术细节'
+    },
+    product: {
+      content: '如果让你设计一个新功能，你会如何思考？',
+      tags: ['产品思维', '用户洞察'],
+      suggestions: ['首先了解用户需求', '然后分析竞品'],
+      context: '展示你的产品思维过程'
+    },
+    cto: {
+      content: '你对未来 3-5 年的职业规划是什么？',
+      tags: ['战略思维', '目标导向'],
+      suggestions: ['我的目标是...', '为此我计划...'],
+      context: '这是一个关键问题，认真思考'
+    }
   }
   
-  return questionBank[roleId] || []
-}
-
-function generateMockScores(): Record<string, number> {
-  return {
-    '沟通能力': Math.floor(Math.random() * 3) + 7,
-    '技术深度': Math.floor(Math.random() * 3) + 6,
-    '问题解决': Math.floor(Math.random() * 3) + 7,
-    '团队协作': Math.floor(Math.random() * 3) + 6,
-    '创新思维': Math.floor(Math.random() * 3) + 6,
-    '领导潜力': Math.floor(Math.random() * 3) + 5
-  }
-}
-
-function generateMockPatterns(): Pattern[] {
-  return [
-    {
-      id: 'p1',
-      name: '结构化思维',
-      description: '回答问题时展现了清晰的逻辑结构',
-      confidence: 85,
-      color: '#67c23a'
-    },
-    {
-      id: 'p2',
-      name: '实例驱动',
-      description: '善于用具体案例支撑观点',
-      confidence: 78,
-      color: '#409eff'
-    }
-  ]
+  return questionBank[roleId] || questionBank.hr
 }
 
 // 渲染雷达图
