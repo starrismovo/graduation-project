@@ -19,6 +19,7 @@ export const useUserStore = defineStore('user', () => {
     localStorage.setItem('user_username', username.value)
     localStorage.setItem('user_id', userId.value)
     localStorage.setItem('user_profile', JSON.stringify(profile.value))
+
   }
 
   // 从本地存储恢复
@@ -44,6 +45,7 @@ export const useUserStore = defineStore('user', () => {
     username?: string
     user_id?: string
     name?: string
+    email?: string
   }) => {
     token.value = data.access_token
     isHR.value = data.is_hr
@@ -53,7 +55,8 @@ export const useUserStore = defineStore('user', () => {
       id: data.user_id,
       name: data.name || data.username,
       username: data.username,
-      is_hr: data.is_hr
+      is_hr: data.is_hr,
+      email: data.email
     }
     saveToLocal() // 登录成功后保存到本地
   }
@@ -70,6 +73,14 @@ export const useUserStore = defineStore('user', () => {
     localStorage.removeItem('user_id')
     localStorage.removeItem('user_profile')
   }
+  const updateUserInfo = (newInfo: Partial<UserProfile>) => {
+    if (profile.value) {
+      profile.value = { ...profile.value, ...newInfo }
+    } else {
+      profile.value = newInfo as UserProfile
+    }
+    saveToLocal() // 更新后同步保存到本地
+  }
 
   return {
     // state
@@ -84,6 +95,7 @@ export const useUserStore = defineStore('user', () => {
     login,
     logout,
     saveToLocal,
-    restoreFromLocal
+    restoreFromLocal,
+    updateUserInfo
   }
 })

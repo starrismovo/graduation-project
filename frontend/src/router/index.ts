@@ -1,7 +1,7 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import LoginView from '@/views/LoginView.vue'
 import IndexView from '@/views/IndexView.vue'
-import AssessmentView from '@/views/AssessmentView.vue'
+import AssessmentView from '@/views/ProfileView.vue'
 import JobManageView from '@/views/position/JobManageView.vue'
 import { useUserStore } from '@/stores/user'
 
@@ -19,46 +19,40 @@ const router = createRouter({
     { 
       path: '/home', 
       component: IndexView,
-      meta: { requiresAuth: true }
+      meta: { requiresAuth: true },
+      children: [
+        {
+          path: '',
+          name: 'Home',
+          component: () => import('../views/HomePage.vue')
+        },
+        {
+          path: 'immersive',
+          name: 'ImmersiveAssessment',
+          component: () => import('../views/assessment/ImmersiveRoleDialogue.vue'),
+          meta: { 
+            mode: 'immersive',
+            title: '沉浸式对话评估'
+          }
+        },
+        {
+          path: 'profile',
+          name: 'Profile',
+          component: () => import('../views/ProfileView.vue')
+        },
+        {
+          path: 'job-manage',
+          name: 'JobManage',
+          component: JobManageView,
+          meta: { requiresHR: true }
+        },
+        {
+          path: 'report/:recordId',
+          name: 'AssessmentReport',
+          component: () => import('../views/assessment/ReportPage.vue')
+        }
+      ]
     },
-    // 候选人首页（重新设计）
-    {
-      path: '/candidate-home',
-      name: 'CandidateHome',
-      component: () => import('../views/HomeView.vue'),
-      meta: { requiresAuth: true }
-    },
-    
-    // 沉浸式对话评估（新用户或快速开始）
-    {
-      path: '/immersive',
-      name: 'ImmersiveAssessment',
-      component: () => import('../views/assessment/ImmersiveRoleDialogue.vue'),
-      meta: { 
-        requiresAuth: true,
-        mode: 'immersive',
-        title: '沉浸式对话评估'
-      }
-    },
-    
-    // 评估报告页（新增）
-    {
-      path: '/report/:recordId',
-      name: 'AssessmentReport',
-      component: () => import('../views/assessment/ReportPage.vue'),
-      meta: { requiresAuth: true }
-    },
-    // 岗位管理（HR）
-    {
-      path: '/job-manage',
-      name: 'JobManage',
-      component: JobManageView,
-      meta: { 
-        requiresAuth: true,
-        requiresHR: true
-      }
-    },
-    // 岗位编辑
     {
       path: '/views/position/:id/edit',
       name: 'JobEdit',
@@ -81,6 +75,12 @@ router.beforeEach((to, from, next) => {
   // 检查HR权限
   if (to.meta.requiresHR && !userStore.isHR) {
     // 跳回首页或显示权限不足
+    next('/home')
+    return
+  }
+  
+  // 检查子路由的HR权限
+  if (to.matched.some(route => route.meta?.requiresHR) && !userStore.isHR) {
     next('/home')
     return
   }

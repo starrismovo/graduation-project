@@ -3,7 +3,15 @@
 </template>
 
 <script setup lang="ts">
-// App.vue 什么都不放，只作为路由出口
+import { onMounted } from 'vue'
+import { useUserStore } from '@/stores/user'
+
+const userStore = useUserStore()
+
+// 应用初始化：从本地存储恢复用户信息
+onMounted(() => {
+  userStore.restoreFromLocal()
+})
 </script>
 
 <style>

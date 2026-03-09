@@ -1,5 +1,7 @@
 import axios from 'axios'
-
+import { useUserStore } from '@/stores/user'
+import { ElMessage } from 'element-plus'
+import router from '@/router'
 
 const request = axios.create({
   baseURL: 'http://127.0.0.1:8000',  // 后端地址
@@ -20,14 +22,42 @@ request.interceptors.request.use(config => {
 request.interceptors.response.use(
   response => response,
   error => {
+    const userStore = useUserStore()
+    
     if (error.response) {
-      console.error('响应错误:', error.response.status, error.response.data)
+      const status = error.response.status
+      
+      // 401 Unauthorized - token过期或无效
+      if (status === 401) {
+        console.warn('Token已过期或无效，自动登出')
+        userStore.logout()
+        ElMessage.warning('登录已过期，请重新登录')
+        router.push('/login')
+      }
+      
+      // 403 Forbidden - 权限不足
+      if (status === 403) {
+        ElMessage.error('没有访问权限')
+      }
+      
+      // 404 Not Found
+      if (status === 404) {
+        console.error('请求的资源不存在:', error.response.data)
+      }
+      
+      // 500 Server Error
+      if (status >= 500) {
+        ElMessage.error('服务器错误，请稍后重试')
+      }
+      
+      console.error('API错误:', status, error.response.data)
     } else if (error.request) {
       console.error('无响应:', error.message)
-      // 检查后端是否在运行
-      console.warn('💡 提示：后端服务可能未启动。请运行: python main.py')
+      ElMessage.error('网络连接失败，请检查后端服务')
+      console.warn('💡 提示：后端服务可能未启动。请运行: uvicorn main:app --reload')
     } else {
       console.error('请求错误:', error.message)
+      ElMessage.error(error.message)
     }
     return Promise.reject(error)
   }
@@ -53,7 +83,7 @@ export const getRecommendedJobs = (params?: {
   return request.get('/jobs/recommended/cards', { params })
 }
 
-// ??????????????????
+// 获取热门岗位表格数据
 export const getHotJobsTable = (params?: {
   category?: string
   city?: string

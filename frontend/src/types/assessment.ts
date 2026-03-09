@@ -88,10 +88,17 @@ export interface ApiResponse<T> {
  * 用户个人资料
  */
 export interface UserProfile {
-  id?: string
-  name?: string
-  username?: string
-  email?: string
-  is_hr?: boolean
-  created_at?: string
+  id?: string;
+  name?: string;
+  username?: string;
+  email?: string;
+  is_hr?: boolean;
+  created_at?: string;
+  // 添加以下字段（注意字段名与后端返回的键名一致）
+  nickname?: string;
+  realName?: string;
+  phone?: string;
+  bio?: string;
+  avatar?: string;
+  deliveryPrivacy?: number;  // 注意是下划线风格
 }

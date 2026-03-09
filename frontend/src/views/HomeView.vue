@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch, watchEffect } from 'vue'
 import { useRouter } from 'vue-router'
 import { useUserStore } from '@/stores/user'
+import { useAssessmentStore } from '@/stores/assessment'
 import { ElMessage } from 'element-plus'
 import RadarChart from '@/components/RadarChart.vue'
 import EmptyState from '@/components/EmptyState.vue'
@@ -11,6 +12,7 @@ import { fetchPortrait, fetchHistory, fetchJobs } from '@/utils/request'
 
 const router = useRouter()
 const userStore = useUserStore()
+const assessmentStore = useAssessmentStore()
 
 const user = computed(() => userStore.profile || {})
 const history = ref<Array<any>>([])
@@ -96,6 +98,18 @@ onMounted(() => {
   }
   loadData()
 })
+
+// 监听评估完成事件，自动刷新数据
+watchEffect(() => {
+  if (assessmentStore.completionTimestamp > 0) {
+    console.log('📊 检测到新的评估完成，自动刷新数据...')
+    loadData().then(() => {
+      ElMessage.success('✨ 评估完成！数据已更新，请下滑查看最新的心理画像和推荐岗位')
+      // 刷新后清除标志
+      assessmentStore.clearCompletionMark()
+    })
+  }
+})
 </script>
 
 <template>
@@ -119,6 +133,14 @@ onMounted(() => {
         >
           <el-icon><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z" fill="currentColor"/></svg></el-icon>
           查看最新报告
+        </el-button>
+        <el-button 
+          size="large"
+          :loading="loading"
+          @click="loadData"
+        >
+          <el-icon><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M1 4v6h6M23 20v-6h-6" stroke="currentColor" stroke-width="2" fill="none"/><path d="M20.3 4.7A10 10 0 0 0 3.7 20.3" stroke="currentColor" stroke-width="2" fill="none"/></svg></el-icon>
+          刷新数据
         </el-button>
       </div>
     </div>
@@ -198,34 +220,7 @@ onMounted(() => {
       </el-card>
     </div>
 
-    <!-- 欢迎弹窗（新用户） -->
-    <el-dialog
-      v-model="showWelcome"
-      title="👉 欢迎使用心理特质评估系统"
-      width="480px"
-      :close-on-click-modal="false"
-      align-center
-    >
-      <div class="welcome-dialog-content">
-        <p>Hi 👋 {{ user.name || '候选人' }}，欢迎来到 AI 人岗匹配评估中心！</p>
-        <p>我们将通过一场自然的<strong>多角色对话</strong>来了解你：</p>
-        <ul class="features-list">
-          <li>✨ 与 HR 经理的背景交流</li>
-          <li>💡 与技术总监的专业探讨（可选）</li>
-          <li>🎯 与产品经理的思维碰撞（可选）</li>
-          <li>🚀 与 CTO 的战略对话（可选）</li>
-        </ul>
-        <p class="estimate">⏱️ 预计用时：<strong>15-20 分钟</strong></p>
-        <p class="note">评估后，你将获得详细的心理画像、优势分析和岗位匹配报告。</p>
-      </div>
-
-      <template #footer>
-        <el-button @click="showWelcome = false">稍后再试</el-button>
-        <el-button type="primary" @click="startNewAssessment">
-          🚀 开始评估
-        </el-button>
-      </template>
-    </el-dialog>
+    
   </div>
 </template>
 

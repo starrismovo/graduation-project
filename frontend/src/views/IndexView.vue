@@ -2,28 +2,86 @@
 import { useUserStore } from '../stores/user'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { ref } from 'vue'
-import HomeView from './HomeView.vue'
-import HRHomeView from './HRHomeView.vue'
+import { ref, onMounted } from 'vue'
+import request from '../utils/request'
 
 const userStore = useUserStore()
 const router = useRouter()
 
 const activeMenu = ref('home')
 
+// 根据当前路由更新活跃菜单
+const updateActiveMenu = () => {
+  const path = router.currentRoute.value.path
+  if (path === '/home') {
+    activeMenu.value = 'home'
+  } else if (path.startsWith('/home/profile')) {
+    activeMenu.value = 'profile'
+  } else if (path.startsWith('/home/immersive')) {
+    activeMenu.value = 'jobs'
+  } else if (path.startsWith('/home/job-manage')) {
+    activeMenu.value = 'jobs-manage'
+  } else if (path.startsWith('/home/report')) {
+    activeMenu.value = 'reports'
+  } else {
+    activeMenu.value = 'home'
+  }
+}
+
+// 监听路由变化
+router.afterEach(() => {
+  updateActiveMenu()
+})
+
+// 页面加载时获取完整用户信息
+onMounted(async () => {
+  updateActiveMenu()
+  try {
+    const response = await request.get('/user/profile')
+    if (response.data?.code === 200 && response.data?.data) {
+      const userData = response.data.data
+      console.log('📥 后端返回的用户数据:', userData)
+      
+      // 处理字段映射（后端可能使用 snake_case）
+      const profileData = {
+        ...userData,
+        // 确保 avatar 字段存在
+        avatar: userData.avatar || userData.head_photo || userData.avatar_url || null,
+        // 其他字段映射
+        realName: userData.real_name || userData.realName || null,
+        deliveryPrivacy: userData.delivery_privacy || userData.deliveryPrivacy || 2
+      }
+      
+      // 更新 store 中的用户信息为完整数据
+      userStore.updateUserInfo(profileData)
+      console.log('✅ 头像已加载:', profileData.avatar ? '有头像' : '无头像')
+      console.log('📦 Store中的头像:', userStore.profile?.avatar)
+    }
+  } catch (error) {
+    console.warn('获取用户信息失败:', error)
+  }
+})
+
+// 获取完整头像URL
+const getFullAvatarUrl = (url: string | null | undefined) => {
+  if (!url) return '';
+  if (url.startsWith('http')) return url;
+  if (url.startsWith('data:')) return url; // Base64 data URL 直接返回
+  return `http://localhost:8000${url}`;
+};
 // 菜单点击处理
 const handleMenuSelect = (index: string) => {
   activeMenu.value = index
   
   switch(index) {
     case 'home':
-      activeMenu.value = 'home'
+      router.push('/home')
       break
     case 'profile':
-      ElMessage.info('个人中心功能开发中')
+      router.push('/home/profile')
       break
     case 'jobs':
-      router.push('/immersive')  
+      router.push('/home/immersive')
       break
     case 'interviews':
       ElMessage.info('我的面试功能开发中')
@@ -32,7 +90,7 @@ const handleMenuSelect = (index: string) => {
       ElMessage.info('报告中心功能开发中')
       break
     case 'jobs-manage':
-      router.push('/job-manage')
+      router.push('/home/job-manage')
       break
     case 'candidates':
       ElMessage.info('候选人管理功能开发中')
@@ -64,12 +122,24 @@ const handleLogout = () => {
 
 // 用户菜单命令处理
 const handleUserMenuCommand = (command: string) => {
-  if (command === 'logout') {
-    handleLogout()
-  } else if (command === 'profile') {
-    ElMessage.info('个人信息功能开发中')
-  } else if (command === 'settings') {
-    ElMessage.info('账号设置功能开发中')
+  switch (command) {
+    case 'logout':
+      handleLogout()
+      break
+    
+    case 'profile':
+      // 跳转到个人信息页（子路由）
+      router.push('/home/profile')
+      break
+    
+    case 'settings':
+      // 账号设置页（未来扩展）
+      ElMessage.info('账号设置功能开发中')
+      // 后续可改成：router.push('/home/settings')
+      break
+    
+    default:
+      ElMessage.warning('未知操作')
   }
 }
 </script>
@@ -122,7 +192,7 @@ const handleUserMenuCommand = (command: string) => {
                   <path fill-rule="evenodd" d="M6 6V5a3 3 0 013-3h2a3 3 0 013 3v1h2a2 2 0 012 2v3.57A22.952 22.952 0 0110 13a22.95 22.95 0 01-8-1.43V8a2 2 0 012-2h2zm2-1a1 1 0 011-1h2a1 1 0 011 1v1H8V5zm1 5a1 1 0 011-1h.01a1 1 0 110 2H10a1 1 0 01-1-1z" clip-rule="evenodd" />
                   <path d="M2 13.692V16a2 2 0 002 2h12a2 2 0 002-2v-2.308A24.974 24.974 0 0110 15c-2.796 0-5.487-.46-8-1.308z" />
                 </svg>
-                <span>浏览岗位</span>
+                <span>评估聊天室</span>
               </button>
               
               <button 
@@ -187,7 +257,15 @@ const handleUserMenuCommand = (command: string) => {
           <el-dropdown @command="handleUserMenuCommand" trigger="click">
             <div class="user-profile">
               <div class="user-avatar">
-                <svg viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg">
+                <!-- 如果有头像 URL，显示图片 -->
+                <img 
+                  v-if="userStore.profile?.avatar" 
+                  :src="getFullAvatarUrl(userStore.profile.avatar)" 
+                  alt="用户头像"
+                  class="avatar-img"
+                >
+                <!-- 否则显示默认的 SVG 图形 -->
+                <svg v-else viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg">
                   <defs>
                     <linearGradient id="avatarGrad" x1="0%" y1="0%" x2="100%" y2="100%">
                       <stop offset="0%" style="stop-color:#667eea"/>
@@ -238,16 +316,8 @@ const handleUserMenuCommand = (command: string) => {
 
     <!-- 主内容区 -->
     <el-main class="app-main">
-      <!-- 候选人主页 -->
-      <HomeView v-if="!userStore.isHR && activeMenu === 'home'" />
-      
-      <!-- HR主页 -->
-      <HRHomeView v-else-if="userStore.isHR && activeMenu === 'home'" />
-
-      <!-- 其他功能占位符 -->
-      <div v-else class="feature-placeholder">
-        <el-empty description="功能开发中，敬请期待" />
-      </div>
+      <!-- 使用 router-view 来显示子路由的内容（HomeView 或 HRHomeView） -->
+      <router-view />
     </el-main>
   </el-container>
 </template>
@@ -407,6 +477,13 @@ const handleUserMenuCommand = (command: string) => {
   display: block;
 }
 
+.user-avatar .avatar-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
 .user-info {
   display: flex;
   flex-direction: column;
@@ -495,16 +572,6 @@ const handleUserMenuCommand = (command: string) => {
   background: transparent;
   padding: 24px;
   overflow-y: auto;
-}
-
-.feature-placeholder {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  min-height: 500px;
-  background: white;
-  border-radius: 12px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
 }
 
 /* ========== 响应式设计 ========== */

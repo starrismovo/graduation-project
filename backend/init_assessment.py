@@ -8,6 +8,7 @@ from models.assessment import AssessmentRecord, CandidatePersonalityProfile, Ass
 from models.job import Job
 from models.candidate import Candidate
 from models.user import User
+from models.interview import Interview
 
 import json
 from datetime import datetime, timedelta

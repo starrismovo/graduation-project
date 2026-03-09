@@ -336,12 +336,19 @@ const handleLogin = async () => {
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       transformRequest: [data => new URLSearchParams(data).toString()]
     })
+    
+    // 保存登录信息到store
     userStore.login({
       access_token: res.data.access_token,
       is_hr: res.data.is_hr,
-      username: loginForm.username
+      username: res.data.username,
+      user_id: res.data.user_id,
+      email: res.data.email
     })
+    
     ElMessage.success('登录成功！')
+    
+    // 所有用户都跳转到 /home（IndexView），由内部根据角色显示不同页面
     router.push('/home')
   } catch (err: any) {
     ElMessage.error(err.response?.data?.detail || '登录失败')

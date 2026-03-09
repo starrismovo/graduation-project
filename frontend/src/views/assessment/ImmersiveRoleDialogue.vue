@@ -339,6 +339,7 @@
 import { ref, computed, onMounted, nextTick, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import * as echarts from 'echarts'
+import { useAssessmentStore } from '@/stores/assessment'
 
 // ==================== 类型定义 ====================
 interface Role {
@@ -394,6 +395,9 @@ const emit = defineEmits<{
   (e: 'update-scores', scores: Record<string, number>): void
   (e: 'save', data: any): void
 }>()
+
+// Store
+const assessmentStore = useAssessmentStore()
 
 // ==================== 核心状态 ====================
 // 角色系统
@@ -550,7 +554,8 @@ async function submitMessage() {
   const content = userInput.value.trim()
   const submitTime = Date.now()
   const lastQuestion = messages.value.filter(m => m.role !== 'candidate').pop()
-  const questionTime = lastQuestion?.timestamp || submitTime
+  // 使用time字段而不是timestamp，time是字符串格式的时间
+  const questionTime = lastQuestion ? new Date(lastQuestion.time).getTime() : submitTime
   const latency = ((submitTime - questionTime) / 1000).toFixed(1)
 
   // 添加候选人消息
@@ -866,6 +871,14 @@ function completeAssessment() {
     highlights: highlights.value
   }
 
+  // 📌 标记评估完成，通知 HomeView 刷新数据
+  assessmentStore.markEvaluationComplete({
+    jobId: props.initialContext?.job_id,
+    assessmentId: props.assessmentId?.toString(),
+    sessionId: completionData.sessionId,
+    candidateId: props.candidateId
+  })
+
   // 发送 complete 事件给父组件
   emit('complete', completionData)
 
@@ -878,7 +891,7 @@ async function generateReport() {
   showCompletionDialog.value = false
   
   // 准备完成数据
-  const completionData = {
+  const completionData: any = {
     candidate_id: props.candidateId,
     assessment_id: props.assessmentId,
     job_id: props.initialContext?.job_id,
@@ -894,7 +907,8 @@ async function generateReport() {
     duration_seconds: Math.floor(elapsedTime.value / 1000),
     conversation_depth: conversationDepth.value,
     total_rounds: messages.value.filter(m => m.role === 'candidate').length,
-    highlights: highlights.value
+    highlights: highlights.value,
+    session_id: undefined
   }
   
   try {
@@ -920,7 +934,7 @@ async function generateReport() {
     if (result.code === 200) {
       ElMessage.success('评估数据已保存')
       completionData.assessment_id = result.data?.assessment_id
-      completionData.sessionId = result.data?.session_id
+      completionData.session_id = result.data?.session_id
     }
   } catch (error) {
     console.error('保存会话错误:', error)
