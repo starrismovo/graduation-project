@@ -1,0 +1,581 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>简历上传测试工具</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+            padding: 30px;
+        }
+        
+        h1 {
+            color: #333;
+            margin-bottom: 10px;
+            text-align: center;
+        }
+        
+        .subtitle {
+            color: #666;
+            text-align: center;
+            margin-bottom: 30px;
+            font-size: 14px;
+        }
+        
+        .section {
+            margin-bottom: 30px;
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 6px;
+            border-left: 4px solid #667eea;
+        }
+        
+        .section h2 {
+            color: #333;
+            font-size: 18px;
+            margin-bottom: 15px;
+        }
+        
+        .upload-area {
+            border: 2px dashed #667eea;
+            border-radius: 6px;
+            padding: 40px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            background: white;
+        }
+        
+        .upload-area:hover {
+            border-color: #764ba2;
+            background: #f8f9fa;
+        }
+        
+        .upload-area.dragover {
+            border-color: #764ba2;
+            background: #eef2ff;
+        }
+        
+        .upload-icon {
+            font-size: 48px;
+            margin-bottom: 10px;
+        }
+        
+        .upload-text {
+            color: #666;
+            font-size: 16px;
+            margin-bottom: 5px;
+        }
+        
+        .upload-hint {
+            color: #999;
+            font-size: 12px;
+        }
+        
+        input[type="file"] {
+            display: none;
+        }
+        
+        button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-right: 10px;
+            margin-top: 10px;
+            transition: all 0.3s ease;
+        }
+        
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+        
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        
+        .info-section {
+            margin-top: 20px;
+        }
+        
+        .info-label {
+            font-weight: 600;
+            color: #333;
+            margin-top: 10px;
+            margin-bottom: 5px;
+        }
+        
+        .info-value {
+            background: white;
+            padding: 10px;
+            border-radius: 4px;
+            color: #666;
+            font-size: 14px;
+            word-break: break-all;
+        }
+        
+        .status {
+            padding: 15px;
+            border-radius: 4px;
+            margin-bottom: 20px;
+            font-size: 14px;
+        }
+        
+        .status.success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        
+        .status.error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        
+        .status.info {
+            background: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
+        
+        .status.warning {
+            background: #fff3cd;
+            color: #856404;
+            border: 1px solid #ffeaa7;
+        }
+        
+        .loading {
+            display: none;
+            text-align: center;
+            padding: 20px;
+        }
+        
+        .loading.show {
+            display: block;
+        }
+        
+        .spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #667eea;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 10px;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        .test-buttons {
+            display: flex;
+            gap: 10px;
+            margin-top: 20px;
+            flex-wrap: wrap;
+        }
+        
+        .test-btn {
+            background: #6c757d;
+            padding: 8px 16px;
+            font-size: 12px;
+        }
+        
+        .test-btn:hover {
+            background: #5a6268;
+        }
+        
+        .log-section {
+            background: #1e1e1e;
+            color: #d4d4d4;
+            padding: 15px;
+            border-radius: 4px;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            max-height: 400px;
+            overflow-y: auto;
+            margin-top: 20px;
+        }
+        
+        .log-line {
+            margin: 2px 0;
+            display: flex;
+        }
+        
+        .log-time {
+            color: #858585;
+            margin-right: 10px;
+            min-width: 120px;
+        }
+        
+        .log-level {
+            min-width: 60px;
+            font-weight: bold;
+        }
+        
+        .log-level.INFO {
+            color: #4ec9b0;
+        }
+        
+        .log-level.SUCCESS {
+            color: #4ec9b0;
+        }
+        
+        .log-level.ERROR {
+            color: #f48771;
+        }
+        
+        .log-level.WARNING {
+            color: #dcdcaa;
+        }
+        
+        .log-message {
+            flex: 1;
+            word-break: break-all;
+        }
+        
+        .troubleshooting {
+            background: #fffbea;
+            border: 1px solid #ffecb5;
+            padding: 15px;
+            border-radius: 4px;
+            margin-top: 20px;
+        }
+        
+        .troubleshooting h3 {
+            color: #856404;
+            margin-bottom: 10px;
+        }
+        
+        .troubleshooting ul {
+            margin-left: 20px;
+            color: #666;
+        }
+        
+        .troubleshooting li {
+            margin: 5px 0;
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>📄 简历上传测试工具</h1>
+        <p class="subtitle">诊断和测试简历文件上传功能</p>
+        
+        <!-- 环境检查 -->
+        <div class="section">
+            <h2>🔍 环境检查</h2>
+            <button onclick="checkEnvironment()">检查后端连接</button>
+            <button onclick="checkDependencies()">检查依赖库</button>
+            <div id="envStatus" style="margin-top: 15px;"></div>
+        </div>
+        
+        <!-- 文件上传 -->
+        <div class="section">
+            <h2>📤 文件上传</h2>
+            
+            <div class="upload-area" id="uploadArea" ondrop="handleDrop(event)" ondragover="handleDragover(event)" ondragleave="handleDragleave(event)" onclick="document.getElementById('fileInput').click()">
+                <div class="upload-icon">📁</div>
+                <div class="upload-text">拖拽文件到这里或点击选择</div>
+                <div class="upload-hint">支持格式: .txt, .pdf, .docx, .doc, .jpg, .png</div>
+            </div>
+            <input type="file" id="fileInput" onchange="handleFileSelect(event)">
+            
+            <!-- 候选人ID -->
+            <div style="margin-top: 15px;">
+                <label for="candidateId">候选人ID:</label>
+                <input type="text" id="candidateId" placeholder="留空则使用测试ID" style="width: 100%; padding: 8px; margin-top: 5px; border: 1px solid #ddd; border-radius: 4px;">
+            </div>
+            
+            <!-- 上传控制按钮 -->
+            <div class="test-buttons">
+                <button onclick="testWithTxt()">📝 测试TXT文件</button>
+                <button class="test-btn" onclick="clearLog()">清空日志</button>
+                <button class="test-btn" onclick="copyLog()">复制日志</button>
+            </div>
+            
+            <div id="uploadStatus" style="margin-top: 15px;"></div>
+            
+            <!-- 加载动画 -->
+            <div class="loading" id="loading">
+                <div class="spinner"></div>
+                <div>上传中... 请稍候</div>
+            </div>
+        </div>
+        
+        <!-- 解析结果 -->
+        <div class="section">
+            <h2>📋 解析结果</h2>
+            <div id="parseResult"></div>
+        </div>
+        
+        <!-- 调试日志 -->
+        <div class="section">
+            <h2>🔧 调试日志</h2>
+            <div class="log-section" id="logSection">
+                <div class="log-line">
+                    <span class="log-time">[系统初始化]</span>
+                    <span class="log-level INFO">INFO</span>
+                    <span class="log-message">简历上传测试工具已加载</span>
+                </div>
+            </div>
+        </div>
+        
+        <!-- 故障排除 -->
+        <div class="troubleshooting">
+            <h3>⚠️ 故障排除建议</h3>
+            <ul>
+                <li><strong>上传失败提示 "文件解析失败":</strong> 检查后端依赖库（python-docx, pdfplumber）是否安装</li>
+                <li><strong>无法连接到后端:</strong> 确认后端服务运行中 (http://localhost:8000)</li>
+                <li><strong>文件格式不支持:</strong> 优先测试 .txt 文件，再尝试 PDF/Word</li>
+                <li><strong>表单字段未自动填充:</strong> 检查浏览器控制台的网络请求和错误信息</li>
+                <li><strong>需要重新安装依赖:</strong> 在backend目录运行 <code>python check_dependencies.py</code></li>
+            </ul>
+        </div>
+    </div>
+    
+    <script>
+        const API_BASE = 'http://localhost:8000';
+        const DEFAULT_CANDIDATE_ID = 'test-candidate-' + Math.random().toString(36).substr(2, 9);
+        
+        // 日志记录函数
+        function addLog(level, message) {
+            const logSection = document.getElementById('logSection');
+            const time = new Date().toLocaleTimeString();
+            const logLine = document.createElement('div');
+            logLine.className = 'log-line';
+            logLine.innerHTML = `
+                <span class="log-time">[${time}]</span>
+                <span class="log-level ${level}">${level}</span>
+                <span class="log-message">${escapeHtml(message)}</span>
+            `;
+            logSection.appendChild(logLine);
+            logSection.scrollTop = logSection.scrollHeight;
+        }
+        
+        function escapeHtml(text) {
+            const map = {
+                '&': '&amp;',
+                '<': '&lt;',
+                '>': '&gt;',
+                '"': '&quot;',
+                "'": '&#039;'
+            };
+            return text.replace(/[&<>"']/g, m => map[m]);
+        }
+        
+        function clearLog() {
+            const logSection = document.getElementById('logSection');
+            logSection.innerHTML = '';
+            addLog('INFO', '日志已清空');
+        }
+        
+        function copyLog() {
+            const logSection = document.getElementById('logSection');
+            const text = logSection.innerText;
+            navigator.clipboard.writeText(text).then(() => {
+                addLog('SUCCESS', '日志已复制到剪贴板');
+            });
+        }
+        
+        // 环境检查
+        async function checkEnvironment() {
+            addLog('INFO', '开始检查后端环境...');
+            try {
+                const response = await fetch(`${API_BASE}/assessment/immersive/status`, {
+                    method: 'GET'
+                });
+                
+                if (response.ok) {
+                    addLog('SUCCESS', '✓ 后端服务连接正常');
+                    showStatus('envStatus', 'success', '✓ 后端服务可用');
+                } else {
+                    addLog('ERROR', `✗ 后端返回错误状态: ${response.status}`);
+                    showStatus('envStatus', 'error', `✗ 后端错误: ${response.status}`);
+                }
+            } catch (error) {
+                addLog('ERROR', `✗ 无法连接到后端: ${error.message}`);
+                showStatus('envStatus', 'error', `✗ 连接失败: ${error.message}`);
+            }
+        }
+        
+        async function checkDependencies() {
+            addLog('INFO', '检查Python依赖库...');
+            // 这个需要后端支持，暂时提示用户
+            addLog('WARNING', '提示: 运行 python backend/check_dependencies.py 检查依赖');
+        }
+        
+        // 文件处理
+        function handleDragover(e) {
+            e.preventDefault();
+            document.getElementById('uploadArea').classList.add('dragover');
+        }
+        
+        function handleDragleave(e) {
+            e.preventDefault();
+            document.getElementById('uploadArea').classList.remove('dragover');
+        }
+        
+        function handleDrop(e) {
+            e.preventDefault();
+            document.getElementById('uploadArea').classList.remove('dragover');
+            const files = e.dataTransfer.files;
+            if (files.length > 0) {
+                handleFileSelect({ target: { files: files } });
+            }
+        }
+        
+        function handleFileSelect(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+            
+            addLog('INFO', `选择文件: ${file.name} (${(file.size / 1024).toFixed(2)} KB)`);
+            uploadFile(file);
+        }
+        
+        async function uploadFile(file) {
+            const candidateId = document.getElementById('candidateId').value || DEFAULT_CANDIDATE_ID;
+            
+            addLog('INFO', `开始上传: ${file.name}`);
+            addLog('INFO', `候选人ID: ${candidateId}`);
+            
+            const formData = new FormData();
+            formData.append('file', file);
+            
+            document.getElementById('loading').classList.add('show');
+            document.getElementById('uploadStatus').innerHTML = '';
+            document.getElementById('parseResult').innerHTML = '';
+            
+            try {
+                const response = await fetch(
+                    `${API_BASE}/assessment/immersive/upload-resume?candidate_id=${encodeURIComponent(candidateId)}`,
+                    {
+                        method: 'POST',
+                        body: formData
+                    }
+                );
+                
+                addLog('INFO', `服务器响应: ${response.status}`);
+                
+                const result = await response.json();
+                addLog('INFO', `响应内容: ${JSON.stringify(result)}`);
+                
+                if (result.code === 200) {
+                    addLog('SUCCESS', '✓ 文件上传和解析成功');
+                    showStatus('uploadStatus', 'success', '✓ 文件上传成功');
+                    displayParseResult(result.data);
+                } else {
+                    addLog('ERROR', `✗ 解析失败: ${result.message || result.detail}`);
+                    showStatus('uploadStatus', 'error', `✗ 错误: ${result.message || result.detail}`);
+                }
+            } catch (error) {
+                addLog('ERROR', `✗ 上传失败: ${error.message}`);
+                showStatus('uploadStatus', 'error', `✗ 上传失败: ${error.message}`);
+            } finally {
+                document.getElementById('loading').classList.remove('show');
+            }
+        }
+        
+        function displayParseResult(data) {
+            const info = data.candidate_info || {};
+            let html = `
+                <div class="info-section">
+                    <div class="info-label">📄 文件信息</div>
+                    <div class="info-value">
+                        <div><strong>文件名:</strong> ${data.filename}</div>
+                        <div><strong>文件大小:</strong> ${(data.file_size / 1024).toFixed(2)} KB</div>
+                        <div><strong>提取文本长度:</strong> ${data.extracted_text?.length || 0} 字符</div>
+                    </div>
+                    
+                    <div style="margin-top: 15px;">
+                        <div class="info-label">👤 候选人信息</div>
+                        <div class="info-value">
+                            <div><strong>姓名:</strong> ${info.name || '未提取'}</div>
+                            <div><strong>邮箱:</strong> ${info.email || '未提取'}</div>
+                            <div><strong>电话:</strong> ${info.phone || '未提取'}</div>
+                            <div><strong>学历:</strong> ${info.education || '未提取'}</div>
+                        </div>
+                    </div>
+                    
+                    <div style="margin-top: 15px;">
+                        <div class="info-label">🛠️ 提取的技能</div>
+                        <div class="info-value">
+                            ${info.technical_skills?.length > 0 
+                                ? info.technical_skills.join(', ') 
+                                : '未识别技能'}
+                        </div>
+                    </div>
+                    
+                    <div style="margin-top: 15px;">
+                        <div class="info-label">💼 工作经验</div>
+                        <div class="info-value">
+                            ${info.work_experience || '未提取'}
+                        </div>
+                    </div>
+                </div>
+            `;
+            document.getElementById('parseResult').innerHTML = html;
+            addLog('SUCCESS', '✓ 解析结果已显示');
+        }
+        
+        function showStatus(elementId, type, message) {
+            const element = document.getElementById(elementId);
+            element.className = `status ${type}`;
+            element.textContent = message;
+        }
+        
+        // 测试TXT文件
+        async function testWithTxt() {
+            const txtContent = `姓名: 王五
+邮箱: wangwu@example.com
+电话: 13800138000
+
+教育背景:
+本科 - 计算机科学与技术
+
+技能:
+Python, Java, JavaScript, React, Django, MySQL
+
+工作经验:
+在某公司担任高级工程师，主要使用Python和Django框架开发后端系统`;
+            
+            const blob = new Blob([txtContent], { type: 'text/plain;charset=utf-8' });
+            const file = new File([blob], 'test_resume.txt', { type: 'text/plain' });
+            
+            addLog('INFO', '创建测试TXT文件');
+            uploadFile(file);
+        }
+        
+        // 页面加载时的初始化
+        document.addEventListener('DOMContentLoaded', function() {
+            addLog('SUCCESS', '✓ 页面加载完成');
+            addLog('INFO', `默认候选人ID: ${DEFAULT_CANDIDATE_ID}`);
+        });
+    </script>
+</body>
+</html>

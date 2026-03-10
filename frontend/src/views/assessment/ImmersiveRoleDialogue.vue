@@ -6,47 +6,62 @@
       <div class="meeting-room-overlay"></div>
     </div>
 
-    <!-- 多角色面板：展示当前参与的所有角色 -->
-    <div class="roles-panel">
-      <div 
-        v-for="role in activeRoles" 
-        :key="role.id"
-        :class="['role-card', { active: role.id === currentSpeaker, completed: role.completed }]"
-      >
-        <div class="role-avatar">
-          <img :src="role.avatar" :alt="role.name" />
-          <div v-if="role.id === currentSpeaker" class="speaking-indicator"></div>
+    <!-- 左侧：候选人信息与流程控制 -->
+    <div class="left-sidebar" :style="{ backgroundImage: svgImageUrl ? `url(${svgImageUrl})` : 'none' }">
+      <!-- SVG遮罩文字，在 svg 模式时显示 -->
+      <div v-if="leftPanelMode === 'svg'" class="svg-overlay">
+        <div class="placeholder-text">
+          <p></p>
+          <p class="sub-text"></p>
         </div>
-        <div class="role-info">
-          <div class="role-name">{{ role.name }}</div>
-          <div class="role-title">{{ role.title }}</div>
-          <div class="role-status">{{ getRoleStatus(role) }}</div>
+      </div>
+
+      <!-- 面板内容（info模式）覆盖在背景上，半透明白色背景 -->
+      <div v-if="leftPanelMode === 'info'" class="panel-overlay">
+        <!-- 关闭按钮 -->
+        <div class="panel-title">
+          <el-button text icon="Close" @click="toggleLeftPanel('svg')" class="close-btn" />
+          <el-icon><i class="el-icon-user"></i></el-icon>
+          <span>候选人信息</span>
+          <el-tag v-if="currentStep >= 1" size="small" type="success">已填充</el-tag>
         </div>
-        <div class="role-progress">
-          <el-progress 
-            :percentage="role.progress" 
-            :color="role.color"
-            :show-text="false"
-            :stroke-width="3"
-          />
+        <!-- 流程指示器 -->
+        <div class="process-indicator">
+          <div 
+            v-for="(step, idx) in assessmentSteps" 
+            :key="idx"
+            :class="['step', { active: idx === currentStep, completed: idx < currentStep }]"
+            @click="currentStep = idx"
+          >
+            <div class="step-number">{{ idx + 1 }}</div>
+            <div class="step-title">{{ step }}</div>
+          </div>
         </div>
       </div>
     </div>
 
-    <!-- 主对话区：沉浸式聊天界面 -->
+    <!-- 中间主对话区：沉浸式聊天界面 -->
     <div class="dialogue-container">
       <div class="dialogue-header">
         <div class="session-info">
-          <h3>{{ sessionTitle }}</h3>
-          <div class="session-meta">
-            <el-tag size="small" type="info">{{ currentPhase }}</el-tag>
-            <span class="time-elapsed">{{ formatTime(elapsedTime) }}</span>
-            <span class="conversation-depth">对话深度: {{ conversationDepth }}/10</span>
+          <div class="header-content">
+            <div class="ai-profile">
+              <img :src="aiInterviewerAvatar" class="ai-avatar" />
+              <div class="ai-info">
+                <h3>AI 面试官</h3>
+                <p>{{ aiInterviewerTitle }}</p>
+              </div>
+            </div>
+            <div class="session-meta">
+              <el-tag size="small" type="info">{{ currentPhase }}</el-tag>
+              <span class="time-elapsed">⏱️ {{ formatTime(elapsedTime) }}</span>
+              <span class="progress">📊 {{ respondedCount }}/{{ interviewPlan.totalQuestions }}</span>
+            </div>
           </div>
         </div>
         
         <!-- 实时情绪与语气分析 -->
-        <div class="sentiment-monitor" v-if="latestSentiment">
+        <div class="sentiment-monitor" v-if="latestSentiment && currentStep >= 3">
           <div class="sentiment-indicator">
             <span class="label">候选人状态:</span>
             <el-tag :type="getSentimentType(latestSentiment.emotion)" size="small">
@@ -67,13 +82,183 @@
 
       <!-- 消息流 -->
       <div class="message-stream" ref="messageStream">
-        <!-- 动态引导提示 -->
-        <div v-if="messages.length === 0" class="conversation-starter">
+        <!-- Step 0: 初始欢迎 -->
+        <div v-if="currentStep === 0" class="conversation-starter initial-greeting">
           <div class="starter-content">
-            <el-icon class="starter-icon"><i class="el-icon-chat-dot-round"></i></el-icon>
-            <h4>欢迎来到沉浸式评估对话</h4>
-            <p>接下来，您将与 {{ activeRoles.length }} 位决策者进行自然对话</p>
-            <p class="starter-tip">💡 放轻松，像真实面试一样交流即可</p>
+            <div class="greeting-avatar">
+              <img :src="aiInterviewerAvatar" />
+            </div>
+            <h4>欢迎来到 AI 情境面试系统</h4>
+            <p>你好！我是 AI 面试官，很高兴认识你。</p>
+            <p class="starter-tip">请先完善你的个人信息或上传简历</p>
+            <el-button type="primary" @click="openUploadDialog" class="upload-action-btn" size="large">
+              📋 上传完善信息
+            </el-button>
+          </div>
+        </div>
+
+        <!-- Step 1: 简历解析阶段 -->
+        <div v-if="currentStep === 1" class="conversation-starter resume-parsing">
+          <div class="starter-content">
+            <div class="greeting-avatar">
+              <img :src="aiInterviewerAvatar" />
+            </div>
+            <h4>✅ 信息已确认</h4>
+            <p>我已成功分析了你的基本信息和背景</p>
+            
+            <!-- 显示解析的信息 -->
+            <div v-if="parsedResumeData" class="parsed-info-display">
+              <div class="info-card">
+                <div class="info-header">📋 候选人信息</div>
+                <div class="info-content">
+                  <div class="info-row">
+                    <span class="label">姓名:</span>
+                    <span class="value">{{ parsedResumeData.candidate_info.name }}</span>
+                  </div>
+                  <div class="info-row">
+                    <span class="label">邮箱:</span>
+                    <span class="value">{{ parsedResumeData.candidate_info.email }}</span>
+                  </div>
+                  <div class="info-row">
+                    <span class="label">学历:</span>
+                    <span class="value">{{ parsedResumeData.candidate_info.education }}</span>
+                  </div>
+                  <div class="info-row">
+                    <span class="label">经验水平:</span>
+                    <span class="value">{{ parsedResumeData.candidate_info.experience_level }}</span>
+                  </div>
+                  <div class="info-row" v-if="parsedResumeData.extraction_method">
+                    <span class="label">识别方式:</span>
+                    <span class="value">
+                      <el-tag :type="parsedResumeData.extraction_method === 'ocr' ? 'warning' : 'success'">
+                        {{ parsedResumeData.extraction_method === 'ocr' ? '🤖 OCR识别(扫描版)' : '✅ 原生提取' }}
+                      </el-tag>
+                    </span>
+                  </div>
+                </div>
+              </div>
+              
+              <div v-if="parsedResumeData.candidate_info.technical_skills.length > 0" class="info-card">
+                <div class="info-header">💻 技术能力</div>
+                <div class="skills-list">
+                  <el-tag 
+                    v-for="skill in parsedResumeData.candidate_info.technical_skills"
+                    :key="skill"
+                    type="primary"
+                    effect="light"
+                  >
+                    {{ skill }}
+                  </el-tag>
+                </div>
+              </div>
+
+              <div v-if="parsedResumeData.candidate_info.soft_skills.length > 0" class="info-card">
+                <div class="info-header">✨ 核心素质</div>
+                <div class="skills-list">
+                  <el-tag 
+                    v-for="skill in parsedResumeData.candidate_info.soft_skills"
+                    :key="skill"
+                    type="success"
+                    effect="light"
+                  >
+                    {{ skill }}
+                  </el-tag>
+                </div>
+              </div>
+
+              <div class="info-card">
+                <div class="info-header">📊 评估维度 ({{ parsedResumeData.assessed_dimensions.length }}项)</div>
+                <div class="dimensions-list">
+                  <div v-for="(dim, idx) in parsedResumeData.assessed_dimensions" :key="idx" class="dimension-item">
+                    {{ ['🎯', '⚡', '🔥', '✨', '🚀'][idx % 5] }} {{ dim }}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <p class="starter-tip" style="margin-top: 16px;">准备好了吗？点击下方按钮开始面试</p>
+            <el-button 
+              type="primary" 
+              @click="proceedToStep2" 
+              size="large"
+              class="start-interview-btn"
+            >
+              🎯 准备开始面试
+            </el-button>
+          </div>
+        </div>
+
+        <!-- Step 2: 面试说明与准备 -->
+        <div v-if="currentStep === 2" class="conversation-starter interview-briefing">
+          <div class="starter-content">
+            <div class="greeting-avatar">
+              <img :src="aiInterviewerAvatar" />
+            </div>
+            <h4>📢 面试流程说明</h4>
+            
+            <div class="briefing-content">
+              <p>我已为你制定了个性化的评估计划：</p>
+              
+              <div class="interview-plan">
+                <div class="plan-item">
+                  <div class="plan-icon">1️⃣</div>
+                  <div class="plan-detail">
+                    <div class="plan-title">破冰与背景了解</div>
+                    <p>我们先从你的工作经验和背景开始交流</p>
+                  </div>
+                </div>
+
+                <div class="plan-item">
+                  <div class="plan-icon">2️⃣</div>
+                  <div class="plan-detail">
+                    <div class="plan-title">技术深度探索</div>
+                    <p>深入讨论你的技术能力和问题解决经验</p>
+                  </div>
+                </div>
+
+                <div class="plan-item">
+                  <div class="plan-icon">3️⃣</div>
+                  <div class="plan-detail">
+                    <div class="plan-title">产品思维对话</div>
+                    <p>考察你的产品思维和创新意识</p>
+                  </div>
+                </div>
+
+                <div class="plan-item">
+                  <div class="plan-icon">4️⃣</div>
+                  <div class="plan-detail">
+                    <div class="plan-title">综合素质评估</div>
+                    <p>评价你的沟通能力和团队协作精神</p>
+                  </div>
+                </div>
+              </div>
+
+              <div class="interview-stats">
+                <div class="stat-item">
+                  <div class="stat-label">预计时长</div>
+                  <div class="stat-value">6分钟</div>
+                </div>
+                <div class="stat-item">
+                  <div class="stat-label">问题数量</div>
+                  <div class="stat-value">{{ interviewPlan.totalQuestions }}</div>
+                </div>
+                <div class="stat-item">
+                  <div class="stat-label">评估维度</div>
+                  <div class="stat-value">{{ parsedResumeData?.assessed_dimensions.length || 5 }}</div>
+                </div>
+              </div>
+
+              <p class="starter-tip">我会在下方实时显示分析结果，请尽量详细地表达你的想法</p>
+            </div>
+
+            <el-button 
+              type="primary" 
+              @click="startInterview" 
+              size="large"
+              class="start-interview-btn"
+            >
+              ▶️ 开始面试
+            </el-button>
           </div>
         </div>
 
@@ -81,25 +266,24 @@
         <div 
           v-for="(msg, idx) in messages" 
           :key="idx"
-          :class="['message-item', msg.role === 'candidate' ? 'from-candidate' : 'from-role']"
+          :class="['message-item', msg.role === 'candidate' ? 'from-candidate' : 'from-ai']"
         >
-          <!-- 角色消息 -->
-          <div v-if="msg.role !== 'candidate'" class="role-message">
+          <!-- AI 消息 -->
+          <div v-if="msg.role === 'ai'" class="ai-message">
             <div class="message-avatar">
-              <img :src="getRoleAvatar(msg.role)" :alt="msg.roleName" />
+              <img :src="aiInterviewerAvatar" />
             </div>
             <div class="message-content">
               <div class="message-header">
-                <span class="speaker-name">{{ msg.roleName }}</span>
-                <span class="speaker-title">{{ msg.roleTitle }}</span>
+                <span class="speaker-name">AI 面试官</span>
                 <span class="timestamp">{{ msg.time }}</span>
               </div>
               <div class="message-body">
                 <p>{{ msg.content }}</p>
-                <!-- 隐式评估标签 -->
-                <div v-if="msg.implicitTags" class="implicit-tags">
+                <!-- 评估标签 -->
+                <div v-if="msg.tags" class="message-tags">
                   <el-tag 
-                    v-for="tag in msg.implicitTags" 
+                    v-for="tag in msg.tags" 
                     :key="tag"
                     size="small"
                     effect="plain"
@@ -117,40 +301,29 @@
             <div class="message-content">
               <div class="message-header">
                 <span class="timestamp">{{ msg.time }}</span>
-                <span class="response-metrics">
-                  <el-icon><i class="el-icon-timer"></i></el-icon>
-                  {{ msg.latency }}s
+                <span class="response-metrics" v-if="msg.responseTime">
+                  ⏱️ {{ msg.responseTime }}秒
                 </span>
               </div>
               <div class="message-body">
                 <p>{{ msg.content }}</p>
               </div>
-              <!-- 实时反馈气泡 -->
-              <div v-if="msg.liveFeedback" class="live-feedback">
-                <el-icon class="feedback-icon"><i class="el-icon-data-analysis"></i></el-icon>
-                <span>{{ msg.liveFeedback }}</span>
+              <!-- AI 反馈 -->
+              <div v-if="msg.aiFeedback" class="ai-feedback">
+                <el-icon><i class="el-icon-documentcopy"></i></el-icon>
+                <span>{{ msg.aiFeedback }}</span>
               </div>
             </div>
             <div class="message-avatar">
               <div class="candidate-avatar">You</div>
             </div>
           </div>
-
-          <!-- 角色切换过渡动画 -->
-          <div v-if="msg.isRoleTransition" class="role-transition">
-            <div class="transition-line"></div>
-            <div class="transition-text">
-              <el-icon><i class="el-icon-refresh-right"></i></el-icon>
-              {{ msg.transitionText }}
-            </div>
-            <div class="transition-line"></div>
-          </div>
         </div>
 
         <!-- 打字中指示器 -->
         <div v-if="isTyping" class="typing-indicator">
           <div class="typing-avatar">
-            <img :src="getRoleAvatar(currentSpeaker)" alt="typing" />
+            <img :src="aiInterviewerAvatar" />
           </div>
           <div class="typing-dots">
             <span></span><span></span><span></span>
@@ -159,10 +332,10 @@
       </div>
 
       <!-- 智能输入区 -->
-      <div class="input-area">
+      <div class="input-area" v-if="currentStep >= 3">
         <!-- 上下文提示条 -->
         <div v-if="contextHint" class="context-hint">
-          <el-icon><i class="el-icon-warning-outline"></i></el-icon>
+          <el-icon><i class="el-icon-info"></i></el-icon>
           <span>{{ contextHint }}</span>
         </div>
 
@@ -174,42 +347,18 @@
             type="textarea"
             :placeholder="dynamicPlaceholder"
             :rows="3"
-            :disabled="isProcessing"
+            :disabled="isProcessing || currentStep < 3"
             @keydown.ctrl.enter="submitMessage"
             @keydown.meta.enter="submitMessage"
-            @input="handleInputChange"
           />
-          
-          <!-- 智能建议 -->
-          <div v-if="smartSuggestions.length > 0" class="smart-suggestions">
-            <div class="suggestion-label">💡 建议:</div>
-            <div class="suggestion-pills">
-              <el-tag 
-                v-for="(sugg, idx) in smartSuggestions" 
-                :key="idx"
-                size="small"
-                effect="plain"
-                @click="applySuggestion(sugg)"
-                style="cursor: pointer;"
-              >
-                {{ sugg }}
-              </el-tag>
-            </div>
-          </div>
         </div>
 
         <!-- 控制按钮 -->
         <div class="input-controls">
           <div class="control-hints">
-            <span>Ctrl+Enter 快速发送</span>
-            <span v-if="allowSkip" class="skip-hint" @click="skipCurrentQuestion">
-              跳过此问题 →
-            </span>
+            <span>💡 Ctrl+Enter 快速发送</span>
           </div>
           <div class="control-buttons">
-            <el-button @click="pauseConversation" :icon="isPaused ? 'VideoPause' : 'VideoPlay'">
-              {{ isPaused ? '继续' : '暂停' }}
-            </el-button>
             <el-button 
               type="primary" 
               @click="submitMessage"
@@ -223,116 +372,164 @@
       </div>
     </div>
 
-    <!-- 右侧洞察面板 -->
-    <div class="insights-sidebar">
-      <!-- 实时评估雷达 -->
-      <el-card class="insight-card radar-card">
-        <template #header>
-          <div class="card-header">
-            <span>实时能力雷达</span>
-            <el-tag size="small" type="success">动态更新</el-tag>
-          </div>
-        </template>
-        <div class="radar-chart" ref="radarChart"></div>
-        <div class="radar-legend">
-          <div v-for="(score, trait) in latestScores" :key="trait" class="legend-item">
-            <div class="legend-color" :style="{ background: getTraitColor(trait) }"></div>
-            <span class="legend-name">{{ trait }}</span>
-            <span class="legend-value">{{ score }}/10</span>
-          </div>
-        </div>
-      </el-card>
+    <!-- 注意：右侧评估面板已移除
+         评估数据（实时雷达图、行为模式识别、回答统计）
+         将在 HR 端单独实现，不在候选人端展示 -->
+  </div>
 
-      <!-- 行为模式分析 -->
-      <el-card class="insight-card pattern-card">
-        <template #header>
-          <div class="card-header">
-            <span>行为模式识别</span>
-          </div>
-        </template>
-        <div class="pattern-list">
-          <div v-for="pattern in detectedPatterns" :key="pattern.id" class="pattern-item">
-            <div class="pattern-indicator" :style="{ background: pattern.color }"></div>
-            <div class="pattern-info">
-              <div class="pattern-name">{{ pattern.name }}</div>
-              <div class="pattern-desc">{{ pattern.description }}</div>
-              <div class="pattern-confidence">
-                <span>置信度: {{ pattern.confidence }}%</span>
-                <el-progress 
-                  :percentage="pattern.confidence" 
-                  :color="pattern.color"
-                  :show-text="false"
-                  :stroke-width="3"
-                />
+  <!-- 上传/填写信息对话框 -->
+  <el-dialog
+    v-model="showUploadDialog"
+    title="完善候选人信息"
+    width="700px"
+    class="info-dialog"
+  >
+    <div class="dialog-content">
+      <!-- 简历上传区域 -->
+      <div class="upload-section">
+        <h4 class="section-title">📄 上传简历（可选）</h4>
+        <p class="section-desc">支持 PDF、Word 等格式，系统将自动提取关键信息并填入下方表单</p>
+        
+        <el-upload
+          drag
+          action="#"
+          :auto-upload="false"
+          @change="handleResumeUpload"
+          accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
+          class="resume-upload"
+          :disabled="isAnalyzing"
+        >
+          <template #default>
+            <div class="upload-content">
+              <el-icon v-if="!isAnalyzing" class="upload-icon"><i class="el-icon-upload"></i></el-icon>
+              <el-icon v-else class="upload-icon animate-spin"><i class="el-icon-loading"></i></el-icon>
+              <div class="upload-text">
+                <p v-if="!isAnalyzing" class="main">拖拽文件到此或<em>点击上传</em></p>
+                <p v-else class="main">正在解析文件...</p>
+                <p class="secondary">最大 10MB</p>
               </div>
             </div>
-          </div>
-        </div>
-      </el-card>
+          </template>
+          <template #tip>
+            <div class="el-upload__tip">
+              <span v-if="resumeFile && isAnalyzing" class="file-info">
+                ⏳ 正在解析: {{ resumeFile.name }}
+              </span>
+              <span v-else-if="resumeFile" class="file-info">
+                ✓ 已选择: {{ resumeFile.name }}
+              </span>
+              <span v-else>
+                完成后自动填入姓名、邮箱、学历、技能等信息
+              </span>
+            </div>
+          </template>
+        </el-upload>
+      </div>
 
-      <!-- 对话阶段追踪 -->
-      <el-card class="insight-card phase-card">
-        <template #header>
-          <div class="card-header">
-            <span>评估进度</span>
-          </div>
-        </template>
-        <el-steps direction="vertical" :active="currentPhaseIndex" finish-status="success">
-          <el-step 
-            v-for="(phase, idx) in assessmentPhases" 
-            :key="idx"
-            :title="phase.title"
-            :description="phase.description"
+      <!-- 信息填写区域 -->
+      <div class="form-section">
+        <h4 class="section-title">👤 基本信息</h4>
+        
+        <div class="form-group">
+          <label class="form-label">姓名 <span class="required">*</span></label>
+          <el-input 
+            v-model="candidateInfo.name" 
+            placeholder="请输入您的姓名"
+            clearable
+            class="form-input"
           >
-            <template #icon>
-              <el-icon v-if="idx < currentPhaseIndex"><i class="el-icon-check"></i></el-icon>
-              <el-icon v-else-if="idx === currentPhaseIndex"><i class="el-icon-loading"></i></el-icon>
-              <span v-else>{{ idx + 1 }}</span>
+            <template #suffix v-if="candidateInfo.name">
+              <span class="auto-fill-indicator">✓ 已自动填入</span>
             </template>
-          </el-step>
-        </el-steps>
-      </el-card>
-    </div>
+          </el-input>
+        </div>
 
-    <!-- 完成对话弹窗 -->
-    <el-dialog
-      v-model="showCompletionDialog"
-      title="对话评估完成"
-      width="600px"
-      :close-on-click-modal="false"
-    >
-      <div class="completion-summary">
-        <div class="summary-header">
-          <el-icon class="success-icon"><i class="el-icon-success-filled"></i></el-icon>
-          <h3>恭喜！您已完成所有环节</h3>
+        <div class="form-group">
+          <label class="form-label">邮箱 <span class="required">*</span></label>
+          <el-input 
+            v-model="candidateInfo.email" 
+            placeholder="请输入您的邮箱地址"
+            type="email"
+            clearable
+            class="form-input"
+          >
+            <template #suffix v-if="candidateInfo.email">
+              <span class="auto-fill-indicator">✓ 已自动填入</span>
+            </template>
+          </el-input>
         </div>
-        <div class="summary-stats">
-          <div class="stat-item">
-            <div class="stat-value">{{ totalMessages }}</div>
-            <div class="stat-label">交互轮次</div>
-          </div>
-          <div class="stat-item">
-            <div class="stat-value">{{ formatTime(elapsedTime) }}</div>
-            <div class="stat-label">总用时</div>
-          </div>
-          <div class="stat-item">
-            <div class="stat-value">{{ completedPhases }}/{{ assessmentPhases.length }}</div>
-            <div class="stat-label">完成阶段</div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">学历 <span class="required">*</span></label>
+            <el-select 
+              v-model="candidateInfo.education" 
+              placeholder="选择学历"
+              class="form-select"
+            >
+              <el-option label="高中" value="高中" />
+              <el-option label="大专" value="大专" />
+              <el-option label="本科" value="本科" />
+              <el-option label="硕士" value="硕士" />
+              <el-option label="博士" value="博士" />
+            </el-select>
+            <span v-if="candidateInfo.education" class="auto-fill-tip">✓ 已自动填入</span>
           </div>
         </div>
-        <div class="summary-highlights">
-          <h4>亮点总结</h4>
-          <ul>
-            <li v-for="(highlight, idx) in highlights" :key="idx">{{ highlight }}</li>
-          </ul>
+
+        <div class="form-group">
+          <label class="form-label">技能标签
+            <span class="optional-tag">选填</span>
+          </label>
+          <el-input 
+            v-model="candidateInfo.skills" 
+            placeholder="e.g., JavaScript, Vue.js, Python（用逗号分隔）"
+            clearable
+            class="form-input"
+          >
+            <template #suffix v-if="candidateInfo.skills">
+              <span class="auto-fill-indicator">✓ 已自动填入</span>
+            </template>
+          </el-input>
+          <p class="form-help-text">上传简历后系统自动提取</p>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">项目经验
+            <span class="optional-tag">选填</span>
+          </label>
+          <el-input 
+            v-model="candidateInfo.projects" 
+            placeholder="列举您参与过的主要项目和成就"
+            type="textarea"
+            :rows="3"
+            clearable
+            class="form-input"
+          >
+          </el-input>
+          <p class="form-help-text">上传简历后系统自动提取</p>
         </div>
       </div>
-      <template #footer>
-        <el-button @click="showCompletionDialog = false">查看详细报告</el-button>
-        <el-button type="primary" @click="generateReport">生成完整报告</el-button>
-      </template>
-    </el-dialog>
-  </div>
+
+      <!-- 信息确认提示 -->
+      <div class="info-tips" v-if="candidateInfo.name || candidateInfo.email">
+        <el-alert
+          title="信息已捕获"
+          type="success"
+          :closable="false"
+          description="系统将使用以上信息生成个性化的面试策略。"
+        />
+      </div>
+    </div>
+
+    <template #footer>
+      <el-button @click="cancelUpload">取消</el-button>
+      <el-button type="primary" @click="proceedFromDialog" :loading="isAnalyzing">
+        {{ isAnalyzing ? '分析中...' : '确认并继续' }}
+      </el-button>
+    </template>
+  </el-dialog>
+
 </template>
 
 <script setup lang="ts">
@@ -340,38 +537,32 @@ import { ref, computed, onMounted, nextTick, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import * as echarts from 'echarts'
 import { useAssessmentStore } from '@/stores/assessment'
+import UploadInfoDialog from '@/components/UploadInfoDialog.vue'
 
 // ==================== 类型定义 ====================
-interface Role {
-  id: string
+interface CandidateInfo {
   name: string
-  title: string
-  avatar: string
-  color: string
-  focus: string[]  // 关注的能力维度
-  progress: number
-  completed: boolean
+  email: string
+  education: string
+  skills: string
+  projects: string
+  background?: string
 }
 
 interface Message {
-  role: string
-  roleName?: string
-  roleTitle?: string
+  role: 'ai' | 'candidate'
   content: string
   time: string
-  latency?: number
-  implicitTags?: string[]
-  liveFeedback?: string
-  isRoleTransition?: boolean
-  transitionText?: string
+  tags?: string[]
+  responseTime?: number
+  aiFeedback?: string
 }
 
-interface AssessmentPhase {
-  id: string
-  title: string
-  description: string
-  roles: string[]
-  targetDepth: number
+interface InterviewPlan {
+  totalQuestions: number
+  estimatedTime: number
+  category: string
+  dimensions: string[]
 }
 
 interface Pattern {
@@ -399,126 +590,99 @@ const emit = defineEmits<{
 // Store
 const assessmentStore = useAssessmentStore()
 
-// ==================== 核心状态 ====================
-// 角色系统
-const activeRoles = ref<Role[]>([
-  {
-    id: 'hr',
-    name: '李明',
-    title: 'HR 经理',
-    avatar: generateAvatar('HR'),
-    color: '#409eff',
-    focus: ['沟通能力', '团队协作', '文化契合'],
-    progress: 0,
-    completed: false
-  },
-  {
-    id: 'tech_lead',
-    name: '张伟',
-    title: '技术总监',
-    avatar: generateAvatar('TL'),
-    color: '#67c23a',
-    focus: ['技术深度', '问题解决', '系统思维'],
-    progress: 0,
-    completed: false
-  },
-  {
-    id: 'product',
-    name: '王芳',
-    title: '产品经理',
-    avatar: generateAvatar('PM'),
-    color: '#e6a23c',
-    focus: ['产品思维', '用户洞察', '创新能力'],
-    progress: 0,
-    completed: false
-  },
-  {
-    id: 'cto',
-    name: '刘强',
-    title: 'CTO',
-    avatar: generateAvatar('CT'),
-    color: '#f56c6c',
-    focus: ['战略思维', '领导力', '决策能力'],
-    progress: 0,
-    completed: false
-  }
-])
+// ==================== 流程控制 ====================
+const assessmentSteps = [
+  '填写信息',
+  '确认信息',
+  '面试说明',
+  '多轮面试',
+  '生成报告'
+]
 
-// 评估阶段定义
-const assessmentPhases = ref<AssessmentPhase[]>([
-  {
-    id: 'opening',
-    title: '破冰与背景了解',
-    description: 'HR 与候选人建立联系，收集基础信息',
-    roles: ['hr'],
-    targetDepth: 2
-  },
-  {
-    id: 'technical',
-    title: '技术深度探索',
-    description: '技术总监评估专业能力与问题解决',
-    roles: ['tech_lead'],
-    targetDepth: 4
-  },
-  {
-    id: 'product_thinking',
-    title: '产品思维对话',
-    description: '产品经理考察用户视角与创新意识',
-    roles: ['product'],
-    targetDepth: 6
-  },
-  {
-    id: 'multi_perspective',
-    title: '多方圆桌讨论',
-    description: '多角色联合提问，考察综合素质',
-    roles: ['hr', 'tech_lead', 'product'],
-    targetDepth: 8
-  },
-  {
-    id: 'strategic',
-    title: '战略层面交流',
-    description: 'CTO 最终评估与战略匹配度',
-    roles: ['cto'],
-    targetDepth: 10
-  }
-])
+const currentStep = ref(0)  // 0: 填写, 1: 确认, 2: 说明, 3+: 面试中
+const isAnalyzing = ref(false)
+const infoConfirmed = ref(false)
 
-// 对话系统
+// ==================== 左侧面板控制 ====================
+const leftPanelMode = ref<'svg' | 'info'>('svg')  // svg: 显示欢迎图片, info: 显示流程
+// SVG 图像地址列表
+const svgList = ['/个人信息.svg','/个人信息2.svg','/个人信息3.svg']
+const svgImageUrl = ref<string>(svgList[Math.floor(Math.random()*svgList.length)])
+
+
+// 上传对话框状态
+const showUploadDialog = ref(false)
+
+// 解析的简历数据
+const parsedResumeData = ref<any>(null)
+
+// ==================== 候选人信息 ====================
+const candidateInfo = ref<CandidateInfo>({
+  name: '',
+  email: '',
+  education: '',
+  skills: '',
+  projects: '',
+  background: ''
+})
+
+const resumeFile = ref<File | null>(null)
+
+// ==================== 面试信息 ====================
+const interviewPlan = ref<InterviewPlan>({
+  totalQuestions: 8,
+  estimatedTime: 6,
+  category: '技术与综合能力',
+  dimensions: ['技术能力', '问题解决', '沟通能力', '团队协作']
+})
+
+const aiInterviewerAvatar = ref(generateAvatar('AI'))
+const aiInterviewerTitle = ref('高级智能面试官 • 多维度评估')
+
+// ==================== 对话管理 ====================
 const messages = ref<Message[]>([])
 const userInput = ref('')
-const currentSpeaker = ref('hr')
-const currentPhase = ref('破冰与背景了解')
-const currentPhaseIndex = ref(0)
-const conversationDepth = ref(0)
 const isProcessing = ref(false)
 const isTyping = ref(false)
-const isPaused = ref(false)
+const currentPhase = ref('面试准备中...')
+const contextHint = ref<string | null>(null)
 
-// 时间追踪
-const startTime = ref<number>(Date.now())
+// ==================== 时间追踪 ====================
+const startTime = ref<number>(0)
 const elapsedTime = ref(0)
 const timerInterval = ref<number | null>(null)
 
-// 评估数据
+// ==================== 评估数据 ====================
 const latestScores = ref<Record<string, number>>({
-  '沟通能力': 0,
-  '技术深度': 0,
-  '问题解决': 0,
-  '团队协作': 0,
-  '创新思维': 0,
-  '领导潜力': 0
+  '专业能力': 0,
+  '逻辑思维': 0,
+  '表达能力': 0,
+  '学习能力': 0,
+  '团队合作': 0,
+  '创新思维': 0
 })
 
 const latestSentiment = ref<{ emotion: string; confidence: number } | null>(null)
 const detectedPatterns = ref<Pattern[]>([])
 
-// UI 辅助
-const sessionTitle = ref('候选人综合评估对话')
-const contextHint = ref<string | null>(null)
-const smartSuggestions = ref<string[]>([])
-const allowSkip = ref(false)
-const showCompletionDialog = ref(false)
-const highlights = ref<string[]>([])
+// ==================== 统计数据 ====================
+const respondedCount = ref(0)
+const avgResponseTime = ref(0)
+const avgResponseLength = computed(() => {
+  if (respondedCount.value === 0) return 0
+  const total = messages.value
+    .filter(m => m.role === 'candidate')
+    .reduce((sum, m) => sum + m.content.length, 0)
+  return Math.round(total / respondedCount.value)
+})
+const clarityScore = computed(() => {
+  return Math.max(5, Math.min(10, (avgResponseLength.value / 50) * 2 + 5))
+})
+const relevanceScore = computed(() => {
+  return Math.max(6, Math.min(10, 7 + Math.random() * 2))
+})
+
+// ==================== UI 引用 ====================
 const inputRef = ref<any>(null)
 const messageStream = ref<any>(null)
 const radarChart = ref<any>(null)
@@ -526,72 +690,346 @@ const radarChart = ref<any>(null)
 // ==================== 计算属性 ====================
 const dynamicPlaceholder = computed(() => {
   if (isProcessing.value) return '正在分析中...'
-  if (isPaused.value) return '对话已暂停'
-  
-  const phase = assessmentPhases.value[currentPhaseIndex.value]
-  if (!phase) return '请输入您的回答...'
-  
-  return `回答 ${phase.title} 相关问题...`
+  if (currentStep.value < 3) return '请先完成前置步骤...'
+  return `请详细描述你的想法和经验...`
 })
 
 const canSubmit = computed(() => {
-  return !isProcessing.value && !isPaused.value && userInput.value.trim().length > 0
+  return !isProcessing.value && currentStep.value >= 3 && userInput.value.trim().length > 0
 })
 
-const totalMessages = computed(() => {
-  return messages.value.filter(m => m.role === 'candidate').length
-})
+// ==================== 简历上传与解析 ====================
+function toggleLeftPanel(mode: 'svg' | 'info') {
+  leftPanelMode.value = mode
+}
 
-const completedPhases = computed(() => {
-  return assessmentPhases.value.filter((_, idx) => idx < currentPhaseIndex.value).length
-})
+function openUploadDialog() {
+  // 切换面板为 info 以显示流程叠加背景
+  leftPanelMode.value = 'info'
+  currentStep.value = 0
+  showUploadDialog.value = true
+  console.log('打开上传对话框:', showUploadDialog.value)
+}
 
-// ==================== 核心方法 ====================
-// 提交消息
+function cancelUpload() {
+  showUploadDialog.value = false
+  // 如果还未完成任何填写，回到 SVG 欢迎屏
+  if (!candidateInfo.value.name && !candidateInfo.value.education && !candidateInfo.value.skills) {
+    leftPanelMode.value = 'svg'
+  }
+}
+
+function handleResumeUpload(file: any) {
+  resumeFile.value = file.raw
+  ElMessage.success(`已选择文件: ${file.name}`)
+  
+  // 立即调用后端API解析文件
+  uploadAndParseResume(file.raw, file.name)
+}
+
+async function uploadAndParseResume(file: File, filename: string) {
+  // 创建FormData用于文件上传
+  const formData = new FormData()
+  formData.append('file', file)
+  formData.append('candidate_id', props.candidateId)
+  
+  try {
+    isAnalyzing.value = true
+    console.log('开始上传文件:', filename, '大小:', file.size)
+    
+    // 调用后端API - 注意这里使用POST，参数在URL中
+    const params = new URLSearchParams()
+    params.append('candidate_id', props.candidateId)
+    
+    const response = await fetch(
+      `/assessment/immersive/upload-resume?${params.toString()}`,
+      {
+        method: 'POST',
+        body: formData
+        // 不要设置 Content-Type header，浏览器会自动设置为 multipart/form-data
+      }
+    )
+    
+    console.log('后端响应状态码:', response.status)
+    
+    // 先检查response的状态和content-type
+    if (!response.ok) {
+      // 获取错误消息
+      const contentType = response.headers.get('content-type')
+      let errorMsg = `服务器错误 (${response.status})`
+      
+      if (contentType?.includes('application/json')) {
+        try {
+          const errorData = await response.json()
+          errorMsg = errorData.detail || errorData.message || errorMsg
+        } catch (e) {
+          // JSON解析失败，使用默认错误信息
+        }
+      } else {
+        // 非JSON响应，尝试获取文本
+        try {
+          const errorText = await response.text()
+          if (errorText) {
+            errorMsg = errorText.substring(0, 100) // 只显示前100个字符
+          }
+        } catch (e) {
+          // 无法读取响应体
+        }
+      }
+      
+      console.error('后端返回错误:', errorMsg)
+      throw new Error(errorMsg)
+    }
+    
+    // 检查响应是否包含JSON
+    const contentType = response.headers.get('content-type')
+    if (!contentType?.includes('application/json')) {
+      const responseText = await response.text()
+      console.error('后端返回非JSON响应:', responseText.substring(0, 200))
+      throw new Error('后端返回无效的响应格式（非JSON）')
+    }
+    
+    // 安全地解析JSON
+    let result
+    try {
+      result = await response.json()
+    } catch (jsonError) {
+      console.error('JSON解析错误:', jsonError)
+      const responseText = await response.text()
+      console.error('响应内容:', responseText.substring(0, 200))
+      throw new Error('响应JSON格式错误')
+    }
+    
+    console.log('解析后的结果:', result)
+    
+    if (result.code === 200) {
+      const data = result.data
+      
+      // 保存完整的解析数据供Step 1展示
+      parsedResumeData.value = result.data
+      
+      // 自动填入表单字段
+      if (data.candidate_info) {
+        const info = data.candidate_info
+        
+        // 填入基本信息
+        if (info.name && info.name !== '未提取') {
+          candidateInfo.value.name = info.name
+          console.log('自动填入姓名:', info.name)
+        }
+        if (info.email) {
+          candidateInfo.value.email = info.email
+          console.log('自动填入邮箱:', info.email)
+        }
+        if (info.education && info.education !== '') {
+          candidateInfo.value.education = info.education
+          console.log('自动填入学历:', info.education)
+        }
+        
+        // 填入技能
+        if (info.technical_skills?.length > 0) {
+          candidateInfo.value.skills = info.technical_skills.join(', ')
+          console.log('自动填入技能:', info.technical_skills)
+        }
+        
+        // 填入工作经验
+        if (info.work_experience && info.work_experience !== ''){
+          candidateInfo.value.projects = info.work_experience.substring(0, 200)
+          console.log('自动填入工作经验')
+        }
+      }
+      
+      ElMessage.success('文件解析成功，信息已自动填入！')
+      console.log('✓ 简历解析完成')
+    } else {
+      console.warn('解析返回非200状态:', result)
+      ElMessage.warning(result.message || '文件解析完成，请检查自动填入的信息')
+    }
+  } catch (error) {
+    console.error('文件解析失败:', error)
+    const errorMsg = error instanceof Error ? error.message : String(error)
+    ElMessage.error(`文件解析失败: ${errorMsg}`)
+    console.error('建议: 检查后端服务是否正运行，查看后端日志获取详细信息')
+  } finally {
+    isAnalyzing.value = false
+  }
+}
+
+async function proceedToStep1() {
+  // 验证必填信息
+  if (!candidateInfo.value.name || !candidateInfo.value.email) {
+    ElMessage.error('请填写姓名和邮箱')
+    return
+  }
+
+  isAnalyzing.value = true
+  
+  try {
+    // 调用后端API解析简历
+    const response = await fetch(
+      `/assessment/immersive/parse-resume?` + new URLSearchParams({
+        candidate_id: props.candidateId,
+        candidate_name: candidateInfo.value.name,
+        candidate_email: candidateInfo.value.email,
+        education: candidateInfo.value.education || '',
+        skills: candidateInfo.value.skills || '',
+        projects: candidateInfo.value.projects || ''
+      }),
+      {
+        method: 'POST'
+      }
+    )
+    
+    const result = await response.json()
+    
+    if (result.code === 200) {
+      // 保存解析的数据
+      parsedResumeData.value = result.data
+      
+      // 更新候选人信息
+      if (result.data.candidate_info) {
+        candidateInfo.value = {
+          ...candidateInfo.value,
+          ...result.data.candidate_info
+        }
+      }
+      
+      // 关闭对话框，进入Step 1
+      showUploadDialog.value = false
+      currentStep.value = 1
+      
+      // 自动滚动到下面
+      await scrollToBottom()
+      
+      ElMessage.success('信息解析成功！')
+    } else {
+      throw new Error(result.message || '解析失败')
+    }
+  } catch (error) {
+    console.error('简历解析失败:', error)
+    ElMessage.error('信息解析失败，请重试')
+  } finally {
+    isAnalyzing.value = false
+  }
+}
+
+async function proceedToStep2() {
+  // 从Step 1进入Step 2，显示面试准备说明
+  currentStep.value = 2
+  await scrollToBottom()
+}
+
+// 从弹窗点击确认进入下一步
+async function proceedFromDialog() {
+  showUploadDialog.value = false
+  await proceedToStep1()
+}
+
+async function proceedFromDialogComponent(info: CandidateInfo) {
+  // 更新用户信息
+  candidateInfo.value = { ...candidateInfo.value, ...info }
+  showUploadDialog.value = false
+  await proceedToStep1()
+}
+
+async function startInterview() {
+  currentStep.value = 3
+  respondedCount.value = 0
+  
+  // 启动计时器
+  startTime.value = Date.now()
+  timerInterval.value = window.setInterval(() => {
+    elapsedTime.value = Date.now() - startTime.value
+  }, 1000)
+  
+  // 显示初始欢迎消息并生成第一个问题
+  isTyping.value = true
+  await new Promise(resolve => setTimeout(resolve, 500))
+  
+  // 添加面试开始消息
+  messages.value.push({
+    role: 'ai',
+    content: `好的，我们开始吧！我是本次的AI面试官，将从多个维度考察你的能力。\n\n第一个问题中，我们先从了解你的背景和工作经验开始。请放松，提供尽可能详细和真实的回答。`,
+    time: nowTime(),
+    tags: ['面试开始', '破冰']
+  })
+  
+  isTyping.value = false
+  await scrollToBottom()
+  
+  // 延迟后生成第一个问题
+  await new Promise(resolve => setTimeout(resolve, 1000))
+  await generateNextQuestion()
+}
+
+// ==================== 对话逻辑 ====================
+async function generateNextQuestion() {
+  isTyping.value = true
+  await new Promise(resolve => setTimeout(resolve, 1200))
+  
+  // 获取下一个问题
+  const question = await fetchNextQuestion()
+  
+  messages.value.push({
+    role: 'ai',
+    content: question.content,
+    time: nowTime(),
+    tags: question.tags
+  })
+  
+  isTyping.value = false
+  currentPhase.value = question.phase || '多轮面试中'
+  contextHint.value = question.context || null
+  
+  await scrollToBottom()
+  inputRef.value?.focus()
+}
+
 async function submitMessage() {
   if (!canSubmit.value) return
 
   const content = userInput.value.trim()
-  const submitTime = Date.now()
-  const lastQuestion = messages.value.filter(m => m.role !== 'candidate').pop()
-  // 使用time字段而不是timestamp，time是字符串格式的时间
-  const questionTime = lastQuestion ? new Date(lastQuestion.time).getTime() : submitTime
-  const latency = ((submitTime - questionTime) / 1000).toFixed(1)
-
+  const responseTime = Date.now()
+  
   // 添加候选人消息
   messages.value.push({
     role: 'candidate',
     content,
     time: nowTime(),
-    latency: parseFloat(latency),
-    liveFeedback: generateLiveFeedback(content)
+    responseTime: Math.round((responseTime - startTime.value) / 1000)
   })
-
+  
+  respondedCount.value++
   userInput.value = ''
   isProcessing.value = true
   
   await scrollToBottom()
-
+  
   try {
-    // 1. 提交到后端分析
-    const analysis = await analyzeResponse(content, currentSpeaker.value)
+    // 1. 分析回答
+    const analysis = await analyzeResponse(content)
     
     // 2. 更新评分
     updateScores(analysis.scores)
     
-    // 3. 更新情绪分析
+    // 3. 更新情绪
     latestSentiment.value = analysis.sentiment
     
-    // 4. 更新行为模式
+    // 4. 更新模式
     if (analysis.patterns) {
       updatePatterns(analysis.patterns)
     }
     
-    // 5. 更新角色进度
-    updateRoleProgress(currentSpeaker.value)
+    // 5. 添加反馈
+    messages.value[messages.value.length - 1].aiFeedback = analysis.feedback
     
-    // 6. 生成下一个问题
-    await generateNextQuestion()
+    // 6. 检查是否完成
+    if (respondedCount.value >= interviewPlan.value.totalQuestions) {
+      completeInterview()
+    } else {
+      // 7. 生成下一个问题
+      await generateNextQuestion()
+    }
     
   } catch (error) {
     console.error('处理失败:', error)
@@ -601,11 +1039,8 @@ async function submitMessage() {
   }
 }
 
-// 分析回答 - 调用真实后端 API
-async function analyzeResponse(content: string, speaker: string) {
+async function analyzeResponse(content: string) {
   try {
-    const currentRole = activeRoles.value.find(r => r.id === speaker)
-    
     const response = await fetch(
       'http://127.0.0.1:8000/assessment/immersive/analyze-response',
       {
@@ -616,245 +1051,144 @@ async function analyzeResponse(content: string, speaker: string) {
         },
         body: JSON.stringify({
           candidate_id: props.candidateId,
-          candidate_name: localStorage.getItem('candidate_name') || '候选人',
-          candidate_background: props.initialContext?.background,
-          current_speaker: speaker,
-          speaker_name: currentRole?.name || '',
-          speaker_title: currentRole?.title || '',
+          candidate_name: candidateInfo.value.name,
+          candidate_background: candidateInfo.value.background,
+          current_speaker: 'ai',
+          speaker_name: 'AI 面试官',
           candidate_response: content,
           previous_messages: messages.value.slice(-5),
-          conversation_depth: conversationDepth.value
+          conversation_depth: respondedCount.value
         })
       }
     )
     
     if (!response.ok) {
-      console.warn('分析 API 失败，使用本地模拟')
-      return getLocalFallbackAnalysis(speaker)
+      return getLocalFallbackAnalysis()
     }
     
     const data = await response.json()
-    
     if (data.code === 200 && data.data) {
       return {
         scores: data.data.scores || {},
-        sentiment: data.data.sentiment || { emotion: '思考中', confidence: 70 },
-        patterns: data.data.patterns || []
+        sentiment: data.data.sentiment || { emotion: '专注', confidence: 75 },
+        patterns: data.data.patterns || [],
+        feedback: data.data.feedback || '很好的回答！'
       }
-    } else {
-      return getLocalFallbackAnalysis(speaker)
     }
   } catch (error) {
-    console.error('分析回答失败:', error)
-    return getLocalFallbackAnalysis(speaker)
-  }
-}
-
-// 本地备用分析
-function getLocalFallbackAnalysis(speaker: string) {
-  const trait_scores: Record<string, Record<string, number>> = {
-    hr: { "沟通能力": 7.5, "团队协作": 7.0, "文化契合": 7.5 },
-    tech_lead: { "技术深度": 7.5, "问题解决": 8.0, "系统思维": 7.0 },
-    product: { "产品思维": 7.0, "用户洞察": 7.5, "创新能力": 7.5 },
-    cto: { "战略思维": 7.5, "领导力": 7.0, "决策能力": 7.5 }
+    console.warn('API 调用失败:', error)
   }
   
+  return getLocalFallbackAnalysis()
+}
+
+function getLocalFallbackAnalysis() {
   return {
-    scores: trait_scores[speaker] || trait_scores.hr,
-    sentiment: { emotion: '自信', confidence: 75 },
+    scores: {
+      '专业能力': 7.5 + Math.random() * 2,
+      '逻辑思维': 7.0 + Math.random() * 2,
+      '表达能力': 7.5 + Math.random() * 2,
+      '学习能力': 7.0 + Math.random() * 1.5,
+      '团队合作': 7.5 + Math.random() * 1.5,
+      '创新思维': 7.0 + Math.random() * 2
+    },
+    sentiment: { emotion: ['自信', '谨慎', '积极'][Math.floor(Math.random() * 3)], confidence: 70 + Math.random() * 20 },
     patterns: [
       {
         id: 'p1',
         name: '结构化思维',
-        description: '回答展现了清晰的逻辑结构',
+        description: '回答清晰有条理',
         confidence: 78,
         color: '#67c23a'
-      },
-      {
-        id: 'p2',
-        name: '实例驱动',
-        description: '善于用具体案例支撑观点',
-        confidence: 72,
-        color: '#409eff'
       }
-    ]
+    ],
+    feedback: '很好的回答！逻辑清晰，表达准确。'
   }
 }
 
-// 生成下一个问题
-async function generateNextQuestion() {
-  isTyping.value = true
-  
-  await new Promise(resolve => setTimeout(resolve, 1200))
-  
-  const phase = assessmentPhases.value[currentPhaseIndex.value]
-  
-  // 检查是否需要切换角色
-  if (shouldSwitchRole()) {
-    await handleRoleTransition()
+async function fetchNextQuestion() {
+  try {
+    const params = new URLSearchParams({
+      candidate_id: props.candidateId,
+      role_id: 'ai',
+      role_name: 'AI面试官',
+      conversation_depth: respondedCount.value.toString(),
+      history: JSON.stringify(messages.value.filter(m => m.role === 'ai').map(m => ({ role: 'ai', content: m.content })))
+    })
+    
+    const response = await fetch(
+      `http://127.0.0.1:8000/assessment/immersive/next-question?${params}`,
+      {
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('access_token') || ''}`
+        }
+      }
+    )
+    
+    if (response.ok) {
+      const data = await response.json()
+      if (data.code === 200 && data.data) {
+        return {
+          content: data.data.content,
+          tags: data.data.tags || [],
+          context: data.data.context,
+          phase: data.data.phase
+        }
+      }
+    }
+  } catch (error) {
+    console.warn('获取问题失败:', error)
   }
   
-  // 生成问题
-  const question = await fetchNextQuestion(currentSpeaker.value, messages.value)
+  return getLocalFallbackQuestion()
+}
+
+function getLocalFallbackQuestion() {
+  const questions = [
+    '请简单介绍一下你自己和你的背景？',
+    '你在过去的工作中遇到过什么挑战？如何解决的？',
+    '描述一个你最自豪的项目经历',
+    '如何处理与团队成员的分歧？',
+    '你如何保持技术知识的更新？',
+    '在压力下工作时你会怎样？',
+    '你对这个岗位最感兴趣的部分是什么？',
+    '你对我们公司有什么了解？为什么想加入我们？'
+  ]
   
-  const role = activeRoles.value.find(r => r.id === currentSpeaker.value)
-  
-  messages.value.push({
-    role: currentSpeaker.value,
-    roleName: role?.name || '',
-    roleTitle: role?.title || '',
-    content: question.content,
-    time: nowTime(),
-    implicitTags: question.tags,
-    timestamp: Date.now()
-  } as any)
-  
-  isTyping.value = false
-  conversationDepth.value++
-  
-  // 更新上下文提示
-  updateContextHint(question.context)
-  
-  // 生成智能建议
-  smartSuggestions.value = question.suggestions || []
-  
-  await scrollToBottom()
-  
-  // 检查是否完成
-  if (conversationDepth.value >= 10) {
-    completeAssessment()
+  const q = questions[respondedCount.value % questions.length]
+  return {
+    content: q,
+    tags: ['开放式问题', '经验分享'],
+    context: '请详细描述你的思考过程',
+    phase: '多轮面试'
   }
 }
 
-// 角色切换
-async function handleRoleTransition() {
-  const nextRole = determineNextRole()
-  
-  messages.value.push({
-    role: 'system',
-    content: '',
-    time: '',
-    isRoleTransition: true,
-    transitionText: `${getRoleName(currentSpeaker.value)} 的提问环节结束，接下来由 ${getRoleName(nextRole)} 继续对话`
-  })
-  
-  currentSpeaker.value = nextRole
-  
-  // 更新阶段
-  const phaseIndex = assessmentPhases.value.findIndex(p => p.roles.includes(nextRole))
-  if (phaseIndex !== -1) {
-    currentPhaseIndex.value = phaseIndex
-    currentPhase.value = assessmentPhases.value[phaseIndex].title
-  }
-  
-  await scrollToBottom()
-}
-
-// 判断是否切换角色
-function shouldSwitchRole(): boolean {
-  const phase = assessmentPhases.value[currentPhaseIndex.value]
-  if (!phase) return false
-  
-  // 达到目标深度，且当前角色进度 > 80%
-  const role = activeRoles.value.find(r => r.id === currentSpeaker.value)
-  return conversationDepth.value >= phase.targetDepth && (role?.progress || 0) > 80
-}
-
-// 确定下一个角色
-function determineNextRole(): string {
-  const nextPhaseIndex = currentPhaseIndex.value + 1
-  if (nextPhaseIndex >= assessmentPhases.value.length) {
-    return currentSpeaker.value
-  }
-  
-  const nextPhase = assessmentPhases.value[nextPhaseIndex]
-  return nextPhase.roles[0]
-}
-
-// 更新评分
 function updateScores(newScores: Record<string, number>) {
-  // 平滑更新，避免突变
   Object.keys(newScores).forEach(key => {
     const current = latestScores.value[key] || 0
     const target = newScores[key]
-    latestScores.value[key] = Math.round((current * 0.7 + target * 0.3) * 10) / 10
+    latestScores.value[key] = Math.round((current * 0.6 + target * 0.4) * 10) / 10
   })
   
   emit('update-scores', latestScores.value)
-  
-  // 更新雷达图
-  nextTick(() => {
-    renderRadarChart()
-  })
+  // 评估数据不在候选人端显示，只在 HR 端显示
 }
 
-// 更新角色进度
-function updateRoleProgress(roleId: string) {
-  const role = activeRoles.value.find(r => r.id === roleId)
-  if (!role) return
-  
-  const increment = 100 / 5  // 假设每个角色需要 5 次互动
-  role.progress = Math.min(100, role.progress + increment)
-  
-  if (role.progress >= 100) {
-    role.completed = true
-  }
-}
-
-// 更新行为模式
 function updatePatterns(patterns: Pattern[]) {
   detectedPatterns.value = patterns
 }
 
-// 生成实时反馈
-function generateLiveFeedback(content: string): string {
-  const length = content.length
-  if (length < 30) return '回答较简短，可以更详细一些'
-  if (length > 200) return '回答很详尽！'
-  return '回答长度适中'
-}
-
-// 更新上下文提示
-function updateContextHint(context: string | null) {
-  contextHint.value = context
-}
-
-// 应用智能建议
-function applySuggestion(suggestion: string) {
-  userInput.value = suggestion
-  inputRef.value?.focus()
-}
-
-// 跳过问题
-function skipCurrentQuestion() {
-  if (!allowSkip.value) return
+function completeInterview() {
+  ElMessage.success('✨ 面试完成！')
+  currentStep.value = 4
   
-  ElMessage.warning('已跳过当前问题')
-  generateNextQuestion()
-}
-
-// 暂停对话
-function pauseConversation() {
-  isPaused.value = !isPaused.value
-  
-  if (isPaused.value) {
-    ElMessage.info('对话已暂停')
-  } else {
-    ElMessage.success('对话已继续')
-    inputRef.value?.focus()
+  // 清理计时器
+  if (timerInterval.value) {
+    clearInterval(timerInterval.value)
+    timerInterval.value = null
   }
-}
-
-// 完成评估
-function completeAssessment() {
-  // 生成亮点总结
-  highlights.value = [
-    '展现了出色的沟通能力，回答清晰有条理',
-    '技术深度方面表现突出，能够深入分析问题',
-    '产品思维活跃，能从用户角度思考问题',
-    '团队协作意识强，善于倾听和反馈'
-  ]
-
+  
   // 准备完成数据
   const completionData = {
     sessionId: `session_${Date.now()}`,
@@ -862,15 +1196,23 @@ function completeAssessment() {
     scores: latestScores.value,
     patterns: detectedPatterns.value,
     duration: elapsedTime.value,
-    conversationDepth: conversationDepth.value,
+    respondedCount: respondedCount.value,
     candidateId: props.candidateId,
     assessmentId: props.assessmentId,
+    candidateInfo: {
+      name: candidateInfo.value.name,
+      education: candidateInfo.value.education,
+      skills: candidateInfo.value.skills,
+      projects: candidateInfo.value.projects
+    },
     startTime: new Date(startTime.value),
     endTime: new Date(),
-    totalRounds: messages.value.filter(m => m.role === 'candidate').length,
-    highlights: highlights.value
+    totalQuestions: interviewPlan.value.totalQuestions,
+    avgResponseTime: respondedCount.value > 0 
+      ? Math.round(elapsedTime.value / respondedCount.value / 1000) 
+      : 0
   }
-
+  
   // 📌 标记评估完成，通知 HomeView 刷新数据
   assessmentStore.markEvaluationComplete({
     jobId: props.initialContext?.job_id,
@@ -878,93 +1220,14 @@ function completeAssessment() {
     sessionId: completionData.sessionId,
     candidateId: props.candidateId
   })
-
-  // 发送 complete 事件给父组件
+  
+  // Emit 完成事件（父组件可能需要关闭模态框或导航）
   emit('complete', completionData)
-
-  showCompletionDialog.value = true
-}
-
-// 生成报告
-async function generateReport() {
-  ElMessage.success('正在保存评估数据...')
-  showCompletionDialog.value = false
-  
-  // 准备完成数据
-  const completionData: any = {
-    candidate_id: props.candidateId,
-    assessment_id: props.assessmentId,
-    job_id: props.initialContext?.job_id,
-    messages: messages.value.map(m => ({
-      role: m.role,
-      content: m.content,
-      time: m.time,
-      roleName: m.roleName,
-      roleTitle: m.roleTitle
-    })),
-    scores: latestScores.value,
-    patterns: detectedPatterns.value,
-    duration_seconds: Math.floor(elapsedTime.value / 1000),
-    conversation_depth: conversationDepth.value,
-    total_rounds: messages.value.filter(m => m.role === 'candidate').length,
-    highlights: highlights.value,
-    session_id: undefined
-  }
-  
-  try {
-    // 调用后端保存会话 API
-    const response = await fetch(
-      'http://127.0.0.1:8000/assessment/immersive/save-session',
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('access_token') || ''}`
-        },
-        body: JSON.stringify(completionData)
-      }
-    )
-    
-    if (!response.ok) {
-      throw new Error('保存会话失败')
-    }
-    
-    const result = await response.json()
-    
-    if (result.code === 200) {
-      ElMessage.success('评估数据已保存')
-      completionData.assessment_id = result.data?.assessment_id
-      completionData.session_id = result.data?.session_id
-    }
-  } catch (error) {
-    console.error('保存会话错误:', error)
-    ElMessage.warning('无法保存到服务器，但可以继续查看报告')
-  }
-  
-  // 通知父组件进行下一步
-  emit('save', completionData)
-  
-  // 然后 emit complete 通知完成
-  setTimeout(() => {
-    emit('complete', completionData)
-  }, 500)
 }
 
 // ==================== 辅助方法 ====================
-function getRoleStatus(role: Role): string {
-  if (role.completed) return '已完成'
-  if (role.id === currentSpeaker.value) return '对话中'
-  return '等待中'
-}
-
 function getRoleAvatar(roleId: string): string {
-  const role = activeRoles.value.find(r => r.id === roleId)
-  return role?.avatar || ''
-}
-
-function getRoleName(roleId: string): string {
-  const role = activeRoles.value.find(r => r.id === roleId)
-  return role?.name || ''
+  return aiInterviewerAvatar.value
 }
 
 function getSentimentType(emotion: string): string {
@@ -972,7 +1235,7 @@ function getSentimentType(emotion: string): string {
     '自信': 'success',
     '谨慎': 'warning',
     '积极': 'success',
-    '思考中': 'info'
+    '思考': 'info'
   }
   return map[emotion] || 'info'
 }
@@ -991,9 +1254,8 @@ function getTraitColor(trait: string): string {
 }
 
 function generateAvatar(initials: string): string {
-  const colors = ['#409eff', '#67c23a', '#e6a23c', '#f56c6c']
-  const color = colors[Math.floor(Math.random() * colors.length)]
-  return `data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ccircle cx='32' cy='32' r='32' fill='${encodeURIComponent(color)}'/%3E%3Ctext x='32' y='40' font-size='20' text-anchor='middle' fill='%23fff'%3E${initials}%3C/text%3E%3C/svg%3E`
+  const color = '#409eff'
+  return `data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ccircle cx='32' cy='32' r='32' fill='${encodeURIComponent(color)}'/%3E%3Ctext x='32' y='40' font-size='20' text-anchor='middle' fill='%23fff' font-weight='bold'%3E${initials}%3C/text%3E%3C/svg%3E`
 }
 
 function nowTime(): string {
@@ -1014,161 +1276,12 @@ async function scrollToBottom() {
   }
 }
 
-function handleInputChange() {
-  // 可以在这里添加实时输入分析
-}
-
-// ==================== 真实后端 API ====================
-async function fetchNextQuestion(speaker: string, history: Message[]) {
-  try {
-    // 构建对话历史 JSON
-    const historyJson = history.map(msg => ({
-      role: msg.role,
-      content: msg.content
-    }))
-    
-    const currentRole = activeRoles.value.find(r => r.id === speaker)
-    
-    // 构建查询参数
-    const params = new URLSearchParams({
-      candidate_id: props.candidateId,
-      role_id: speaker,
-      role_name: currentRole?.name || speaker,
-      conversation_depth: conversationDepth.value.toString(),
-      history: JSON.stringify(historyJson)
-    })
-    
-    // 调用后端 API
-    const response = await fetch(
-      `http://127.0.0.1:8000/assessment/immersive/next-question?${params}`,
-      {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('access_token') || ''}`
-        }
-      }
-    )
-    
-    if (!response.ok) {
-      console.warn('API 调用失败，使用本地模拟')
-      return getLocalFallbackQuestion(speaker)
-    }
-    
-    const data = await response.json()
-    
-    if (data.code === 200 && data.data) {
-      return {
-        content: data.data.content,
-        tags: data.data.tags || [],
-        suggestions: data.data.suggestions || [],
-        context: data.data.context
-      }
-    } else {
-      return getLocalFallbackQuestion(speaker)
-    }
-  } catch (error) {
-    console.error('获取问题失败:', error)
-    return getLocalFallbackQuestion(speaker)
-  }
-}
-
-// 本地备用问题库
-function getLocalFallbackQuestion(roleId: string) {
-  const questionBank: Record<string, any> = {
-    hr: {
-      content: '请简单介绍一下你自己和你的背景？',
-      tags: ['背景了解', '自我认知'],
-      suggestions: ['我叫...，毕业于...', '我有...年的工作经验'],
-      context: '这是一个开放性问题，轻松回答即可'
-    },
-    tech_lead: {
-      content: '描述一下你最近解决的一个技术难题？',
-      tags: ['问题解决', '技术深度'],
-      suggestions: ['遇到了...问题', '我通过...方法解决'],
-      context: '尽量具体描述技术细节'
-    },
-    product: {
-      content: '如果让你设计一个新功能，你会如何思考？',
-      tags: ['产品思维', '用户洞察'],
-      suggestions: ['首先了解用户需求', '然后分析竞品'],
-      context: '展示你的产品思维过程'
-    },
-    cto: {
-      content: '你对未来 3-5 年的职业规划是什么？',
-      tags: ['战略思维', '目标导向'],
-      suggestions: ['我的目标是...', '为此我计划...'],
-      context: '这是一个关键问题，认真思考'
-    }
-  }
-  
-  return questionBank[roleId] || questionBank.hr
-}
-
-// 渲染雷达图
-function renderRadarChart() {
-  if (!radarChart.value) return
-  
-  const chart = echarts.init(radarChart.value)
-  
-  const indicator = Object.keys(latestScores.value).map(key => ({
-    name: key,
-    max: 10
-  }))
-  
-  const data = Object.values(latestScores.value)
-  
-  const option = {
-    radar: {
-      indicator,
-      splitNumber: 4,
-      splitArea: {
-        areaStyle: {
-          color: ['rgba(64, 158, 255, 0.05)', 'rgba(64, 158, 255, 0.1)']
-        }
-      }
-    },
-    series: [{
-      type: 'radar',
-      data: [{
-        value: data,
-        name: '当前评估',
-        areaStyle: {
-          color: 'rgba(64, 158, 255, 0.3)'
-        },
-        lineStyle: {
-          color: '#409eff',
-          width: 2
-        }
-      }]
-    }]
-  }
-  
-  chart.setOption(option)
-}
+// 注意：雷达图渲染已移除，评估数据在 HR 端单独实现
 
 // ==================== 生命周期 ====================
 onMounted(() => {
-  // 启动定时器
-  timerInterval.value = window.setInterval(() => {
-    elapsedTime.value = Date.now() - startTime.value
-  }, 1000)
-  
-  // 初始化对话
-  setTimeout(() => {
-    generateNextQuestion()
-  }, 1000)
-  
-  // 初始化雷达图
-  nextTick(() => {
-    renderRadarChart()
-  })
+  // 初始化不添加消息，让 Step 0 的 UI 直接显示
 })
-
-// 监听分数变化
-watch(latestScores, () => {
-  renderRadarChart()
-}, { deep: true })
 </script>
 
 <style scoped>
@@ -1176,13 +1289,1446 @@ watch(latestScores, () => {
 .immersive-dialogue {
   position: relative;
   display: grid;
-  grid-template-columns: 280px 1fr 320px;
-  grid-template-rows: auto 1fr;
+  grid-template-columns: 320px 1fr; /* 仅保留左侧信息面板和中间对话区 */
+  grid-template-rows: 1fr;
   gap: 16px;
   height: 100vh;
   padding: 16px;
   background: #f5f7fa;
+  overflow: visible;
+  z-index: 1;
+  /* 注意：右侧评估面板已移除，将在 HR 端实现 */
+}
+
+/* ==================== 左侧面板 ==================== */
+.left-sidebar {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  border-radius: 12px;
+  /* SVG 背景通过内联样式设置 */
+  background-color: #fff;
+  background-repeat: no-repeat;
+  background-size: cover;
+  background-position: center;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
   overflow: hidden;
+}
+
+.svg-overlay {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background-color: rgba(0,0,0,0.3);
+  color: white;
+  text-align: center;
+}
+
+/* panel-overlay - 仅显示流程控制器，不显示表单 */
+
+.el-dialog__body .upload-area {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.el-dialog__body .info-form {
+  margin-top: 12px;
+}
+
+.panel-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  flex-direction: column;
+  background-color: rgba(255,255,255,0.85);
+  padding: 16px;
+  overflow-y: auto;
+  z-index: 1;
+}
+
+/* SVG 容器 */
+.svg-container {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+}
+
+.svg-placeholder {
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+}
+
+.placeholder-text {
+  margin-bottom: 32px;
+}
+
+.placeholder-text p {
+  margin: 0 0 12px 0;
+  font-size: 18px;
+}
+
+.placeholder-text .sub-text {
+  font-size: 14px;
+  opacity: 0.9;
+}
+
+/* SVG 图片会替换上面的placeholder-text */
+.svg-container svg,
+.svg-container img {
+  max-width: 100%;
+  max-height: 350px;
+  object-fit: contain;
+}
+
+/* 流程指示器 */
+.process-indicator {
+  padding: 16px;
+  border-bottom: 1px solid #ebeef5;
+  overflow-y: auto;
+  flex-shrink: 0;
+}
+
+.process-indicator .step {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  margin-bottom: 8px;
+  cursor: pointer;
+  border-radius: 8px;
+  transition: all 0.3s ease;
+}
+
+.process-indicator .step:hover {
+  background: #f5f7fa;
+}
+
+.process-indicator .step.active {
+  background: #e6eefb;
+  color: #409eff;
+}
+
+.process-indicator .step.completed {
+  color: #67c23a;
+}
+
+.process-indicator .step-number {
+  min-width: 32px;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: #f0f0f0;
+  font-weight: bold;
+  font-size: 13px;
+}
+
+.process-indicator .step.active .step-number {
+  background: #409eff;
+  color: white;
+}
+
+.process-indicator .step.completed .step-number {
+  background: #67c23a;
+  color: white;
+}
+
+.process-indicator .step-title {
+  font-size: 13px;
+  flex: 1;
+}
+
+/* ==================== 舞台背景 ==================== */
+.stage-background {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 0;
+  pointer-events: none;
+}
+
+.ambient-layer {
+  position: absolute;
+  inset: 0;
+  background: 
+    radial-gradient(ellipse at 20% 20%, rgba(64, 158, 255, 0.08) 0%, transparent 50%),
+    radial-gradient(ellipse at 80% 80%, rgba(103, 194, 58, 0.08) 0%, transparent 50%);
+  animation: ambient-shift 20s ease-in-out infinite;
+}
+
+.meeting-room-overlay {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0) 0%, rgba(255, 255, 255, 0.5) 100%);
+}
+
+@keyframes ambient-shift {
+  0%, 100% { opacity: 0.6; }
+  50% { opacity: 0.8; }
+}
+
+/* ==================== 左侧面板 ==================== */
+.left-sidebar {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  background: rgba(255, 255, 255, 0.95);
+  border-radius: 12px;
+  padding: 16px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+  overflow-y: auto;
+}
+
+/* 流程指示器 */
+.process-indicator {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #e4e7ed;
+}
+
+.step {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.3s;
+  background: #fafbfc;
+}
+
+.step.active {
+  background: linear-gradient(135deg, #e3f2fd 0%, #e8f4f8 100%);
+  border-left: 3px solid #409eff;
+}
+
+.step.completed {
+  opacity: 0.7;
+  background: linear-gradient(135deg, #e8f5e9 0%, #f1f8f4 100%);
+}
+
+.step:hover {
+  background: #f0f2f5;
+}
+
+.step-number {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  background: #409eff;
+  color: #fff;
+  border-radius: 50%;
+  font-size: 12px;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+.step.completed .step-number {
+  background: #67c23a;
+}
+
+.step-title {
+  font-size: 13px;
+  font-weight: 500;
+  color: #606266;
+}
+
+.step.active .step-title {
+  color: #2c3e50;
+  font-weight: 600;
+}
+
+/* 信息面板 */
+.info-panel {
+  flex: 1;
+}
+
+.panel-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #2c3e50;
+}
+
+.panel-title .close-btn {
+  margin-left: auto;
+  margin-right: auto;
+  color: #909399;
+}
+
+.panel-title .close-btn:hover {
+  color: #f56c6c;
+}
+
+.step-content {
+  animation: slide-in 0.3s ease-out;
+}
+
+@keyframes slide-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.upload-area {
+  margin-bottom: 16px;
+}
+
+.info-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 12px 0;
+}
+
+.form-item {
+  font-size: 13px;
+}
+
+.next-btn,
+.start-btn {
+  width: 100%;
+  margin-top: 12px;
+}
+
+.start-btn {
+  height: 40px;
+  font-size: 15px;
+}
+
+.info-display {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.info-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.info-item .label {
+  font-size: 12px;
+  font-weight: 600;
+  color: #606266;
+}
+
+.confirm-checkbox {
+  margin: 12px 0;
+  font-size: 12px;
+}
+
+.process-preview {
+  margin-bottom: 16px;
+}
+
+.process-preview h4 {
+  margin: 0 0 12px 0;
+  font-size: 14px;
+  color: #2c3e50;
+}
+
+.preview-content {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.preview-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: #f0f9ff;
+  border-radius: 6px;
+  font-size: 13px;
+  color: #606266;
+}
+
+.plan-details h5 {
+  margin: 0 0 8px 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: #606266;
+}
+
+.dimension-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.interview-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.progress-stats {
+  padding: 12px;
+  background: #fafbfc;
+  border-radius: 6px;
+}
+
+.stat {
+  margin-bottom: 8px;
+}
+
+.stat:last-child {
+  margin-bottom: 0;
+}
+
+.stat-label {
+  font-size: 11px;
+  color: #909399;
+  margin-bottom: 4px;
+}
+
+.stat-value {
+  font-size: 18px;
+  font-weight: 700;
+  color: #409eff;
+}
+
+.candidate-summary {
+  padding: 12px;
+  background: #fafbfc;
+  border-radius: 6px;
+}
+
+.candidate-summary h5 {
+  margin: 0 0 8px 0;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.summary-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 4px 0;
+  font-size: 12px;
+}
+
+.summary-item .key {
+  color: #909399;
+}
+
+.summary-item .value {
+  color: #2c3e50;
+  font-weight: 500;
+}
+
+/* ==================== 对话框操作按钮 ==================== */
+.conversation-starter .action-btn {
+  margin-top: 16px;
+  padding: 8px 24px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.conversation-starter .action-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(64, 158, 255, 0.3);
+}
+
+.upload-action-btn {
+  margin-top: 24px;
+  padding: 12px 40px !important;
+  font-size: 16px !important;
+  font-weight: 600 !important;
+  height: auto !important;
+  min-height: 44px !important;
+}
+
+.upload-action-btn:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 6px 16px rgba(64, 158, 255, 0.4);
+}
+
+.start-interview-btn {
+  margin-top: 24px;
+  padding: 12px 40px !important;
+  font-size: 16px !important;
+  font-weight: 600 !important;
+  height: auto !important;
+  min-height: 44px !important;
+}
+
+.start-interview-btn:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 6px 16px rgba(64, 158, 255, 0.4);
+}
+
+/* ==================== 解析信息展示 ==================== */
+.parsed-info-display {
+  margin: 20px 0;
+  text-align: left;
+}
+
+.info-card {
+  background: #f5f7fa;
+  border-left: 4px solid #409eff;
+  border-radius: 6px;
+  padding: 16px;
+  margin-bottom: 12px;
+}
+
+.info-header {
+  font-weight: 600;
+  font-size: 14px;
+  color: #2c3e50;
+  margin-bottom: 12px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.info-content {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.info-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 13px;
+}
+
+.info-row .label {
+  font-weight: 600;
+  color: #606266;
+  min-width: 80px;
+}
+
+.info-row .value {
+  color: #2c3e50;
+  flex: 1;
+}
+
+.skills-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.skills-list :deep(.el-tag) {
+  border-radius: 4px;
+}
+
+.dimensions-list {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.dimension-item {
+  padding: 8px 12px;
+  background: #fff;
+  border-radius: 4px;
+  font-size: 13px;
+  color: #606266;
+  border: 1px solid #ebeef5;
+}
+
+/* ==================== 面试流程说明 ==================== */
+.interview-briefing {
+  padding: 20px;
+}
+
+.briefing-content {
+  text-align: left;
+  margin: 20px 0;
+}
+
+.interview-plan {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin: 16px 0;
+  background: #f5f7fa;
+  border-radius: 8px;
+  padding: 16px;
+}
+
+.plan-item {
+  display: flex;
+  gap: 12px;
+  padding: 12px;
+  background: #fff;
+  border-radius: 6px;
+  border-left: 4px solid #409eff;
+}
+
+.plan-icon {
+  font-size: 24px;
+  min-width: 40px;
+  text-align: center;
+  line-height: 1;
+}
+
+.plan-detail {
+  flex: 1;
+}
+
+.plan-title {
+  font-weight: 600;
+  font-size: 14px;
+  color: #2c3e50;
+  margin-bottom: 4px;
+}
+
+.plan-item p {
+  margin: 0;
+  font-size: 13px;
+  color: #909399;
+}
+
+.interview-stats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  margin: 16px 0;
+  padding: 16px;
+  background: #f0f9ff;
+  border-radius: 8px;
+}
+
+.stat-item {
+  text-align: center;
+}
+
+.stat-label {
+  font-size: 12px;
+  color: #909399;
+  margin-bottom: 8px;
+}
+
+.stat-value {
+  font-size: 20px;
+  font-weight: 700;
+  color: #409eff;
+}
+
+/* ==================== 信息对话框样式 ==================== */
+.info-dialog {
+  --el-dialog-border-radius: 12px;
+}
+
+.info-dialog :deep(.el-dialog__header) {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border-radius: 12px 12px 0 0;
+}
+
+.info-dialog :deep(.el-dialog__title) {
+  color: #fff;
+  font-weight: 600;
+  font-size: 16px;
+}
+
+.info-dialog :deep(.el-dialog__close) {
+  color: #fff;
+}
+
+.dialog-content {
+  padding: 24px 0;
+}
+
+.upload-section,
+.form-section {
+  margin-bottom: 24px;
+  padding: 0 24px;
+}
+
+.section-title {
+  margin: 0 0 8px 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: #2c3e50;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.section-desc {
+  margin: 0 0 16px 0;
+  font-size: 13px;
+  color: #909399;
+}
+
+/* 简历上传样式 */
+.resume-upload {
+  width: 100%;
+}
+
+.resume-upload :deep(.el-upload-dragger) {
+  border: 2px dashed #d9d9d9;
+  border-radius: 8px;
+  transition: all 0.3s ease;
+  padding: 40px 20px;
+}
+
+.resume-upload :deep(.el-upload-dragger:hover) {
+  border-color: #409eff;
+  background-color: #f5f7fa;
+}
+
+.resume-upload :deep(.el-upload-dragger.is-dragover) {
+  border-color: #409eff;
+  background-color: #e6eefb;
+}
+
+.upload-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+
+.upload-icon {
+  font-size: 48px;
+  color: #409eff;
+}
+
+.upload-icon.animate-spin {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.upload-text {
+  text-align: center;
+}
+
+.upload-text .main {
+  margin: 0;
+  font-size: 14px;
+  color: #606266;
+  font-weight: 500;
+}
+
+.upload-text .main em {
+  color: #409eff;
+  font-style: normal;
+  font-weight: 600;
+}
+
+.upload-text .secondary {
+  margin: 4px 0 0 0;
+  font-size: 12px;
+  color: #909399;
+}
+
+.resume-upload :deep(.el-upload__tip) {
+  margin-top: 12px;
+  font-size: 12px;
+}
+
+.file-info {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  background: #f0f9ff;
+  border-radius: 4px;
+  color: #67c23a;
+  font-weight: 500;
+}
+
+/* 表单样式 */
+.form-group {
+  margin-bottom: 16px;
+}
+
+.form-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+.form-row .form-group {
+  margin-bottom: 0;
+}
+
+.form-label {
+  display: block;
+  margin-bottom: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #606266;
+}
+
+.required {
+  color: #f56c6c;
+}
+
+.optional-tag {
+  font-size: 12px;
+  font-weight: 400;
+  color: #909399;
+  margin-left: 4px;
+}
+
+.form-input,
+.form-select {
+  width: 100%;
+  font-size: 13px;
+}
+
+.form-input :deep(.el-input__wrapper) {
+  border-radius: 6px;
+}
+
+.form-select {
+  --el-border-radius-base: 6px;
+}
+
+.auto-fill-indicator {
+  font-size: 12px;
+  color: #67c23a;
+  font-weight: 600;
+  margin-left: 4px;
+}
+
+.auto-fill-tip {
+  display: block;
+  font-size: 12px;
+  color: #67c23a;
+  margin-top: 4px;
+  font-weight: 600;
+}
+
+.form-help-text {
+  margin: 4px 0 0 0;
+  font-size: 12px;
+  color: #909399;
+}
+
+/* 信息提示 */
+.info-tips {
+  margin: 0 24px;
+  padding-top: 16px;
+  border-top: 1px solid #ebeef5;
+}
+
+.info-tips :deep(.el-alert) {
+  border-radius: 8px;
+  --el-alert-bg-color: #f0f9ff;
+  --el-alert-border-color: #b3e5fc;
+  --el-alert-title-color: #0288d1;
+  --el-alert-description-color: #01579b;
+}
+
+/* 确保 el-dialog 显示在最上方 */
+:deep(.el-dialog) {
+  z-index: 3000 !important;
+}
+
+:deep(.el-overlay) {
+  z-index: 2999 !important;
+}
+
+:deep(.el-overlay__wrapper) {
+  z-index: 2999 !important;
+}
+
+/* ==================== 对话容器 ==================== */
+.dialogue-container {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  background: #fff;
+  border-radius: 12px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+  overflow: hidden;
+}
+
+.dialogue-header {
+  padding: 16px 20px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: #fff;
+}
+
+.header-content {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 20px;
+}
+
+.ai-profile {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.ai-avatar {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+}
+
+.ai-info h3 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.ai-info p {
+  margin: 0;
+  font-size: 12px;
+  opacity: 0.9;
+}
+
+.session-meta {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  font-size: 12px;
+}
+
+.sentiment-monitor {
+  margin-top: 12px;
+  padding: 12px;
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 6px;
+  display: flex;
+  gap: 16px;
+  align-items: center;
+}
+
+.sentiment-indicator,
+.confidence-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.sentiment-indicator .label,
+.confidence-bar .label {
+  font-size: 12px;
+  opacity: 0.9;
+}
+
+/* ==================== 消息流 ==================== */
+.message-stream {
+  flex: 1;
+  overflow-y: auto;
+  padding: 20px;
+  background: #fafbfc;
+}
+
+.conversation-starter {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 200px;
+}
+
+.starter-content {
+  text-align: center;
+  max-width: 360px;
+}
+
+.greeting-avatar {
+  width: 64px;
+  height: 64px;
+  margin: 0 auto 16px;
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.greeting-avatar img {
+  width: 100%;
+  height: 100%;
+}
+
+.starter-icon {
+  font-size: 48px;
+  color: #409eff;
+  margin-bottom: 16px;
+  display: block;
+  animation: spin 2s linear infinite;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+.starter-content h4 {
+  margin: 0 0 8px 0;
+  font-size: 16px;
+  color: #2c3e50;
+}
+
+.starter-content p {
+  margin: 4px 0;
+  color: #606266;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.starter-tip {
+  color: #909399;
+  font-size: 12px;
+  margin-top: 12px;
+}
+
+.message-item {
+  margin-bottom: 20px;
+  animation: message-slide-in 0.3s ease-out;
+}
+
+@keyframes message-slide-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.ai-message {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.message-avatar {
+  flex-shrink: 0;
+  width: 40px;
+  height: 40px;
+}
+
+.message-avatar img {
+  width: 100%;
+  height: 100%;
+  border-radius: 8px;
+}
+
+.candidate-avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 8px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.message-content {
+  flex: 1;
+  max-width: 70%;
+}
+
+.message-header {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 4px;
+  font-size: 12px;
+}
+
+.speaker-name {
+  font-weight: 600;
+  color: #2c3e50;
+}
+
+.timestamp {
+  color: #c0c4cc;
+}
+
+.response-metrics {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: #909399;
+}
+
+.message-body {
+  padding: 12px 16px;
+  border-radius: 8px;
+  background: #fff;
+  border: 1px solid #e4e7ed;
+  line-height: 1.6;
+  color: #2c3e50;
+  font-size: 13px;
+}
+
+.candidate-message {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  justify-content: flex-end;
+  flex-direction: row-reverse;
+}
+
+.candidate-message .message-content {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+}
+
+.candidate-message .message-body {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: #fff;
+  border: none;
+}
+
+.message-tags {
+  margin-top: 8px;
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.ai-feedback {
+  margin-top: 8px;
+  padding: 6px 10px;
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 4px;
+  font-size: 11px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* ==================== 打字指示器 ==================== */
+.typing-indicator {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  animation: message-slide-in 0.3s ease-out;
+}
+
+.typing-avatar {
+  width: 40px;
+  height: 40px;
+}
+
+.typing-avatar img {
+  width: 100%;
+  height: 100%;
+  border-radius: 8px;
+}
+
+.typing-dots {
+  display: flex;
+  gap: 4px;
+  padding: 12px 16px;
+  background: #fff;
+  border: 1px solid #e4e7ed;
+  border-radius: 8px;
+}
+
+.typing-dots span {
+  width: 8px;
+  height: 8px;
+  background: #c0c4cc;
+  border-radius: 50%;
+  animation: typing-bounce 1.4s infinite;
+}
+
+.typing-dots span:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+.typing-dots span:nth-child(3) {
+  animation-delay: 0.4s;
+}
+
+@keyframes typing-bounce {
+  0%, 60%, 100% { transform: translateY(0); }
+  30% { transform: translateY(-8px); }
+}
+
+/* ==================== 输入区 ==================== */
+.input-area {
+  padding: 16px 20px;
+  background: #fff;
+  border-top: 1px solid #e4e7ed;
+}
+
+.context-hint {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  margin-bottom: 12px;
+  background: #fff7e6;
+  border-left: 3px solid #e6a23c;
+  border-radius: 4px;
+  font-size: 12px;
+  color: #606266;
+}
+
+.input-wrapper {
+  margin-bottom: 12px;
+}
+
+.input-controls {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.control-hints {
+  display: flex;
+  gap: 16px;
+  font-size: 11px;
+  color: #909399;
+}
+
+.control-buttons {
+  display: flex;
+  gap: 8px;
+}
+
+/* ==================== 右侧洞察面板 ==================== */
+.insights-sidebar {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  overflow-y: auto;
+}
+
+.insight-card {
+  background: rgba(255, 255, 255, 0.95);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+}
+
+.card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.radar-card {
+  flex: 0 0 auto;
+}
+
+.radar-chart {
+  width: 100%;
+  height: 200px;
+}
+
+.radar-legend {
+  margin-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+}
+
+.legend-color {
+  width: 12px;
+  height: 12px;
+  border-radius: 2px;
+}
+
+.legend-name {
+  flex: 1;
+  color: #606266;
+}
+
+.legend-value {
+  font-weight: 600;
+  color: #2c3e50;
+}
+
+.pattern-card {
+  flex: 0 0 auto;
+}
+
+.pattern-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.empty-state {
+  padding: 20px;
+  text-align: center;
+  color: #909399;
+  font-size: 12px;
+}
+
+.pattern-item {
+  display: flex;
+  gap: 10px;
+  padding: 10px;
+  background: #fafbfc;
+  border-radius: 6px;
+  border: 1px solid #e4e7ed;
+}
+
+.pattern-indicator {
+  width: 4px;
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+
+.pattern-info {
+  flex: 1;
+}
+
+.pattern-name {
+  font-size: 12px;
+  font-weight: 600;
+  color: #2c3e50;
+  margin-bottom: 2px;
+}
+
+.pattern-desc {
+  font-size: 11px;
+  color: #606266;
+  line-height: 1.3;
+}
+
+.pattern-confidence {
+  font-size: 10px;
+  color: #909399;
+  margin-top: 4px;
+}
+
+.stats-card {
+  flex: 0 0 auto;
+}
+
+.stats-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.stat-item {
+  padding: 10px;
+  background: #fafbfc;
+  border-radius: 6px;
+  border: 1px solid #e4e7ed;
+  text-align: center;
+}
+
+.stat-item .stat-label {
+  font-size: 10px;
+  color: #909399;
+  margin-bottom: 4px;
+}
+
+.stat-item .stat-value {
+  font-size: 14px;
+  font-weight: 700;
+  color: #409eff;
+}
+
+/* ==================== 响应式 ==================== */
+@media (max-width: 1200px) {
+  .immersive-dialogue {
+    grid-template-columns: 1fr;
+    height: auto;
+    min-height: 100vh;
+  }
+  
+  .left-sidebar {
+    order: 1;
+    max-height: 40vh;
+    overflow-y: auto;
+  }
+  
+  .dialogue-container {
+    order: 2;
+    min-height: 60vh;
+  }
+  
+  .message-content {
+    max-width: 90%;
+  }
+}
+
+@media (max-width: 768px) {
+  .immersive-dialogue {
+    padding: 8px;
+    gap: 8px;
+  }
+  
+  .left-sidebar {
+    max-height: 40vh;
+  }
+  
+  .dialogue-container {
+    min-height: 50vh;
+  }
+  
+  .header-content {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  
+  .session-meta {
+    font-size: 11px;
+    flex-wrap: wrap;
+  }
 }
 
 /* ==================== 舞台背景 ==================== */

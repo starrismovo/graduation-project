@@ -184,6 +184,43 @@
         <!-- 注册表单 -->
         <div v-show="activeTab === 'register'" class="form-area">
           <el-form :model="registerForm" :rules="rules" ref="registerFormRef" @submit.prevent="handleRegister">
+            <!-- 用户类型选择 -->
+            <div class="user-type-selector">
+              <div class="type-option">
+                <input 
+                  type="radio" 
+                  id="user-type-candidate" 
+                  value="candidate" 
+                  v-model="registerForm.userType"
+                  class="type-radio"
+                >
+                <label for="user-type-candidate" class="type-label">
+                  <span class="type-icon">👤</span>
+                  <span class="type-text">
+                    <span class="type-title">普通用户</span>
+                    <span class="type-desc">应聘者和求职者</span>
+                  </span>
+                </label>
+              </div>
+              <div class="type-option">
+                <input 
+                  type="radio" 
+                  id="user-type-hr" 
+                  value="hr" 
+                  v-model="registerForm.userType"
+                  class="type-radio"
+                >
+                <label for="user-type-hr" class="type-label">
+                  <span class="type-icon">👔</span>
+                  <span class="type-text">
+                    <span class="type-title">HR 管理员</span>
+                    <span class="type-desc" v-if="registerForm.userType === 'hr'">需要邀请码</span>
+                    <span class="type-desc" v-else>需要企业邀请码认证</span>
+                  </span>
+                </label>
+              </div>
+            </div>
+
             <el-form-item prop="username">
               <div class="form-label">用户名</div>
               <el-input 
@@ -235,6 +272,33 @@
               </el-input>
             </el-form-item>
 
+            <!-- HR邀请码输入框 - 仅在选择HR时显示 -->
+            <div v-if="registerForm.userType === 'hr'" class="hr-invite-section">
+              <el-form-item prop="inviteCode">
+                <div class="form-label">HR 邀请码 <span class="required">*</span></div>
+                <el-input 
+                  v-model="registerForm.inviteCode" 
+                  placeholder="请输入企业邀请码" 
+                  size="large"
+                  class="custom-input"
+                  maxlength="20"
+                >
+                  <template #prefix>
+                    <svg class="input-icon" viewBox="0 0 20 20" fill="currentColor">
+                      <path d="M15 8a3 3 0 11-6 0 3 3 0 016 0z" />
+                      <path fill-rule="evenodd" d="M12.316 3.051a1 1 0 01.633 1.265l-4 12a1 1 0 11-1.898-.632l4-12a1 1 0 011.265-.633zM5.707 6.293a1 1 0 010 1.414L3.414 10l2.293 2.293a1 1 0 11-1.414 1.414l-3-3a1 1 0 010-1.414l3-3a1 1 0 011.414 0zm8.586 0a1 1 0 011.414 0l3 3a1 1 0 010 1.414l-3 3a1 1 0 11-1.414-1.414L16.586 10l-2.293-2.293a1 1 0 010-1.414z" clip-rule="evenodd" />
+                    </svg>
+                  </template>
+                </el-input>
+              </el-form-item>
+              <div class="invite-tip">
+                <svg class="tip-icon" viewBox="0 0 20 20" fill="currentColor">
+                  <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd" />
+                </svg>
+                <span>请输入有效的企业邀请码才能注册为 HR 管理员</span>
+              </div>
+            </div>
+
             <!-- 注册提示 -->
             <div class="register-notice">
               <svg class="notice-icon" viewBox="0 0 20 20" fill="currentColor">
@@ -246,6 +310,7 @@
                   <li>用户名至少 3 个字符</li>
                   <li>请使用有效的企业邮箱</li>
                   <li>密码长度至少 6 个字符</li>
+                  <li v-if="registerForm.userType === 'hr'">HR 注册需要有效的邀请码</li>
                 </ul>
               </div>
             </div>
@@ -288,8 +353,19 @@ const registerForm = reactive({
   username: '',
   email: '',
   password: '',
+  userType: 'candidate',  // 'candidate' 或 'hr'
+  inviteCode: '',
   is_hr: false
 })
+
+// HR 邀请码列表（固定值）
+const VALID_HR_INVITE_CODES = [
+  'HR2026@STAR',
+  'ADMIN@RECRUIT',
+  'TALENT@MATCH',
+  'HIRING@PRO',
+  'RECRUIT@2026'
+]
 
 const rules = {
   username: [{ required: true, message: '请输入用户名', trigger: 'blur' }],
@@ -376,22 +452,38 @@ const handleRegister = async () => {
       return
     }
 
+    // HR 邀请码验证
+    if (registerForm.userType === 'hr') {
+      if (!registerForm.inviteCode) {
+        ElMessage.warning('请输入 HR 邀请码')
+        loading.value = false
+        return
+      }
+      if (!VALID_HR_INVITE_CODES.includes(registerForm.inviteCode.trim())) {
+        ElMessage.error('❌ 邀请码无效，请确认输入正确')
+        loading.value = false
+        return
+      }
+    }
+
     const formData = new FormData()
     formData.append('username', registerForm.username)
     formData.append('email', registerForm.email)
     formData.append('password', registerForm.password)
-    formData.append('is_hr', registerForm.is_hr.toString())
+    formData.append('is_hr', (registerForm.userType === 'hr').toString())
 
     await axios.post(`${API_BASE}/auth/register`, formData, {
       withCredentials: false
     })
 
-    ElMessage.success('注册成功！请登录')
+    ElMessage.success('✅ 注册成功！请登录')
     activeTab.value = 'login'
     loginForm.username = registerForm.username
     registerForm.username = ''
     registerForm.email = ''
     registerForm.password = ''
+    registerForm.inviteCode = ''
+    registerForm.userType = 'candidate'
     registerForm.is_hr = false
   } catch (err: any) {
     console.error('注册错误:', err)
@@ -733,6 +825,124 @@ const handleRegister = async () => {
 
 .forgot-link:hover {
   color: #4f46e5;
+}
+
+/* ========== 用户类型选择器 ========== */
+.user-type-selector {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin-bottom: 28px;
+}
+
+.type-option {
+  position: relative;
+}
+
+.type-radio {
+  appearance: none;
+  -webkit-appearance: none;
+  position: absolute;
+  opacity: 0;
+  width: 100%;
+  height: 100%;
+  cursor: pointer;
+  top: 0;
+  left: 0;
+}
+
+.type-label {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px;
+  background: #f9fafb;
+  border: 2px solid #e5e7eb;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.type-radio:checked + .type-label {
+  background: #eff6ff;
+  border-color: #6366f1;
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
+}
+
+.type-radio:hover + .type-label {
+  border-color: #d1d5db;
+  background: #fafbfc;
+}
+
+.type-icon {
+  font-size: 24px;
+  display: block;
+}
+
+.type-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.type-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #1a1a1a;
+}
+
+.type-desc {
+  font-size: 12px;
+  color: #9ca3af;
+}
+
+.type-radio:checked + .type-label .type-title {
+  color: #6366f1;
+}
+
+.type-radio:checked + .type-label .type-desc {
+  color: #6b7280;
+}
+
+/* ========== HR邀请码区域 ========== */
+.hr-invite-section {
+  animation: slideDown 0.25s ease;
+  margin-bottom: 20px;
+}
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.required {
+  color: #ef4444;
+  margin-left: 2px;
+}
+
+.invite-tip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  background: #fef3c7;
+  border: 1px solid #fcd34d;
+  border-radius: 6px;
+  margin-top: 8px;
+  font-size: 13px;
+  color: #92400e;
+}
+
+.tip-icon {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
 }
 
 /* 注册提示 */

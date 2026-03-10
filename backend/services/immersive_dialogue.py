@@ -3,6 +3,17 @@
 支持多角色对话、特质评估、岗位匹配
 """
 
+# ⚠️ 在导入任何依赖库前设置环境变量，确保本地OCR模型
+import os
+from pathlib import Path
+
+os.environ['PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK'] = '1'
+os.environ['PADDLE_PDX_OFFLINE_MODE'] = 'True'
+os.environ['PADDLEOCR_USE_LAUNCH'] = '0'
+os.environ['PADDLE_OCR_LOCAL_MODEL_PATH'] = str(Path.home() / ".paddleocr" / "models")
+os.environ['PADDLE_REPO'] = ''
+os.environ['PADDLEOCR_HOME'] = str(Path.home() / ".paddleocr")
+
 from typing import Optional, Dict, List, Any
 from datetime import datetime
 from enum import Enum
@@ -88,7 +99,7 @@ class ImmersiveDialogueService:
     
     async def generate_next_question(
         self,
-        candidate_id: str,
+        id: str,
         candidate_name: str,
         current_role: RoleType,
         conversation_history: List[Dict[str, str]],
@@ -100,7 +111,7 @@ class ImmersiveDialogueService:
         生成下一个问题
         
         Args:
-            candidate_id: 候选人ID
+            id: 候选人ID
             candidate_name: 候选人名字
             current_role: 当前提问角色
             conversation_history: 对话历史
@@ -124,7 +135,7 @@ class ImmersiveDialogueService:
             
             # 1. 构建对话上下文
             context = self._build_conversation_context(
-                candidate_id=candidate_id,
+                id=id,
                 candidate_name=candidate_name,
                 conversation_history=conversation_history,
                 conversation_depth=conversation_depth,
@@ -172,7 +183,7 @@ class ImmersiveDialogueService:
     
     async def analyze_candidate_response(
         self,
-        candidate_id: str,
+        id: str,
         candidate_name: str,
         current_speaker: RoleType,
         candidate_response: str,
@@ -260,7 +271,7 @@ class ImmersiveDialogueService:
     
     def _build_conversation_context(
         self,
-        candidate_id: str,
+        id: str,
         candidate_name: str,
         conversation_history: List[Dict[str, str]],
         conversation_depth: int,
@@ -276,7 +287,7 @@ class ImmersiveDialogueService:
         context = f"""
 【候选人信息】
 - 姓名: {candidate_name}
-- ID: {candidate_id}
+- ID: {id}
 - 目标岗位: {target_position or '未指定'}
 - 对话深度: {conversation_depth}/10
 
@@ -530,7 +541,7 @@ class ImmersiveDialogueService:
     
     async def save_assessment_session(
         self,
-        candidate_id: str,
+        id: str,
         assessment_id: int,
         messages: List[Dict[str, str]],
         scores: Dict[str, float],
@@ -549,7 +560,7 @@ class ImmersiveDialogueService:
             
             # 创建评估记录
             assessment = AssessmentRecord(
-                candidate_id=int(candidate_id),
+                id=int(id),
                 assessment_type="immersive_dialogue",
                 session_data={
                     "messages": messages,
