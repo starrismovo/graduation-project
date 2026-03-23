@@ -22,3 +22,4 @@ class Job(Base):
     
     # 反向关系
     interviews = relationship("Interview", back_populates="job", cascade="all, delete")
+    evaluation_framework = relationship("EvaluationFramework", back_populates="job", uselist=False, cascade="all, delete")

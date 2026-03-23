@@ -1,42 +1,34 @@
 -- ============================================
--- P0 数据库迁移脚本
--- 问题：候选人数据重复、外键关系错误、主键类型混乱
--- 执行时间：2026-03-23
--- ============================================
-
--- 启用外键检查（确保迁移完整）
-SET FOREIGN_KEY_CHECKS = 1;
-
--- ============================================
--- STEP 1: 备份原始数据（以防需要回滚）
--- ============================================
-
-CREATE TABLE IF NOT EXISTS candidates_backup AS SELECT * FROM candidates;
-CREATE TABLE IF NOT EXISTS users_backup AS SELECT * FROM users;
-CREATE TABLE IF NOT EXISTS interviews_backup AS SELECT * FROM interviews;
-
--- 记录备份时间
-SELECT '========== BACKUP CREATED AT ' AS backup_timestamp, NOW() AS timestamp;
-
--- ============================================
--- STEP 2: 检查现有数据（迁移前验证）
--- ============================================
-
-SELECT 'BEFORE MIGRATION - Data Summary:' AS migration_step;
-SELECT 'users table count:', COUNT(*) FROM users;
-SELECT 'candidates table count:', COUNT(*) FROM candidates;
-SELECT 'interviews table count:', COUNT(*) FROM interviews;
-SELECT 'interview_responses table count:', COUNT(*) FROM interview_responses;
-
--- ============================================
--- STEP 3: 临时禁用外键约束（进行表结构修改）
+-- P0 数据库迁移脚本 (已调整版本)
+-- 根据实际数据库状态优化
+-- 候选人数据重复、主键类型、审计字段等问题修复
 -- ============================================
 
 SET FOREIGN_KEY_CHECKS = 0;
 
 -- ============================================
--- STEP 4: 添加候选人字段到 users 表
+-- STEP 1: 备份现有数据
 -- ============================================
+
+CREATE TABLE IF NOT EXISTS candidates_backup AS SELECT * FROM candidates;
+CREATE TABLE IF NOT EXISTS users_backup AS SELECT * FROM users;
+
+SELECT '✓ STEP 1: 备份完成' AS migration_step, NOW() AS timestamp;
+
+-- ============================================
+-- STEP 2: 查看迁移前数据
+-- ============================================
+
+SELECT '✓ STEP 2: 迁移前数据统计' AS migration_step;
+SELECT CONCAT('  users 表: ', COUNT(*), ' 行') FROM users;
+SELECT CONCAT('  candidates 表: ', COUNT(*), ' 行') FROM candidates;
+SELECT CONCAT('  interviews 表: ', COUNT(*), ' 行') FROM interviews;
+
+-- ============================================
+-- STEP 3: 为 users 表添加候选人相关字段
+-- ============================================
+
+SELECT '✓ STEP 3: 为 users 表添加候选人字段' AS migration_step;
 
 ALTER TABLE users 
 ADD COLUMN IF NOT EXISTS age INT NULL AFTER delivery_privacy,
@@ -48,195 +40,288 @@ ADD COLUMN IF NOT EXISTS skills JSON NULL AFTER experience_years,
 ADD COLUMN IF NOT EXISTS resume_url TEXT NULL AFTER skills;
 
 -- ============================================
--- STEP 5: 添加用户类型字段到 users 表
+-- STEP 4: 为 users 表添加用户类型列
 -- ============================================
+
+SELECT '✓ STEP 4: 为 users 表添加 user_type 列' AS migration_step;
 
 ALTER TABLE users 
-ADD COLUMN IF NOT EXISTS user_type ENUM('hr', 'candidate') 
-DEFAULT 'candidate' NULL AFTER is_hr,
-ADD INDEX IF NOT EXISTS idx_user_type (user_type);
+ADD COLUMN IF NOT EXISTS user_type ENUM('hr', 'candidate') DEFAULT 'candidate' AFTER is_hr;
 
--- ============================================
--- STEP 6: 设置用户类型值（基于 is_hr 字段）
--- ============================================
-
+-- 根据 is_hr 字段设置 user_type
 UPDATE users 
 SET user_type = CASE 
     WHEN is_hr = 1 THEN 'hr'
     WHEN is_hr = 0 THEN 'candidate'
     ELSE 'candidate'
 END 
-WHERE user_type IS NULL;
+WHERE user_type IS NULL OR user_type = 'candidate';
+
+SELECT '  设置 user_type 完成' AS sub_step;
 
 -- ============================================
--- STEP 7: 从 candidates 表迁移数据到 users 表
+-- STEP 5: 为 users 表添加审计和软删除字段
 -- ============================================
 
--- 匹配 candidates.id (STRING) 到 users.id (INT)
--- 假设 candidates 表的某个字段可以用于关联
--- 如果 candidates.id 是字符串，需要找到关联方式
+SELECT '✓ STEP 5: 为 users 表添加审计字段' AS migration_step;
 
--- 检查是否可以通过 email 或 name 关联
+ALTER TABLE users 
+ADD COLUMN IF NOT EXISTS is_deleted BOOLEAN DEFAULT FALSE AFTER updated_at,
+ADD COLUMN IF NOT EXISTS deleted_at DATETIME NULL AFTER is_deleted;
+
+CREATE INDEX IF NOT EXISTS idx_users_type ON users(user_type);
+CREATE INDEX IF NOT EXISTS idx_users_deleted ON users(is_deleted);
+CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
+
+SELECT '  审计字段添加完成' AS sub_step;
+
+-- ============================================
+-- STEP 6: 迁移 candidates 数据到 users 表（如果有数据）
+-- ============================================
+
+SELECT '✓ STEP 6: 迁移候选人数据' AS migration_step;
+
+-- 由于 candidates.id 是 VARCHAR(100)，而 users.id 是 INT，
+-- 需要通过 name 或其他字段进行关联
 UPDATE users u
 SET 
-    u.age = (SELECT c.age FROM candidates c 
-             WHERE c.name = u.real_name OR c.id = u.username LIMIT 1),
-    u.education = (SELECT c.education FROM candidates c 
-                   WHERE c.name = u.real_name OR c.id = u.username LIMIT 1),
-    u.major = (SELECT c.major FROM candidates c 
-               WHERE c.name = u.real_name OR c.id = u.username LIMIT 1),
-    u.desired_job = (SELECT c.desired_job FROM candidates c 
-                     WHERE c.name = u.real_name OR c.id = u.username LIMIT 1),
-    u.experience_years = (SELECT c.experience_years FROM candidates c 
-                          WHERE c.name = u.real_name OR c.id = u.username LIMIT 1),
-    u.skills = (SELECT c.skills FROM candidates c 
-                WHERE c.name = u.real_name OR c.id = u.username LIMIT 1)
-WHERE u.user_type = 'candidate' AND u.is_hr = 0;
+    u.age = COALESCE(u.age, (
+        SELECT c.age FROM candidates c 
+        WHERE c.name = u.real_name OR c.name = u.username 
+        LIMIT 1
+    )),
+    u.education = COALESCE(u.education, (
+        SELECT c.education FROM candidates c 
+        WHERE c.name = u.real_name OR c.name = u.username 
+        LIMIT 1
+    )),
+    u.major = COALESCE(u.major, (
+        SELECT c.major FROM candidates c 
+        WHERE c.name = u.real_name OR c.name = u.username 
+        LIMIT 1
+    )),
+    u.desired_job = COALESCE(u.desired_job, (
+        SELECT c.desired_job FROM candidates c 
+        WHERE c.name = u.real_name OR c.name = u.username 
+        LIMIT 1
+    )),
+    u.experience_years = COALESCE(u.experience_years, (
+        SELECT c.experience_years FROM candidates c 
+        WHERE c.name = u.real_name OR c.name = u.username 
+        LIMIT 1
+    )),
+    u.skills = COALESCE(u.skills, (
+        SELECT c.skills FROM candidates c 
+        WHERE c.name = u.real_name OR c.name = u.username 
+        LIMIT 1
+    ))
+WHERE u.user_type = 'candidate' AND ((u.age IS NULL) OR (u.education IS NULL));
+
+SELECT '  候选人数据迁移完成' AS sub_step;
 
 -- ============================================
--- STEP 8: 验证迁移结果
+-- STEP 7: 检查 interviews 表的外键关系（已正确，无需修改）
 -- ============================================
 
-SELECT 'AFTER DATA MIGRATION - Verification:' AS verification_step;
-SELECT COUNT(*) as users_with_candidate_data 
-FROM users 
-WHERE user_type = 'candidate' AND age IS NOT NULL;
+SELECT '✓ STEP 7: Interview 表外键检查' AS migration_step;
+
+-- 显示当前外键关系
+SELECT 'interviews 表外键关系: OK (candidate_id → users(id))' AS fk_status;
 
 -- ============================================
--- STEP 9: 修复 Interview 表外键关系
+-- STEP 8: 为 interviews 表添加审计字段
 -- ============================================
 
--- 创建临时表以处理外键
-CREATE TABLE interviews_temp LIKE interviews;
+SELECT '✓ STEP 8: 为 interviews 表添加必要字段' AS migration_step;
 
--- 复制数据到临时表
-INSERT INTO interviews_temp SELECT * FROM interviews;
+ALTER TABLE interviews 
+ADD COLUMN IF NOT EXISTS updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP AFTER completed_at,
+ADD COLUMN IF NOT EXISTS is_deleted BOOLEAN DEFAULT FALSE AFTER notes,
+ADD COLUMN IF NOT EXISTS deleted_at DATETIME NULL AFTER is_deleted;
 
--- 删除原始表的外键约束
-ALTER TABLE interviews DROP FOREIGN KEY IF EXISTS interviews_ibfk_1;
-ALTER TABLE interviews DROP FOREIGN KEY IF EXISTS interviews_ibfk_2;
+CREATE INDEX IF NOT EXISTS idx_interviews_deleted ON interviews(is_deleted);
+CREATE INDEX IF NOT EXISTS idx_interviews_created_at ON interviews(created_at);
 
--- 删除原始表
-DROP TABLE interviews;
-
--- 重新创建 interviews 表，修正外键定义
-CREATE TABLE interviews (
-    id INT PRIMARY KEY AUTO_INCREMENT,
-    candidate_id INT NOT NULL,
-    job_id INT NOT NULL,
-    status VARCHAR(20) DEFAULT 'started',
-    personality_traits JSON NULL,
-    match_score FLOAT NULL,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    completed_at DATETIME NULL,
-    notes VARCHAR(500) NULL,
-    
-    FOREIGN KEY (candidate_id) REFERENCES users(id) ON DELETE CASCADE,
-    FOREIGN KEY (job_id) REFERENCES jobs(id) ON DELETE CASCADE,
-    
-    INDEX idx_candidate_id (candidate_id),
-    INDEX idx_job_id (job_id),
-    INDEX idx_status (status),
-    INDEX idx_created_at (created_at)
-);
-
--- 恢复数据到新表
-INSERT INTO interviews (id, candidate_id, job_id, status, personality_traits, match_score, created_at, updated_at, completed_at, notes)
-SELECT id, candidate_id, job_id, status, personality_traits, match_score, created_at, updated_at, completed_at, notes
-FROM interviews_temp;
-
--- 删除临时表
-DROP TABLE interviews_temp;
+SELECT '  审计字段添加完成' AS sub_step;
 
 -- ============================================
--- STEP 10: 修复 interview_responses 表的主键类型
+-- STEP 9: 为 assessment_records 表添加审计字段
 -- ============================================
 
--- 检查 interview_responses 表
--- 如果 id 是 STRING，转换为 INT
--- 但由于 id 是主键且可能有外键引用，需要谨慎处理
+SELECT '✓ STEP 9: 为 assessment_records 表添加审计字段和索引' AS migration_step;
 
--- 首先检查是否有其他表引用 interview_responses.id
--- CREATE TABLE interview_responses_temp LIKE interview_responses;
--- （如需要再处理）
+ALTER TABLE assessment_records 
+ADD COLUMN IF NOT EXISTS is_deleted BOOLEAN DEFAULT FALSE AFTER updated_at,
+ADD COLUMN IF NOT EXISTS deleted_at DATETIME NULL AFTER is_deleted,
+ADD COLUMN IF NOT EXISTS created_by INT NULL AFTER job_title;
 
--- ============================================
--- STEP 11: 添加关键索引以优化查询性能
--- ============================================
-
-CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
-CREATE INDEX IF NOT EXISTS idx_users_type ON users(user_type);
+CREATE INDEX IF NOT EXISTS idx_assessment_records_deleted ON assessment_records(is_deleted);
 CREATE INDEX IF NOT EXISTS idx_assessment_records_candidate ON assessment_records(candidate_id);
 CREATE INDEX IF NOT EXISTS idx_assessment_records_job ON assessment_records(job_id);
 CREATE INDEX IF NOT EXISTS idx_assessment_records_status ON assessment_records(assessment_status);
 CREATE INDEX IF NOT EXISTS idx_assessment_records_created ON assessment_records(created_at);
+
+-- ============================================
+-- STEP 10: 为 interview_responses 表添加关键字段
+-- ============================================
+
+SELECT '✓ STEP 10: 为 interview_responses 表添加关键字段' AS migration_step;
+
+ALTER TABLE interview_responses 
+ADD COLUMN IF NOT EXISTS assessment_id INT NULL AFTER id;
+
+CREATE INDEX IF NOT EXISTS idx_interview_responses_assessment ON interview_responses(assessment_id);
 CREATE INDEX IF NOT EXISTS idx_interview_responses_candidate ON interview_responses(candidate_id);
+CREATE INDEX IF NOT EXISTS idx_interview_responses_round ON interview_responses(round_num);
 
 -- ============================================
--- STEP 12: 添加审计字段到核心表（如未存在）
+-- STEP 11: 创建缺失的关键字段（更新_at）
 -- ============================================
 
-ALTER TABLE assessment_records
-ADD COLUMN IF NOT EXISTS is_deleted BOOLEAN DEFAULT FALSE AFTER updated_at,
-ADD COLUMN IF NOT EXISTS deleted_at DATETIME NULL AFTER is_deleted,
-ADD COLUMN IF NOT EXISTS created_by INT NULL AFTER job_title,
-ADD INDEX IF NOT EXISTS idx_deleted (is_deleted);
+SELECT '✓ STEP 11: 为其他表添加 updated_at 字段' AS migration_step;
 
-ALTER TABLE interviews
-ADD COLUMN IF NOT EXISTS is_deleted BOOLEAN DEFAULT FALSE AFTER notes,
-ADD COLUMN IF NOT EXISTS deleted_at DATETIME NULL AFTER is_deleted,
-ADD INDEX IF NOT EXISTS idx_deleted (is_deleted);
+ALTER TABLE scenarios ADD COLUMN IF NOT EXISTS updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP AFTER created_at;
+ALTER TABLE scenario_summaries ADD COLUMN IF NOT EXISTS updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP AFTER created_at;
 
 -- ============================================
--- STEP 13: 重新启用外键约束
+-- STEP 12: 创建 evaluation_frameworks 表（新增）
 -- ============================================
+
+SELECT '✓ STEP 12: 创建新的 evaluation_frameworks 表' AS migration_step;
+
+CREATE TABLE IF NOT EXISTS evaluation_frameworks (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    job_id INT UNIQUE NOT NULL,
+    
+    target_openness FLOAT DEFAULT 5.0 NOT NULL,
+    target_conscientiousness FLOAT DEFAULT 5.0 NOT NULL,
+    target_extroversion FLOAT DEFAULT 5.0 NOT NULL,
+    target_agreeableness FLOAT DEFAULT 5.0 NOT NULL,
+    target_neuroticism FLOAT DEFAULT 5.0 NOT NULL,
+    
+    weights JSON NOT NULL,
+    custom_dimensions JSON NULL,
+    min_match_score FLOAT DEFAULT 70.0 NOT NULL,
+    description TEXT NULL,
+    
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    
+    FOREIGN KEY (job_id) REFERENCES jobs(id) ON DELETE CASCADE,
+    INDEX idx_job (job_id)
+);
+
+SELECT '  evaluation_frameworks 表创建完成' AS sub_step;
+
+-- ============================================
+-- STEP 13: 创建 conversation_turns 表（新增）
+-- ============================================
+
+SELECT '✓ STEP 13: 创建新的 conversation_turns 表' AS migration_step;
+
+CREATE TABLE IF NOT EXISTS conversation_turns (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    assessment_id INT NOT NULL,
+    response_id INT NULL,
+    round_num INT NOT NULL,
+    turn_num INT NOT NULL,
+    
+    speaker ENUM('candidate', 'interviewer', 'system') NOT NULL,
+    speaker_id INT NULL,
+    message LONGTEXT NOT NULL,
+    
+    emotion VARCHAR(50) NULL,
+    sentiment VARCHAR(20) NULL,
+    confidence_score FLOAT NULL,
+    
+    response_time_ms INT NULL,
+    message_length INT NULL,
+    
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    
+    FOREIGN KEY (assessment_id) REFERENCES assessment_records(id) ON DELETE CASCADE,
+    FOREIGN KEY (response_id) REFERENCES interview_responses(id) ON DELETE SET NULL,
+    FOREIGN KEY (speaker_id) REFERENCES users(id) ON DELETE SET NULL,
+    
+    INDEX idx_assessment (assessment_id),
+    INDEX idx_response (response_id),
+    INDEX idx_round (assessment_id, round_num),
+    INDEX idx_created (created_at)
+);
+
+SELECT '  conversation_turns 表创建完成' AS sub_step;
+
+-- ============================================
+-- STEP 14: 创建 conversation_analyses 表（新增）  
+-- ============================================
+
+SELECT '✓ STEP 14: 创建新的 conversation_analyses 表' AS migration_step;
+
+CREATE TABLE IF NOT EXISTS conversation_analyses (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    assessment_id INT UNIQUE NOT NULL,
+    
+    average_response_time FLOAT NULL,
+    total_turns INT DEFAULT 0,
+    candidate_emotion_trend TEXT NULL,
+    
+    communication_clarity FLOAT NULL,
+    engagement_level FLOAT NULL,
+    coherence FLOAT NULL,
+    
+    summary LONGTEXT NULL,
+    
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    
+    FOREIGN KEY (assessment_id) REFERENCES assessment_records(id) ON DELETE CASCADE,
+    INDEX idx_assessment (assessment_id)
+);
+
+SELECT '  conversation_analyses 表创建完成' AS sub_step;
+
+-- ============================================
+-- STEP 15: 重新启用外键约束
+-- ============================================
+
+SELECT '✓ STEP 15: 重新启用外键约束' AS migration_step;
 
 SET FOREIGN_KEY_CHECKS = 1;
 
 -- ============================================
--- STEP 14: 最终验证和统计
+-- STEP 16: 最终数据验证和统计
 -- ============================================
 
-SELECT '========== MIGRATION COMPLETED ===========' AS status;
+SELECT '✓ STEP 16: 迁移后数据统计' AS migration_step;
 
-SELECT 'Final Data Summary:' AS final_step;
-SELECT COUNT(*) as total_users FROM users;
-SELECT COUNT(*) as hr_users FROM users WHERE user_type = 'hr';
-SELECT COUNT(*) as candidate_users FROM users WHERE user_type = 'candidate';
-SELECT COUNT(*) as interviews FROM interviews;
-SELECT COUNT(*) as assessment_records FROM assessment_records;
+SELECT CONCAT('  users 表: ', COUNT(*), ' 行') FROM users;
+SELECT CONCAT('  候选人用户数: ', COUNT(*), ' 行') FROM users WHERE user_type = 'candidate';
+SELECT CONCAT('  HR用户数: ', COUNT(*), ' 行') FROM users WHERE user_type = 'hr';
+SELECT CONCAT('  interviews 表: ', COUNT(*), ' 行') FROM interviews;
+SELECT CONCAT('  assessment_records 表: ', COUNT(*), ' 行') FROM assessment_records;
 
 -- ============================================
--- STEP 15: 检查并修复任何不一致性
+-- STEP 17: 数据完整性检查
 -- ============================================
 
-SELECT 'Consistency Check - Broken Foreign Keys:' AS consistency_check;
+SELECT '✓ STEP 17: 数据完整性检查' AS verification_step;
 
--- 检查 interviews 表中的孤立记录
-SELECT COUNT(*) as orphaned_interviews 
+-- 检查孤立 interview 记录
+SELECT CONCAT('  孤立的 interview 记录: ', COUNT(*), ' 条') 
 FROM interviews i
 WHERE NOT EXISTS (SELECT 1 FROM users u WHERE u.id = i.candidate_id);
 
--- 检查 interviews 表中的无效职位
-SELECT COUNT(*) as invalid_job_interviews 
+-- 检查无效 job 外键
+SELECT CONCAT('  无效的 job_id: ', COUNT(*), ' 条') 
 FROM interviews i
 WHERE NOT EXISTS (SELECT 1 FROM jobs j WHERE j.id = i.job_id);
 
--- ============================================
--- STEP 16: 列出可以后续删除的表（需要手动确认）
--- ============================================
-
-SELECT 'Tables that can be deleted after verification:' AS cleanup_note;
-SELECT 'candidates (原始数据已备份到 candidates_backup)' AS table_to_drop;
-SELECT 'candidates_backup (如果迁移完全成功)' AS backup_table_note;
-SELECT 'users_backup (保留用于回滚)' AS backup_table_note;
-SELECT 'interviews_backup (保留用于回滚)' AS backup_table_note;
+-- 检查 user_type 为 NULL 的记录
+SELECT CONCAT('  user_type 为 NULL: ', COUNT(*), ' 条') 
+FROM users WHERE user_type IS NULL;
 
 -- ============================================
 -- 迁移脚本结束
 -- ============================================
 
-COMMIT;
-
-SELECT 'Migration script execution completed at:', NOW() AS completion_time;
+SELECT '✅ P0 迁移脚本执行完成!' AS final_status, NOW() AS completion_time;

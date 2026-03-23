@@ -1,11 +1,37 @@
 """Models package"""
-# Lazy import - avoid circular dependencies
-def __getattr__(name):
-    if name == "User":
-        from .user import User
-        return User
-    elif name == "Job":
-        from .job import Job
-        return Job
-    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+# Direct imports for main models
+from .user import User, UserType
+from .job import Job
+from .interview import Interview
+from .assessment import (
+    AssessmentRecord,
+    CandidatePersonalityProfile,
+    AssessmentMatchAnalysis,
+    PersonalityTraitDescription
+)
+from .hr_agent import (
+    Scenario,
+    InterviewResponse,
+    TraitScore,
+    ScenarioSummary
+)
+from .evaluation_framework import EvaluationFramework
+from .conversation import ConversationTurn, ConversationAnalysis
+
+__all__ = [
+    "User", "UserType",
+    "Job",
+    "Interview",
+    "AssessmentRecord",
+    "CandidatePersonalityProfile",
+    "AssessmentMatchAnalysis",
+    "PersonalityTraitDescription",
+    "Scenario",
+    "InterviewResponse",
+    "TraitScore",
+    "ScenarioSummary",
+    "EvaluationFramework",
+    "ConversationTurn",
+    "ConversationAnalysis"
+]
 
