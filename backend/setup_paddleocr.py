@@ -51,19 +51,14 @@ def setup_paddle_ocr():
         # 中文识别模型
         print("\n   [1/1] 初始化中文识别模型...")
         try:
-            # 尝试较新版本的参数
+            # 使用最简单的本地模型配置
             ocr = PaddleOCR(
                 det_model_dir=str(Path.home() / ".paddleocr" / "models" / "ch_PP-OCRv4_det_infer"),
-                rec_model_dir=str(Path.home() / ".paddleocr" / "models" / "ch_PP-OCRv4_rec_infer"),
-                lang='ch'
+                rec_model_dir=str(Path.home() / ".paddleocr" / "models" / "ch_PP-OCRv4_rec_infer")
             )
-        except TypeError:
-            # 回退到较旧版本或使用默认参数
-            try:
-                ocr = PaddleOCR(use_angle_cls=True, lang='ch')
-            except TypeError:
-                # 最简单的参数组合
-                ocr = PaddleOCR(lang='ch')
+        except Exception:
+            # 回退到默认参数
+            ocr = PaddleOCR()
         
         elapsed = time.time() - start_time
         print(f"\n✅ 模型初始化成功！耗时: {elapsed:.1f} 秒")

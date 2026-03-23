@@ -55,15 +55,12 @@ except Exception as e:
     traceback.print_exc()
     sys.exit(1)
 
-# 3. 测试初始化（仅本地模型）
-print("\n[3] Initialize PaddleOCR (local models + classifier)...")
+# 3. 测试初始化（仅本地模型，最小化配置）
+print("\n[3] Initialize PaddleOCR (with local models)...")
 try:
     paddleocr_config = {
         "det_model_dir": str(models["det"]),
         "rec_model_dir": str(models["rec"]),
-        "use_angle_cls": False,
-        "use_textline_orientation": False,
-        "lang": "ch",
     }
     
     print("  Config:")
@@ -72,22 +69,19 @@ try:
     
     print("\n  Initializing...")
     ocr = PaddleOCR(**paddleocr_config)
-    print("  [OK] PaddleOCR initialized successfully!")
+    print("  [OK] PaddleOCR initialized successfully with local models!")
     
 except Exception as e:
     print("  [ERROR] Initialization failed: %s" % e)
-    print("\n  Trying without classifier...")
+    print("\n  Trying with default parameters...")
     
     try:
-        paddleocr_config = {
-            "det_model_dir": str(models["det"]),
-            "rec_model_dir": str(models["rec"]),
-            "lang": "ch",
-        }
-        ocr = PaddleOCR(**paddleocr_config)
-        print("  [OK] PaddleOCR initialized (det + rec only)")
+        ocr = PaddleOCR()
+        print("  [OK] PaddleOCR initialized with default parameters")
     except Exception as e2:
         print("  [ERROR] Still failed: %s" % e2)
+        import traceback
+        traceback.print_exc()
         sys.exit(1)
 
 print("\n" + "=" * 70)

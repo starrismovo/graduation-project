@@ -28,6 +28,30 @@ from services.immersive_dialogue import (
 router = APIRouter(prefix="/assessment/immersive", tags=["沉浸式对话"])
 
 
+# ==================== candidate_id 验证器 ====================
+
+def _validate_candidate_id(candidate_id: str) -> str:
+    """验证并规范化 candidate_id（字符串格式）
+    
+    候选人 ID 在数据库中存储为 String(100)，支持：
+    - 纯数字：\"123\"
+    - UUID 字符串：\"cand_abc123\", \"user_12345\"
+    - 任何非空字符串（最多 100 字符）
+    """
+    if not candidate_id:
+        raise ValueError("候选人 ID 不能为空")
+    
+    normalized = candidate_id.strip()
+    
+    if not normalized:
+        raise ValueError("候选人 ID 不能为空格")
+    
+    if len(normalized) > 100:
+        raise ValueError(f"候选人 ID 长度不能超过 100 字符")
+    
+    return normalized
+
+
 # ==================== 核心对话接口 ====================
 
 @router.post("/next-question")
@@ -62,6 +86,9 @@ async def get_next_question(
     """
     
     try:
+        # ✅ 验证 candidate_id
+        candidate_id = _validate_candidate_id(candidate_id)
+        
         import json
         conversation_history = json.loads(history) if history else []
         
@@ -123,6 +150,9 @@ async def analyze_candidate_response(
     """
     
     try:
+        # ✅ 验证 candidate_id
+        candidate_id = _validate_candidate_id(candidate_id)
+        
         import json
         messages = json.loads(previous_messages) if previous_messages else []
         
@@ -175,6 +205,10 @@ async def save_assessment_session(
     """
     
     try:
+        # ✅ 验证 candidate_id
+        if "candidate_id" in request_data:
+            request_data["candidate_id"] = _validate_candidate_id(request_data["candidate_id"])
+        
         service = ImmersiveDialogueService(db)
         
         result = await service.save_assessment_session(
@@ -313,10 +347,13 @@ async def get_candidate_sessions(
     """获取候选人的所有对话会话"""
     
     try:
+        # ✅ 验证 candidate_id
+        candidate_id = _validate_candidate_id(candidate_id)
+        
         from models.assessment import AssessmentRecord
         
         sessions = db.query(AssessmentRecord).filter(
-            AssessmentRecord.candidate_id == int(candidate_id),
+            AssessmentRecord.candidate_id == candidate_id,
             AssessmentRecord.assessment_type == "immersive_dialogue"
         ).all()
         
@@ -683,23 +720,21 @@ def _ocr_extract_text(content: bytes, file_ext: str) -> str:
     3. 回退模式：返回包含指导信息的标记
     """
     import logging
-    import os
     from io import BytesIO
     logger = logging.getLogger(__name__)
     
     try:
         logger.info(f"启用 OCR 识别，文件格式: {file_ext}")
         
-        # 导入本地模型配置
-        from paddleocr_local import create_paddleocr
-        # 导入本地模型配置
-        from paddleocr_local import create_paddleocr
-        
         # 尝试方案 1: PaddleOCR
         try:
+            logger.info("尝试使用 PaddleOCR...")
+            from paddleocr_local import create_paddleocr
             from PIL import Image
             
-            logger.info("尝试使用 PaddleOCR...")
+            # 在函数开始就初始化一次，而不是每页都初始化
+            ocr = create_paddleocr()
+            logger.info("✅ PaddleOCR 模型已加载")
             
             if file_ext == '.pdf':
                 logger.info("PDF OCR: 转换为图片进行识别")
@@ -709,19 +744,18 @@ def _ocr_extract_text(content: bytes, file_ext: str) -> str:
                         all_text = []
                         for page_num, page in enumerate(pdf.pages):
                             logger.info(f"正在OCR识别第 {page_num + 1}/{len(pdf.pages)} 页...")
-                            im = page.to_image(resolution=300)
-                            pil_image = im.original
-                            
                             try:
-                                logger.info(f"  初始化 PaddleOCR 模型...")
-                                ocr = create_paddleocr()
+                                im = page.to_image(resolution=300)
+                                pil_image = im.original
                                 
-                                logger.info(f"  执行 OCR 识别...")
-                                result = ocr.ocr(pil_image, cls=True)
+                                logger.debug(f"  执行 OCR 识别...")
+                                result = ocr.ocr(pil_image, cls=False)
                                 
-                                page_text = '\n'.join([line[0] for line in result[0]]) if result else ""
+                                page_text = ""
+                                if result and result[0]:
+                                    page_text = "\n".join([line[1][0] for line in result[0]])
                                 all_text.append(page_text)
-                                logger.info(f"  第 {page_num + 1} 页识别完成，长度: {len(page_text)}")
+                                logger.info(f"  第 {page_num + 1} 页: {len(page_text)} 字")
                             except Exception as page_err:
                                 logger.warning(f"  第 {page_num + 1} 页识别失败: {page_err}")
                                 all_text.append("")
@@ -729,8 +763,10 @@ def _ocr_extract_text(content: bytes, file_ext: str) -> str:
                         
                         full_text = '\n'.join(all_text).strip()
                         if full_text:
-                            logger.info(f"PaddleOCR 成功，总长度: {len(full_text)}")
+                            logger.info(f"✅ PaddleOCR PDF 成功，总长度: {len(full_text)}")
                             return full_text
+                        else:
+                            logger.warning("PDF 所有页面识别结果为空")
                 except Exception as e:
                     logger.warning(f"PaddleOCR PDF 处理失败: {e}")
                     raise
@@ -738,33 +774,30 @@ def _ocr_extract_text(content: bytes, file_ext: str) -> str:
             elif file_ext in ['.jpg', '.jpeg', '.png']:
                 logger.info(f"PaddleOCR 图片识别: {file_ext}")
                 try:
-                    from PIL import Image
                     image = Image.open(BytesIO(content))
                     
-                    logger.info(f"  初始化 PaddleOCR 模型...")
-                    ocr = create_paddleocr()
-                    
-                    logger.info(f"  执行 OCR 识别...")
-                    result = ocr.ocr(image, cls=True)
-                    text = '\n'.join([line[0] for line in result[0]]) if result else ""
+                    logger.debug(f"  执行 OCR 识别...")
+                    result = ocr.ocr(image, cls=False)
+                    text = "\n".join([line[1][0] for line in result[0]]) if result and result[0] else ""
                     
                     if text.strip():
-                        logger.info(f"PaddleOCR 成功，长度: {len(text)}")
+                        logger.info(f"✅ PaddleOCR 图片成功，长度: {len(text)}")
                         return text
                 except Exception as e:
                     logger.warning(f"PaddleOCR 图片处理失败: {e}")
                     raise
         
         except Exception as paddle_err:
-            logger.warning(f"PaddleOCR 不可用，尝试 EasyOCR: {paddle_err}")
+            logger.warning(f"❌ PaddleOCR 不可用: {paddle_err}")
             
             # 尝试方案 2: EasyOCR (备选)
             try:
+                logger.info("尝试使用 EasyOCR...")
                 import easyocr
                 from PIL import Image
                 
-                logger.info("尝试使用 EasyOCR...")
                 reader = easyocr.Reader(['ch'], gpu=False)
+                logger.info("✅ EasyOCR 模型已加载")
                 
                 if file_ext == '.pdf':
                     import pdfplumber
@@ -772,15 +805,21 @@ def _ocr_extract_text(content: bytes, file_ext: str) -> str:
                         all_text = []
                         for page_num, page in enumerate(pdf.pages):
                             logger.info(f"EasyOCR 识别第 {page_num + 1}/{len(pdf.pages)} 页...")
-                            im = page.to_image(resolution=300)
-                            pil_image = im.original
-                            result = reader.readtext(pil_image, detail=0)
-                            page_text = '\n'.join(result) if result else ""
-                            all_text.append(page_text)
+                            try:
+                                im = page.to_image(resolution=300)
+                                pil_image = im.original
+                                result = reader.readtext(pil_image, detail=0)
+                                page_text = '\n'.join(result) if result else ""
+                                all_text.append(page_text)
+                                logger.info(f"  第 {page_num + 1} 页: {len(page_text)} 字")
+                            except Exception as e:
+                                logger.warning(f"  第 {page_num + 1} 页识别失败: {e}")
+                                all_text.append("")
+                                continue
                         
                         full_text = '\n'.join(all_text).strip()
                         if full_text:
-                            logger.info(f"EasyOCR 成功，总长度: {len(full_text)}")
+                            logger.info(f"✅ EasyOCR PDF 成功，总长度: {len(full_text)}")
                             return full_text
                 
                 elif file_ext in ['.jpg', '.jpeg', '.png']:
@@ -789,15 +828,19 @@ def _ocr_extract_text(content: bytes, file_ext: str) -> str:
                     result = reader.readtext(image, detail=0)
                     text = '\n'.join(result) if result else ""
                     if text.strip():
-                        logger.info(f"EasyOCR 成功，长度: {len(text)}")
+                        logger.info(f"✅ EasyOCR 图片成功，长度: {len(text)}")
                         return text
                 
+                logger.warning("EasyOCR 识别结果为空")
+            
+            except ImportError:
+                logger.warning("EasyOCR 未安装，跳过")
             except Exception as easy_err:
-                logger.warning(f"EasyOCR 也不可用: {easy_err}")
-                
-                # 方案 3: 回退处理
-                logger.warning("OCR 处理不可用，返回回退消息")
-                return "【⚠️ OCR功能暂不可用】\n系统暂无法进行自动识别（网络或模型问题）。\n\n请采取以下方案之一：\n1️⃣ 继续使用该系统：手动在表单中填写信息\n2️⃣ 尝试上传其他格式：Word(.docx) 或纯文本文件(.txt)\n3️⃣ 联系管理员：获取配置帮助\n\n提示：您仍然可以手动完成所有信息的输入"
+                logger.warning(f"❌ EasyOCR 失败: {easy_err}")
+            
+            # 方案 3: 回退处理
+            logger.warning("所有 OCR 方案都失败，返回回退消息")
+            return "【⚠️ OCR功能暂不可用】\n系统暂无法进行自动识别（模型或网络问题）。\n\n请采取以下方案之一：\n1️⃣ 继续使用该系统：手动在表单中填写信息\n2️⃣ 尝试上传其他格式：Word(.docx) 或纯文本文件(.txt)\n3️⃣ 联系管理员：获取配置帮助\n\n✨ 您仍然可以手动完成所有信息的输入"
     
     except Exception as e:
         logger.error(f"OCR 处理异常: {e}", exc_info=True)
