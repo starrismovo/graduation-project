@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException, Depends
 from sqlalchemy.orm import Session
 from database import get_db
-from models.candidate import Candidate
+from models.user import User, UserType
 from schemas.candidate import BasicInfoSchema, BasicInfoResponseSchema
 from datetime import datetime
 
@@ -10,41 +10,67 @@ router = APIRouter(prefix="/api/candidates", tags=["candidates"])
 
 @router.post("/{candidate_id}/basic-info", response_model=BasicInfoResponseSchema)
 async def save_basic_info(
-    candidate_id: str,
+    candidate_id: int,
     data: BasicInfoSchema,
     db: Session = Depends(get_db)
 ):
     """保存或更新候选人基本信息"""
-    candidate = db.query(Candidate).filter(Candidate.id == candidate_id).first()
+    # 从 User 表查询候选人
+    user = db.query(User).filter(
+        User.id == candidate_id,
+        User.user_type == UserType.CANDIDATE
+    ).first()
 
-    if not candidate:
-        # 新建候选人
-        candidate = Candidate(id=candidate_id)
-        db.add(candidate)
+    if not user:
+        raise HTTPException(status_code=404, detail="候选人不存在")
 
-    # 更新数据
-    candidate.name = data.name
-    candidate.age = data.age
-    candidate.education = data.education
-    candidate.major = data.major
-    candidate.desired_job = data.desired_job
-    candidate.experience_years = data.experience_years
-    candidate.skills = data.skills
+    # 更新候选人信息
+    user.real_name = data.name
+    user.age = data.age
+    user.education = data.education
+    user.major = data.major
+    user.desired_job = data.desired_job
+    user.experience_years = data.experience_years
+    user.skills = data.skills
+    user.updated_at = datetime.utcnow()
 
     db.commit()
-    db.refresh(candidate)
-    return candidate
+    db.refresh(user)
+    
+    return BasicInfoResponseSchema(
+        id=user.id,
+        name=user.real_name or "",
+        age=user.age or 0,
+        education=user.education or "",
+        major=user.major or "",
+        desired_job=user.desired_job or "",
+        experience_years=user.experience_years or 0,
+        skills=user.skills or []
+    )
 
 
 @router.get("/{candidate_id}/basic-info", response_model=BasicInfoResponseSchema)
 async def get_basic_info(
-    candidate_id: str,
+    candidate_id: int,
     db: Session = Depends(get_db)
 ):
     """获取候选人基本信息"""
-    candidate = db.query(Candidate).filter(Candidate.id == candidate_id).first()
+    # 从 User 表查询候选人
+    user = db.query(User).filter(
+        User.id == candidate_id,
+        User.user_type == UserType.CANDIDATE
+    ).first()
 
-    if not candidate:
+    if not user:
         raise HTTPException(status_code=404, detail="候选人不存在")
 
-    return candidate
+    return BasicInfoResponseSchema(
+        id=user.id,
+        name=user.real_name or "",
+        age=user.age or 0,
+        education=user.education or "",
+        major=user.major or "",
+        desired_job=user.desired_job or "",
+        experience_years=user.experience_years or 0,
+        skills=user.skills or []
+    )

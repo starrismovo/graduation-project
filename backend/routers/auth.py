@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 from datetime import datetime, timedelta
-from models.user import User
+from models.user import User, UserType
 from database import get_db
 from passlib.context import CryptContext
 from jose import jwt
@@ -63,18 +63,25 @@ def register(
             raise HTTPException(status_code=400, detail="邮箱已被注册")
         
         hashed = get_password_hash(password)
-        new_user = User(username=username, email=email, hashed_password=hashed, is_hr=is_hr)
+        # 根据 is_hr 参数设置 user_type
+        user_type = UserType.HR if is_hr else UserType.CANDIDATE
+        new_user = User(
+            username=username, 
+            email=email, 
+            hashed_password=hashed, 
+            is_hr=is_hr,  # 保留用于向后兼容
+            user_type=user_type
+        )
         db.add(new_user)
         db.commit()
         db.refresh(new_user)
-        return {"message": "注册成功", "user_id": new_user.id}
+        return {
+            "message": "注册成功", 
+            "user_id": new_user.id,
+            "user_type": new_user.user_type.value
+        }
     except HTTPException:
         raise
-    except Exception as e:
-        db.rollback()
-        print(f"注册错误: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"注册失败: {str(e)}")
-
 
 @router.post("/login")
 def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):

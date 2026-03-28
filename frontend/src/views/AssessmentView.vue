@@ -230,6 +230,7 @@
 import { ref, computed } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
+import { useUserStore } from '@/stores/user'
 import BasicInfo from './assessment/BasicInfo.vue'
 import SituationalQA from './assessment/components/SituationalQA.vue'
 import ImmersiveRoleDialogue from './assessment/ImmersiveRoleDialogue.vue'
@@ -239,10 +240,37 @@ import ReportGenerate from './assessment/components/ReportGenerate.vue'
 
 const router = useRouter()
 const route = useRoute()
+const userStore = useUserStore()
 const activeStep = ref(1) // 从基础信息开始
 
-// 候选人 ID（唯一标识）
-const candidateId = computed(() => String(route.params.id || 'demo-001'))
+// 候选人 ID（唯一标识）- 优先从路由参数获取，其次从 userStore，再从 localStorage，最后为演示值
+const candidateId = computed(() => {
+  console.log('【AssessmentView】candidateId 计算开始')
+  
+  // 第1层：从路由参数获取（直接链接访问）
+  const routeId = route.params.id
+  if (routeId && routeId !== 'demo') {
+    console.log('【AssessmentView】第1层 - 使用路由参数:', routeId)
+    return String(routeId)
+  }
+  
+  // 第2层：从 userStore 获取登录的 userId（最可靠的来源）
+  if (userStore.userId) {
+    console.log('【AssessmentView】第2层 - 使用 userStore.userId:', userStore.userId)
+    return userStore.userId
+  }
+  
+  // 第3层：从 localStorage 获取保存的 user_id（刷新页面时的备份）
+  const storedUserId = localStorage.getItem('user_id')
+  if (storedUserId && storedUserId !== 'null' && !isNaN(Number(storedUserId))) {
+    console.log('【AssessmentView】第3层 - 使用 localStorage 中的 user_id:', storedUserId)
+    return storedUserId
+  }
+  
+  // 第4层：默认演示值
+  console.warn('【AssessmentView】无法获取真实 candidateId，使用演示值')
+  return 'demo-001'
+})
 
 // 候选人画像（由 BasicInfo 编辑并保存）
 const candidate = ref<Record<string, any>>({})

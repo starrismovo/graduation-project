@@ -23,3 +23,8 @@ class Job(Base):
     # 反向关系
     interviews = relationship("Interview", back_populates="job", cascade="all, delete")
     evaluation_framework = relationship("EvaluationFramework", back_populates="job", uselist=False, cascade="all, delete")
+    
+    # 新增：岗位需求标签和结构
+    requirement_tags = relationship("JobRequirementTag", back_populates="job", cascade="all, delete")
+    skill_requirements = relationship("JobSkillRequirement", back_populates="job", cascade="all, delete")
+    personality_framework = relationship("JobPersonalityFramework", back_populates="job", uselist=False, cascade="all, delete")

@@ -17,6 +17,12 @@ from .hr_agent import (
 )
 from .evaluation_framework import EvaluationFramework
 from .conversation import ConversationTurn, ConversationAnalysis
+from .job_requirement import (
+    JobRequirementTag,
+    JobSkillRequirement,
+    JobPersonalityFramework,
+    CandidateJobApplication
+)
 
 __all__ = [
     "User", "UserType",
@@ -32,6 +38,10 @@ __all__ = [
     "ScenarioSummary",
     "EvaluationFramework",
     "ConversationTurn",
-    "ConversationAnalysis"
+    "ConversationAnalysis",
+    "JobRequirementTag",
+    "JobSkillRequirement",
+    "JobPersonalityFramework",
+    "CandidateJobApplication"
 ]
 

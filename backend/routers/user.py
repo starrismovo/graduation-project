@@ -73,6 +73,15 @@ def get_user_profile(
             bio=current_user.bio,
             avatar=current_user.avatar_url,
             delivery_privacy=current_user.delivery_privacy,
+            user_type=current_user.user_type.value if current_user.user_type else None,
+            # 候选人字段
+            age=current_user.age,
+            education=current_user.education,
+            major=current_user.major,
+            desired_job=current_user.desired_job,
+            experience_years=current_user.experience_years,
+            skills=current_user.skills,
+            resume_url=current_user.resume_url,
             created_at=current_user.created_at,
             updated_at=current_user.updated_at,
         )
@@ -87,11 +96,9 @@ def update_user_profile(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    
-    print(f"收到 avatar 长度: {len(update_data.avatar) if update_data.avatar else 'None'}")
     """更新用户个人信息"""
     try:
-        # 更新字段（只更新提供的字段）
+        # 更新基本字段（只更新提供的字段）
         if update_data.nickname is not None:
             current_user.nickname = update_data.nickname
         if update_data.real_name is not None:
@@ -115,6 +122,22 @@ def update_user_profile(
             
         if update_data.delivery_privacy is not None:
             current_user.delivery_privacy = update_data.delivery_privacy
+        
+        # 更新候选人专属字段
+        if update_data.age is not None:
+            current_user.age = update_data.age
+        if update_data.education is not None:
+            current_user.education = update_data.education
+        if update_data.major is not None:
+            current_user.major = update_data.major
+        if update_data.desired_job is not None:
+            current_user.desired_job = update_data.desired_job
+        if update_data.experience_years is not None:
+            current_user.experience_years = update_data.experience_years
+        if update_data.skills is not None:
+            current_user.skills = update_data.skills
+        if update_data.resume_url is not None:
+            current_user.resume_url = update_data.resume_url
 
         current_user.updated_at = datetime.utcnow()
         db.commit()
@@ -130,6 +153,14 @@ def update_user_profile(
             bio=current_user.bio,
             avatar=current_user.avatar_url,
             delivery_privacy=current_user.delivery_privacy,
+            user_type=current_user.user_type.value if current_user.user_type else None,
+            age=current_user.age,
+            education=current_user.education,
+            major=current_user.major,
+            desired_job=current_user.desired_job,
+            experience_years=current_user.experience_years,
+            skills=current_user.skills,
+            resume_url=current_user.resume_url,
             created_at=current_user.created_at,
             updated_at=current_user.updated_at,
         )

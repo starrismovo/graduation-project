@@ -61,7 +61,7 @@
         </div>
         
         <!-- 实时情绪与语气分析 -->
-        <div class="sentiment-monitor" v-if="latestSentiment && currentStep >= 3">
+        <div class="sentiment-monitor" v-if="latestSentiment && currentStep >= 4">
           <div class="sentiment-indicator">
             <span class="label">候选人状态:</span>
             <el-tag :type="getSentimentType(latestSentiment.emotion)" size="small">
@@ -188,8 +188,29 @@
           </div>
         </div>
 
-        <!-- Step 2: 面试说明与准备 -->
-        <div v-if="currentStep === 2" class="conversation-starter interview-briefing">
+        <!-- Step 2: 选择岗位 -->
+        <div v-if="currentStep === 2" class="conversation-starter job-selection-briefing">
+          <div class="starter-content">
+            <div class="greeting-avatar">
+              <img :src="aiInterviewerAvatar" />
+            </div>
+            <h4>🎯 选择岗位</h4>
+            <p class="starter-tip">根据你的信息，为你推荐了以下岗位。请选择你想应聘的岗位：</p>
+            
+            <!-- 岗位选择组件 - 候选人模式 -->
+            <div class="job-manager-wrapper">
+              <JobRequirementsManager 
+                :mode="'candidate'"
+                :candidate-id="parsedCandidateId"
+                @job-selected="handleJobSelected"
+                @apply-job="handleApplyJob"
+              />
+            </div>
+          </div>
+        </div>
+
+        <!-- Step 3: 面试说明与准备 -->
+        <div v-if="currentStep === 3" class="conversation-starter interview-briefing">
           <div class="starter-content">
             <div class="greeting-avatar">
               <img :src="aiInterviewerAvatar" />
@@ -332,7 +353,7 @@
       </div>
 
       <!-- 智能输入区 -->
-      <div class="input-area" v-if="currentStep >= 3">
+      <div class="input-area" v-if="currentStep >= 4">
         <!-- 上下文提示条 -->
         <div v-if="contextHint" class="context-hint">
           <el-icon><i class="el-icon-info"></i></el-icon>
@@ -347,7 +368,7 @@
             type="textarea"
             :placeholder="dynamicPlaceholder"
             :rows="3"
-            :disabled="isProcessing || currentStep < 3"
+            :disabled="isProcessing || currentStep < 4"
             @keydown.ctrl.enter="submitMessage"
             @keydown.meta.enter="submitMessage"
           />
@@ -538,6 +559,7 @@ import { ElMessage } from 'element-plus'
 import * as echarts from 'echarts'
 import { useAssessmentStore } from '@/stores/assessment'
 import UploadInfoDialog from '@/components/UploadInfoDialog.vue'
+import JobRequirementsManager from '@/components/JobRequirementsManager.vue'
 
 // ==================== 类型定义 ====================
 interface CandidateInfo {
@@ -594,14 +616,16 @@ const assessmentStore = useAssessmentStore()
 const assessmentSteps = [
   '填写信息',
   '确认信息',
+  '选择岗位',
   '面试说明',
   '多轮面试',
   '生成报告'
 ]
 
-const currentStep = ref(0)  // 0: 填写, 1: 确认, 2: 说明, 3+: 面试中
+const currentStep = ref(0)  // 0: 填写, 1: 确认, 2: 选择岗位, 3: 说明, 4+: 面试中
 const isAnalyzing = ref(false)
 const infoConfirmed = ref(false)
+const selectedJobId = ref<number | null>(null)  // 已选择的岗位ID
 
 // ==================== 左侧面板控制 ====================
 const leftPanelMode = ref<'svg' | 'info'>('svg')  // svg: 显示欢迎图片, info: 显示流程
@@ -690,12 +714,44 @@ const radarChart = ref<any>(null)
 // ==================== 计算属性 ====================
 const dynamicPlaceholder = computed(() => {
   if (isProcessing.value) return '正在分析中...'
-  if (currentStep.value < 3) return '请先完成前置步骤...'
+  if (currentStep.value < 4) return '请先完成前置步骤...'
   return `请详细描述你的想法和经验...`
 })
 
 const canSubmit = computed(() => {
-  return !isProcessing.value && currentStep.value >= 3 && userInput.value.trim().length > 0
+  return !isProcessing.value && currentStep.value >= 4 && userInput.value.trim().length > 0
+})
+
+// 安全解析候选人 ID - 防御性编程，层级化降级
+const parsedCandidateId = computed(() => {
+  console.log('【parsedCandidateId】计算开始:', {
+    props: props.candidateId,
+    type: typeof props.candidateId,
+    isValidProps: props.candidateId && !isNaN(Number(props.candidateId))
+  })
+  
+  // 优先：使用 props 中的有效数字值
+  if (props.candidateId && !isNaN(Number(props.candidateId))) {
+    const parsed = parseInt(String(props.candidateId))
+    if (!isNaN(parsed) && parsed > 0) {
+      console.log('【parsedCandidateId】✅ 使用 props 中的值:', parsed)
+      return parsed
+    }
+  }
+  
+  // 其次：尝试从 localStorage 获取登录后保存的 user_id
+  const storedUserId = localStorage.getItem('user_id')
+  if (storedUserId && storedUserId !== 'null' && !isNaN(Number(storedUserId))) {
+    const parsed = parseInt(storedUserId)
+    if (!isNaN(parsed) && parsed > 0) {
+      console.log('【parsedCandidateId】✅ 使用 localStorage 中的 user_id:', parsed)
+      return parsed
+    }
+  }
+  
+  // 最后返回 null（而不是 NaN）
+  console.warn('【parsedCandidateId】⚠️ 无法获取有效的 candidateId，returning null')
+  return null
 })
 
 // ==================== 简历上传与解析 ====================
@@ -914,8 +970,24 @@ async function proceedToStep1() {
 }
 
 async function proceedToStep2() {
-  // 从Step 1进入Step 2，显示面试准备说明
+  // 从Step 1进入Step 2，显示岗位选择
   currentStep.value = 2
+  await scrollToBottom()
+}
+
+// 处理岗位选择
+function handleJobSelected(jobId: number) {
+  selectedJobId.value = jobId
+  console.log('已选择岗位:', jobId)
+}
+
+// 处理应聘岗位
+async function handleApplyJob(data: any) {
+  console.log('应聘岗位:', data)
+  ElMessage.success(`已应聘岗位: ${data.jobName}`)
+  
+  // 进入面试说明阶段
+  currentStep.value = 3
   await scrollToBottom()
 }
 
@@ -933,7 +1005,7 @@ async function proceedFromDialogComponent(info: CandidateInfo) {
 }
 
 async function startInterview() {
-  currentStep.value = 3
+  currentStep.value = 4
   respondedCount.value = 0
   
   // 启动计时器

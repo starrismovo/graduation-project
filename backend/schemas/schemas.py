@@ -1,7 +1,8 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from typing import List, Optional, Dict, Any
 from datetime import datetime
 from enum import Enum
+import json
 
 class InterviewStatus(str, Enum):
     """面试状态"""
@@ -23,6 +24,17 @@ class JobCreate(BaseModel):
     salary_min: float
     salary_max: float
     required_traits: Dict[str, Any]
+
+    @field_validator('required_traits', mode='before')
+    @classmethod
+    def parse_required_traits(cls, v):
+        """将字符串化的JSON转换为字典"""
+        if isinstance(v, str):
+            try:
+                return json.loads(v)
+            except (json.JSONDecodeError, TypeError):
+                return {}
+        return v
 
 class JobUpdate(BaseModel):
     """更新岗位请求"""
@@ -47,6 +59,17 @@ class JobResponse(BaseModel):
     salary_max: float
     required_traits: Dict[str, Any]
     creator_id: Optional[int] = None
+
+    @field_validator('required_traits', mode='before')
+    @classmethod
+    def parse_required_traits(cls, v):
+        """将字符串化的JSON转换为字典"""
+        if isinstance(v, str):
+            try:
+                return json.loads(v)
+            except (json.JSONDecodeError, TypeError):
+                return {}
+        return v
 
     class Config:
         from_attributes = True
@@ -122,6 +145,7 @@ class UserResponse(BaseModel):
     username: str
     email: str
     is_hr: bool
+    user_type: Optional[str] = None  # "HR" 或 "CANDIDATE"
 
     class Config:
         from_attributes = True

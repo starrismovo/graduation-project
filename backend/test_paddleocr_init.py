@@ -1,89 +1,32 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""
-诊断脚本：检查 PaddleOCR 本地模型初始化
-"""
+"""快速测试 PaddleOCR 初始化"""
 
-import os
 import sys
-from pathlib import Path
+import logging
 
-# 设置所有环境变量
-os.environ['PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK'] = '1'
-os.environ['PADDLE_PDX_OFFLINE_MODE'] = 'True'
-os.environ['PADDLEOCR_USE_LAUNCH'] = '0'
-os.environ['PADDLE_OCR_LOCAL_MODEL_PATH'] = str(Path.home() / ".paddleocr" / "models")
-os.environ['PADDLE_REPO'] = ''
-os.environ['PADDLEOCR_HOME'] = str(Path.home() / ".paddleocr")
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
-print("=" * 70)
-print("PaddleOCR Local Model Diagnosis")
-print("=" * 70)
-
-# 1. 检查本地模型文件
-print("\n[1] Checking local model files...")
-model_base = Path.home() / ".paddleocr" / "models"
-models = {
-    "det": model_base / "ch_PP-OCRv4_det_infer",
-    "rec": model_base / "ch_PP-OCRv4_rec_infer",
-    "cls": model_base / "ch_ppocr_mobile_v2.0_cls_infer",
-}
-
-for name, path in models.items():
-    if path.exists():
-        pdmodel = path / "inference.pdmodel"
-        if pdmodel.exists():
-            print("  [OK] %s: %s" % (name, path))
-            print("       -> inference.pdmodel: %d bytes" % pdmodel.stat().st_size)
-        else:
-            print("  [ERROR] %s: inference.pdmodel not found!" % name)
+try:
+    logger.info("导入 paddleocr_local...")
+    from paddleocr_local import create_paddleocr
+    
+    logger.info("初始化 PaddleOCR...")
+    ocr = create_paddleocr()
+    
+    logger.info("✅✅✅ PaddleOCR 初始化成功！")
+    sys.exit(0)
+    
+except AttributeError as e:
+    if "set_optimization_level" in str(e):
+        logger.error(f"❌ 仍然存在 set_optimization_level 问题: {e}")
     else:
-        print("  [ERROR] %s: path not found!" % name)
-
-# 2. 导入 PaddleOCR
-print("\n[2] Importing PaddleOCR...")
-try:
-    print("  Importing paddleocr...")
-    from paddleocr import PaddleOCR
-    print("  [OK] PaddleOCR imported successfully")
-except ImportError as e:
-    print("  [ERROR] Import error: %s" % e)
+        logger.error(f"❌ AttributeError: {e}")
     sys.exit(1)
+    
 except Exception as e:
-    print("  [ERROR] Other error: %s: %s" % (type(e).__name__, e))
+    logger.error(f"❌ 初始化失败: {type(e).__name__}: {e}")
     import traceback
-    traceback.print_exc()
+    logger.error(traceback.format_exc())
     sys.exit(1)
-
-# 3. 测试初始化（仅本地模型，最小化配置）
-print("\n[3] Initialize PaddleOCR (with local models)...")
-try:
-    paddleocr_config = {
-        "det_model_dir": str(models["det"]),
-        "rec_model_dir": str(models["rec"]),
-    }
-    
-    print("  Config:")
-    for k, v in paddleocr_config.items():
-        print("    - %s: %s" % (k, v))
-    
-    print("\n  Initializing...")
-    ocr = PaddleOCR(**paddleocr_config)
-    print("  [OK] PaddleOCR initialized successfully with local models!")
-    
-except Exception as e:
-    print("  [ERROR] Initialization failed: %s" % e)
-    print("\n  Trying with default parameters...")
-    
-    try:
-        ocr = PaddleOCR()
-        print("  [OK] PaddleOCR initialized with default parameters")
-    except Exception as e2:
-        print("  [ERROR] Still failed: %s" % e2)
-        import traceback
-        traceback.print_exc()
-        sys.exit(1)
-
-print("\n" + "=" * 70)
-print("Diagnosis complete")
-print("=" * 70)
