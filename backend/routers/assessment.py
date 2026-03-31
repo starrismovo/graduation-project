@@ -35,7 +35,8 @@ from schemas.assessment import (
     AnalyzeResponseRequest,
     AnalyzeResponseResponse,
     SaveSessionRequest,
-    SaveSessionResponse
+    SaveSessionResponse,
+    SaveAssessmentResultRequest  # 新增
 )
 from typing import List, Optional, Dict, Any
 from datetime import datetime
@@ -404,6 +405,192 @@ async def get_report(record_id: int, db: Session = Depends(get_db)):
     )
     
     return AssessmentReportResponse(data=report)
+
+
+# ============ Save Assessment Result (新增端点) ============
+
+@router.post("/save-result", response_model=StandardResponse)
+async def save_assessment_result(
+    request: SaveAssessmentResultRequest,
+    db: Session = Depends(get_db)
+):
+    """
+    保存评估结果并生成报告
+    
+    请求示例:
+    {
+      "candidate_id": "user_2",
+      "job_id": 1,
+      "assessment_mode": "immersive",
+      "all_scores": {...},
+      "personality_scores": {"外向性": 7, "宜人性": 6.5, ...},
+      "candidate_info": {...}
+    }
+    """
+    try:
+        logger.info(f"【save-result】保存评估结果: candidate_id={request.candidate_id}, job_id={request.job_id}")
+        
+        # 1. 创建评估记录
+        job = db.query(Job).filter_by(id=request.job_id).first()
+        if not job:
+            raise HTTPException(status_code=404, detail="岗位不存在")
+        
+        record = AssessmentRecord(
+            candidate_id=request.candidate_id,
+            job_id=request.job_id,
+            job_title=job.name,
+            assessment_mode=request.assessment_mode,
+            assessment_status=AssessmentStatus.COMPLETED,
+            created_at=datetime.now(),
+            updated_at=datetime.now()
+        )
+        db.add(record)
+        db.flush()
+        
+        logger.info(f"【save-result】评估记录已创建: record_id={record.id}")
+        
+        # 2. 创建或更新候选人心理画像
+        personality_profile = db.query(CandidatePersonalityProfile).filter_by(
+            candidate_id=request.candidate_id
+        ).first()
+        
+        if not personality_profile:
+            personality_profile = CandidatePersonalityProfile(
+                candidate_id=request.candidate_id
+            )
+            db.add(personality_profile)
+        
+        # 更新五大人格评分
+        personality_profile.trait_extroversion = request.personality_scores.get("外向性", request.personality_scores.get("extraversion", 5))
+        personality_profile.trait_agreeableness = request.personality_scores.get("宜人性", request.personality_scores.get("agreeableness", 5))
+        personality_profile.trait_conscientiousness = request.personality_scores.get("尽责性", request.personality_scores.get("conscientiousness", 5))
+        personality_profile.trait_neuroticism = request.personality_scores.get("神经质", request.personality_scores.get("neuroticism", 5))
+        personality_profile.trait_openness = request.personality_scores.get("开放性", request.personality_scores.get("openness", 5))
+        personality_profile.latest_assessment_id = record.id
+        personality_profile.updated_at = datetime.now()
+        
+        db.flush()
+        
+        logger.info(f"【save-result】心理画像已保存: {personality_profile.trait_extroversion}, {personality_profile.trait_conscientiousness}, etc")
+        
+        # 3. 计算岗位匹配度
+        match_score = calculate_job_match_score(personality_profile, job)
+        record.match_score = match_score
+        
+        logger.info(f"【save-result】匹配度已计算: {match_score}")
+        
+        # 4. 保存特质描述
+        trait_names = ["外向性", "宜人性", "尽责性", "神经质", "开放性"]
+        trait_descriptions = {
+            "外向性": "个人在社交互动和人际关系中的倾向程度",
+            "宜人性": "个人与他人合作和妥协的倾向程度",
+            "尽责性": "个人的组织性、自律性和责任意识程度",
+            "神经质": "个人处理应激和压力的能力程度",
+            "开放性": "个人对新经验和创意的开放程度"
+        }
+        
+        for trait_name in trait_names:
+            trait_score = request.personality_scores.get(trait_name, 5)
+            if trait_score:
+                trait_desc = PersonalityTraitDescription(
+                    assessment_record_id=record.id,
+                    trait_name=trait_name,
+                    score=trait_score,
+                    description=trait_descriptions.get(trait_name)
+                )
+                db.add(trait_desc)
+        
+        db.flush()
+        
+        logger.info(f"【save-result】特质描述已保存")
+        
+        # 5. 生成分析和建议
+        strengths = generate_default_analysis("strengths", personality_profile)
+        gaps = generate_default_analysis("gaps", personality_profile)
+        recommendations = generate_default_recommendations(personality_profile, job)
+        
+        # 6. 保存匹配分析
+        match_analysis = AssessmentMatchAnalysis(
+            assessment_record_id=record.id,
+            strengths=strengths,
+            gaps=gaps,
+            recommendations=recommendations
+        )
+        db.add(match_analysis)
+        
+        db.flush()
+        
+        logger.info(f"【save-result】分析与建议已生成")
+        
+        # 7. 提交事务
+        db.commit()
+        
+        logger.info(f"【save-result】评估结果保存完成! record_id={record.id}, match_score={match_score}")
+        
+        return StandardResponse(
+            code=200,
+            message="评估结果已保存",
+            data={"record_id": record.id}
+        )
+    except Exception as e:
+        db.rollback()
+        logger.error(f"【save-result】保存评估结果失败: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"保存失败: {str(e)}")
+
+
+# ============ Helper Functions for Analysis ============
+
+def generate_default_analysis(analysis_type: str, profile: CandidatePersonalityProfile) -> List[str]:
+    """生成默认的强项或改进空间分析"""
+    if analysis_type == "strengths":
+        analysis = []
+        if profile.trait_conscientiousness and profile.trait_conscientiousness >= 7:
+            analysis.append("责任心强，执行力强")
+        if profile.trait_openness and profile.trait_openness >= 7:
+            analysis.append("思维开放，学习能力强")
+        if profile.trait_extraversion and profile.trait_extraversion >= 7:
+            analysis.append("沟通能力强，团队协作意识强")
+        if profile.trait_agreeableness and profile.trait_agreeableness >= 7:
+            analysis.append("同理心强，合作意识强")
+        if not analysis:
+            analysis.append("表现均衡，基础素质扎实")
+        return analysis
+    else:  # gaps
+        analysis = []
+        if not profile.trait_conscientiousness or profile.trait_conscientiousness < 6:
+            analysis.append("需要提升执行力和自律性")
+        if not profile.trait_openness or profile.trait_openness < 6:
+            analysis.append("建议加强学习心态和创新意识")
+        if not profile.trait_extraversion or profile.trait_extraversion < 6:
+            analysis.append("可以加强沟通和表达能力")
+        if not profile.trait_neuroticism or profile.trait_neuroticism < 5:
+            analysis.append("需要加强压力管理和情绪控制")
+        if not analysis:
+            analysis.append("继续保持和完善各项能力")
+        return analysis
+
+
+def generate_default_recommendations(profile: CandidatePersonalityProfile, job: Job) -> List[str]:
+    """根据岗位生成专业建议"""
+    recommendations = []
+    
+    # 基础建议
+    recommendations.append("根据评估结果，建议职业发展方向明确")
+    recommendations.append("持续提升专业技能，增强岗位胜任力")
+    
+    # 根据岗位类别定制
+    if job.category and "engineer" in job.category.lower():
+        recommendations.append("建议参加技术领导力或架构设计培训")
+    elif job.category and "product" in job.category.lower():
+        recommendations.append("建议加强用户研究和数据分析能力")
+    elif job.category and "manager" in job.category.lower():
+        recommendations.append("建议参加团队领导力或项目管理培训")
+    else:
+        recommendations.append("建议参加相关领域的专业培训课程")
+    
+    recommendations.append("定期反思和改进，制定个人发展计划")
+    
+    return recommendations
 
 
 # ============ Admin APIs (用于 HR 后台管理) ============

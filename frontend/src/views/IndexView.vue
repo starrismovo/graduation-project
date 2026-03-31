@@ -21,6 +21,8 @@ const updateActiveMenu = () => {
     activeMenu.value = 'jobs'
   } else if (path.startsWith('/home/job-manage')) {
     activeMenu.value = 'jobs-manage'
+  } else if (path.startsWith('/home/reports')) {
+    activeMenu.value = 'reports'
   } else if (path.startsWith('/home/report')) {
     activeMenu.value = 'reports'
   } else {
@@ -87,7 +89,7 @@ const handleMenuSelect = (index: string) => {
       ElMessage.info('我的面试功能开发中')
       break
     case 'reports':
-      ElMessage.info('报告中心功能开发中')
+      router.push('/home/reports')
       break
     case 'jobs-manage':
       router.push('/home/job-manage')

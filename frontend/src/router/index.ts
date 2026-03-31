@@ -47,6 +47,11 @@ const router = createRouter({
           meta: { requiresHR: true }
         },
         {
+          path: 'reports',
+          name: 'ReportList',
+          component: () => import('../views/assessment/ReportListPage.vue')
+        },
+        {
           path: 'report/:recordId',
           name: 'AssessmentReport',
           component: () => import('../views/assessment/ReportPage.vue')

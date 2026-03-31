@@ -217,7 +217,10 @@
           <ReportGenerate 
             v-else-if="(activeStep === 5 && !showImmersiveMode) || (activeStep === 6 && showImmersiveMode)"
             :candidate="candidate"
-            :personalityScores="allScores"
+            :personality-scores="personalityScores"
+            :all-scores="allScores"
+            :job-id="selectedJobId || 1"
+            :assessment-mode="showImmersiveMode ? 'immersive' : 'standard'"
             @finish="handleFinish"
           />
         </div>
@@ -277,6 +280,9 @@ const candidate = ref<Record<string, any>>({})
 
 // 当前情景信息（由 SituationalQA 传来）
 const currentScenario = ref<Record<string, any> | null>(null)
+
+// 所选岗位ID（用于报告生成）
+const selectedJobId = ref<number | null>(null)
 
 // 评估数据
 const answers = ref<Array<{ text: string; time: string; latency: number; emotion: string }>>([])
@@ -361,6 +367,10 @@ function handleImmersiveComplete(data: any) {
   immersiveData.value = data
   if (data.scores) {
     immersiveScores.value = data.scores
+  }
+  // 保存选中的岗位ID（用于报告生成）
+  if (data.jobId) {
+    selectedJobId.value = data.jobId
   }
   ElMessage.success('多角色对话已完成，正在生成综合评分...')
 }

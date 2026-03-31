@@ -216,3 +216,17 @@ class SaveSessionResponse(BaseModel):
     code: int = 200
     message: str = "success"
     data: Optional[Dict[str, Any]] = None  # {session_id, assessment_id}
+
+
+class SaveAssessmentResultRequest(BaseModel):
+    """保存评估结果的请求"""
+    candidate_id: str
+    job_id: int
+    assessment_mode: str = "immersive"  # immersive or standard
+    all_scores: Dict[str, float] = {}
+    personality_scores: Dict[str, float] = {}
+    situational_scores: Optional[Dict[str, float]] = None
+    candidate_info: Optional[Dict[str, Any]] = None
+    
+    class Config:
+        from_attributes = True
