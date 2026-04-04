@@ -390,7 +390,7 @@ async def get_report(record_id: int, db: Session = Depends(get_db)):
     
     report = AssessmentReport(
         id=record.id,
-        candidate_id=record.candidate_id,
+        candidate_id=str(record.candidate_id),
         job_id=record.job_id,
         job_title=record.job_title,
         match_score=record.match_score,
@@ -405,6 +405,59 @@ async def get_report(record_id: int, db: Session = Depends(get_db)):
     )
     
     return AssessmentReportResponse(data=report)
+
+
+# ============ HR 候选人管理端点 ============
+
+@router.get("/hr/candidates", response_model=StandardResponse)
+async def get_hr_candidates(
+    job_id: Optional[int] = Query(None, description="按岗位筛选"),
+    status: Optional[str] = Query(None, description="按状态筛选: completed/pending"),
+    limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0),
+    db: Session = Depends(get_db)
+):
+    """
+    HR 获取所有已评估候选人列表（跨候选人聚合）
+    返回评估记录 + 候选人姓名 + 岗位信息 + 匹配分数
+    """
+    query = db.query(AssessmentRecord, User).join(
+        User, AssessmentRecord.candidate_id == User.id
+    )
+
+    if job_id:
+        query = query.filter(AssessmentRecord.job_id == job_id)
+    if status:
+        try:
+            query = query.filter(AssessmentRecord.assessment_status == AssessmentStatus(status))
+        except ValueError:
+            pass
+
+    total = query.count()
+    records = query.order_by(desc(AssessmentRecord.created_at)).offset(offset).limit(limit).all()
+
+    items = []
+    for record, user in records:
+        items.append({
+            "record_id": record.id,
+            "candidate_id": record.candidate_id,
+            "candidate_name": user.real_name or user.nickname or user.username,
+            "candidate_email": user.email,
+            "job_id": record.job_id,
+            "job_title": record.job_title,
+            "match_score": record.match_score,
+            "assessment_status": record.assessment_status.value if record.assessment_status else "pending",
+            "assessment_mode": record.assessment_mode,
+            "created_at": record.created_at.isoformat() if record.created_at else None,
+            "total_rounds": record.total_rounds,
+            "duration_minutes": record.duration_minutes,
+        })
+
+    return StandardResponse(
+        code=200,
+        message="success",
+        data={"total": total, "items": items}
+    )
 
 
 # ============ Save Assessment Result (新增端点) ============
@@ -430,13 +483,19 @@ async def save_assessment_result(
     try:
         logger.info(f"【save-result】保存评估结果: candidate_id={request.candidate_id}, job_id={request.job_id}")
         
+        # 确保 candidate_id 为整数
+        try:
+            candidate_id_int = int(request.candidate_id)
+        except (ValueError, TypeError):
+            raise HTTPException(status_code=400, detail=f"无效的 candidate_id: {request.candidate_id}")
+        
         # 1. 创建评估记录
         job = db.query(Job).filter_by(id=request.job_id).first()
         if not job:
             raise HTTPException(status_code=404, detail="岗位不存在")
         
         record = AssessmentRecord(
-            candidate_id=request.candidate_id,
+            candidate_id=candidate_id_int,
             job_id=request.job_id,
             job_title=job.name,
             assessment_mode=request.assessment_mode,
@@ -451,12 +510,12 @@ async def save_assessment_result(
         
         # 2. 创建或更新候选人心理画像
         personality_profile = db.query(CandidatePersonalityProfile).filter_by(
-            candidate_id=request.candidate_id
+            candidate_id=candidate_id_int
         ).first()
         
         if not personality_profile:
             personality_profile = CandidatePersonalityProfile(
-                candidate_id=request.candidate_id
+                candidate_id=candidate_id_int
             )
             db.add(personality_profile)
         
@@ -548,7 +607,7 @@ def generate_default_analysis(analysis_type: str, profile: CandidatePersonalityP
             analysis.append("责任心强，执行力强")
         if profile.trait_openness and profile.trait_openness >= 7:
             analysis.append("思维开放，学习能力强")
-        if profile.trait_extraversion and profile.trait_extraversion >= 7:
+        if profile.trait_extroversion and profile.trait_extroversion >= 7:
             analysis.append("沟通能力强，团队协作意识强")
         if profile.trait_agreeableness and profile.trait_agreeableness >= 7:
             analysis.append("同理心强，合作意识强")
@@ -561,7 +620,7 @@ def generate_default_analysis(analysis_type: str, profile: CandidatePersonalityP
             analysis.append("需要提升执行力和自律性")
         if not profile.trait_openness or profile.trait_openness < 6:
             analysis.append("建议加强学习心态和创新意识")
-        if not profile.trait_extraversion or profile.trait_extraversion < 6:
+        if not profile.trait_extroversion or profile.trait_extroversion < 6:
             analysis.append("可以加强沟通和表达能力")
         if not profile.trait_neuroticism or profile.trait_neuroticism < 5:
             analysis.append("需要加强压力管理和情绪控制")
@@ -980,139 +1039,4 @@ def _generate_fallback_analysis(role_id: str) -> Dict[str, Any]:
             }
         ]
     }
-
-
-@router.post("/immersive/next-question", response_model=NextQuestionResponse)
-async def get_next_question(
-    candidate_id: str = Query(..., description="候选人ID"),
-    role_id: str = Query(..., description="角色ID"),
-    role_name: str = Query(..., description="角色名称"),
-    conversation_depth: int = Query(1, description="对话深度 1-10"),
-    candidate_background: Optional[str] = Query(None, description="候选人背景"),
-    history: Optional[str] = Query(None, description="对话历史 JSON 字符串")
-):
-    """
-    获取沉浸式对话的下一个问题
-    
-    - 使用 LLM 基于对话历史生成智能问题
-    - 支持 HR、技术总监、产品经理、CTO 四个角色
-    """
-    try:
-        conversation_history = []
-        if history:
-            try:
-                conversation_history = json.loads(history)
-            except:
-                pass
-        
-        question_data = await call_llm_for_question(
-            role_id=role_id,
-            role_name=role_name,
-            conversation_history=conversation_history,
-            candidate_background=candidate_background,
-            conversation_depth=conversation_depth
-        )
-        
-        return NextQuestionResponse(
-            code=200,
-            message="success",
-            data=question_data
-        )
-    
-    except Exception as e:
-        logger.error(f"获取问题失败: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@router.post("/immersive/analyze-response", response_model=AnalyzeResponseResponse)
-async def analyze_candidate_response(request: AnalyzeResponseRequest):
-    """
-    分析候选人的回答
-    
-    - 评估多个维度的得分
-    - 分析情绪和置信度
-    - 识别行为模式
-    """
-    try:
-        analysis_result = await call_llm_for_analysis(
-            role_id=request.current_speaker,
-            speaker_name=request.speaker_name,
-            candidate_name=request.candidate_name,
-            candidate_response=request.candidate_response,
-            question_asked=None
-        )
-        
-        return AnalyzeResponseResponse(
-            code=200,
-            message="success",
-            data=analysis_result
-        )
-    
-    except Exception as e:
-        logger.error(f"分析回答失败: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@router.post("/immersive/save-session", response_model=SaveSessionResponse)
-async def save_immersive_session(
-    request: SaveSessionRequest,
-    db: Session = Depends(get_db)
-):
-    """
-    保存沉浸式对话的整个会话数据
-    
-    - 存储对话消息
-    - 记录评分和模式
-    - 创建评估记录
-    """
-    try:
-        # 创建或更新评估记录
-        assessment_record = None
-        
-        if request.assessment_id:
-            assessment_record = db.query(AssessmentRecord).filter_by(
-                id=request.assessment_id
-            ).first()
-        
-        if not assessment_record:
-            assessment_record = AssessmentRecord(
-                candidate_id=request.candidate_id,
-                job_id=request.job_id,
-                assessment_mode="immersive_dialogue",
-                assessment_status=AssessmentStatus.COMPLETED.value
-            )
-            db.add(assessment_record)
-            db.flush()
-        
-        # 存储对话数据和评分到 per_turn_results
-        per_turn_results = {
-            "messages": request.messages,
-            "scores_history": request.scores,
-            "patterns": request.patterns or [],
-            "highlights": request.highlights or [],
-            "duration_seconds": request.duration_seconds,
-            "conversation_depth": request.conversation_depth,
-            "total_rounds": request.total_rounds,
-            "saved_at": datetime.utcnow().isoformat()
-        }
-        
-        assessment_record.per_turn_results = per_turn_results
-        assessment_record.match_score = sum(request.scores.values()) / len(request.scores) if request.scores else 50.0
-        assessment_record.conversation_summary = f"沉浸式对话，{request.total_rounds}轮交互，深度{request.conversation_depth}/10"
-        assessment_record.updated_at = datetime.utcnow()
-        
-        db.commit()
-        
-        return SaveSessionResponse(
-            code=200,
-            message="success",
-            data={
-                "assessment_id": assessment_record.id,
-                "session_id": f"session_{assessment_record.id}_{int(datetime.utcnow().timestamp())}"
-            }
-        )
-    
-    except Exception as e:
-        logger.error(f"保存会话失败: {e}")
-        db.rollback()
-        raise HTTPException(status_code=500, detail=str(e))
+# ============ 以下沉浸式对话端点已迁移至 routers/immersive_dialogue.py ============

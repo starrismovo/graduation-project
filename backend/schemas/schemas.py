@@ -23,7 +23,7 @@ class JobCreate(BaseModel):
     city: str
     salary_min: float
     salary_max: float
-    required_traits: Dict[str, Any]
+    required_traits: Dict[str, Any] = {}
 
     @field_validator('required_traits', mode='before')
     @classmethod

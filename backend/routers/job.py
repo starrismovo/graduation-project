@@ -10,13 +10,9 @@ from schemas.schemas import (
 )
 from typing import List, Optional
 from sqlalchemy import and_
+from routers.user import get_current_user
 
 router = APIRouter(prefix="/jobs", tags=["岗位管理"])
-
-# 依赖：获取当前登录用户（后续改成真实 JWT 验证）
-def get_current_user(db: Session = Depends(get_db)):
-    # 演示用：假设当前是 id=1 的用户
-    return db.query(User).filter(User.id == 1).first()
 
 @router.post("/", response_model=JobResponse)
 def create_job(
@@ -25,7 +21,7 @@ def create_job(
     current_user: User = Depends(get_current_user)
 ):
     """HR创建岗位"""
-    if not current_user or not current_user.is_hr:
+    if not current_user or (not current_user.is_hr and not getattr(current_user, 'is_hr_user', False)):
         raise HTTPException(status_code=403, detail="只有HR可以创建岗位")
     
     new_job = Job(

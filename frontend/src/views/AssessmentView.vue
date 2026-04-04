@@ -372,7 +372,17 @@ function handleImmersiveComplete(data: any) {
   if (data.jobId) {
     selectedJobId.value = data.jobId
   }
-  ElMessage.success('多角色对话已完成，正在生成综合评分...')
+  
+  // 如果面试已完成（含报告），直接跳到报告步骤
+  if (data.finished) {
+    const reportStep = showImmersiveMode.value ? 6 : 5
+    activeStep.value = reportStep
+    ElMessage.success('评估已完成！')
+  } else {
+    // 进入下一步（认知任务或报告）
+    handleNext()
+    ElMessage.success('多角色对话已完成，进入下一步...')
+  }
 }
 
 // 处理多角色对话的评分更新

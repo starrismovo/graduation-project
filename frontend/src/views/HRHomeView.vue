@@ -2,9 +2,10 @@
 import { useUserStore } from '../stores/user'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, computed } from 'vue'
 import { getJobs } from '../utils/request'
-import { Delete, Edit, View, Plus, ArrowRight } from '@element-plus/icons-vue'
+import { createJob } from '../api/job'
+import { Delete, Edit, View, Plus, ArrowRight, User, Document } from '@element-plus/icons-vue'
 
 const userStore = useUserStore()
 const router = useRouter()
@@ -94,9 +95,30 @@ const handleCreateJob = async () => {
     return
   }
   
-  ElMessage.success('岗位创建成功（功能开发中）')
-  showCreateDialog.value = false
-  resetCreateForm()
+  try {
+    const response = await createJob({
+      name: createFormData.value.name.trim(),
+      description: createFormData.value.description.trim(),
+      company: createFormData.value.company?.trim() || '未填写',
+      category: createFormData.value.category?.trim() || '其他',
+      city: createFormData.value.city?.trim() || '未填写',
+      salary_min: Number(createFormData.value.salary_min) || 0,
+      salary_max: Number(createFormData.value.salary_max) || 0,
+      required_traits: {}
+    })
+    
+    if (response.data) {
+      ElMessage.success('岗位创建成功！')
+      showCreateDialog.value = false
+      resetCreateForm()
+      // 重新加载岗位列表
+      await loadJobs()
+    }
+  } catch (error: any) {
+    console.error('创建岗位失败:', error)
+    const detail = error.response?.data?.detail || error.message || '未知错误'
+    ElMessage.error(`创建岗位失败: ${detail}`)
+  }
 }
 
 const resetCreateForm = () => {
@@ -146,7 +168,92 @@ const handleCreateShortcut = () => {
 }
 
 const handleJumpReportQueue = () => {
-  ElMessage.info('报告待处理清单功能开发中')
+  activeTab.value = 'candidates'
+}
+
+// ==================== 候选人管理 ====================
+const activeTab = ref('jobs')
+const candidateList = ref<any[]>([])
+const candidateLoading = ref(false)
+const candidateTotal = ref(0)
+const candidateFilter = ref({ jobId: '', status: '' })
+const selectedReport = ref<any>(null)
+const showReportDialog = ref(false)
+const reportLoading = ref(false)
+
+// 从岗位列表中提取岗位选项
+const jobOptions = computed(() => jobsList.value.map(j => ({ label: j.name, value: j.id })))
+
+async function loadCandidates() {
+  try {
+    candidateLoading.value = true
+    const params = new URLSearchParams()
+    if (candidateFilter.value.jobId) params.append('job_id', candidateFilter.value.jobId)
+    if (candidateFilter.value.status) params.append('status', candidateFilter.value.status)
+    params.append('limit', '50')
+
+    const res = await fetch(`/assessment/hr/candidates?${params}`)
+    const data = await res.json()
+    if (data.code === 200 && data.data) {
+      candidateList.value = data.data.items || []
+      candidateTotal.value = data.data.total || 0
+    }
+  } catch (e) {
+    console.error('加载候选人列表失败:', e)
+    ElMessage.error('加载候选人列表失败')
+  } finally {
+    candidateLoading.value = false
+  }
+}
+
+function handleFilterChange() {
+  loadCandidates()
+}
+
+async function viewCandidateReport(row: any) {
+  try {
+    reportLoading.value = true
+    showReportDialog.value = true
+    selectedReport.value = null
+
+    const res = await fetch(`/assessment/report/${row.record_id}`)
+    const data = await res.json()
+    if (data.code === 200 && data.data) {
+      selectedReport.value = data.data
+    } else {
+      ElMessage.error('获取报告失败')
+    }
+  } catch (e) {
+    console.error('获取报告失败:', e)
+    ElMessage.error('获取报告失败')
+  } finally {
+    reportLoading.value = false
+  }
+}
+
+function goToFullReport(recordId: number) {
+  showReportDialog.value = false
+  router.push(`/home/report/${recordId}`)
+}
+
+function getStatusType(status: string) {
+  return status === 'completed' ? 'success' : status === 'pending' ? 'warning' : 'info'
+}
+function getStatusText(status: string) {
+  return status === 'completed' ? '已完成' : status === 'pending' ? '进行中' : status
+}
+function getScoreColor(score: number | null) {
+  if (!score) return '#909399'
+  if (score >= 80) return '#67c23a'
+  if (score >= 60) return '#409eff'
+  if (score >= 40) return '#e6a23c'
+  return '#f56c6c'
+}
+
+function handleTabChange(tab: string) {
+  if (tab === 'candidates' && candidateList.value.length === 0) {
+    loadCandidates()
+  }
 }
 
 onMounted(() => {
@@ -167,112 +274,236 @@ onMounted(() => {
       </div>
     </div>
 
-    <div class="kpi-grid">
-      <div class="kpi-card">
-        <div class="kpi-label">在招岗位</div>
-        <div class="kpi-value">{{ stats.openJobs }}</div>
-        <div class="kpi-foot">总岗位 {{ stats.totalJobs }}</div>
-      </div>
-      <div class="kpi-card">
-        <div class="kpi-label">投递总量</div>
-        <div class="kpi-value">{{ stats.totalSubmissions }}</div>
-        <div class="kpi-foot">实时更新</div>
-      </div>
-      <div class="kpi-card">
-        <div class="kpi-label">平均匹配度</div>
-        <div class="kpi-value">{{ stats.avgMatchScore }}%</div>
-        <div class="kpi-foot">近30天平均</div>
-      </div>
-      <div class="kpi-card">
-        <div class="kpi-label">待处理报告</div>
-        <div class="kpi-value">{{ stats.pendingReports }}</div>
-        <div class="kpi-foot">需重点关注</div>
-      </div>
-    </div>
-
-    <div class="dashboard-layout">
-      <div class="dashboard-main">
-        <div class="section-header">
-          <h3>岗位列表</h3>
-          <span class="section-hint">可排序查看投递、匹配度和待处理量</span>
+    <el-tabs v-model="activeTab" class="hr-tabs" @tab-change="handleTabChange">
+      <!-- ==================== 岗位管理 Tab ==================== -->
+      <el-tab-pane label="岗位管理" name="jobs">
+        <div class="kpi-grid">
+          <div class="kpi-card">
+            <div class="kpi-label">在招岗位</div>
+            <div class="kpi-value">{{ stats.openJobs }}</div>
+            <div class="kpi-foot">总岗位 {{ stats.totalJobs }}</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-label">投递总量</div>
+            <div class="kpi-value">{{ stats.totalSubmissions }}</div>
+            <div class="kpi-foot">实时更新</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-label">平均匹配度</div>
+            <div class="kpi-value">{{ stats.avgMatchScore }}%</div>
+            <div class="kpi-foot">近30天平均</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-label">待处理报告</div>
+            <div class="kpi-value">{{ stats.pendingReports }}</div>
+            <div class="kpi-foot">需重点关注</div>
+          </div>
         </div>
 
-        <el-table
-          :data="jobsList"
-          stripe
-          style="width: 100%"
-          :loading="loading"
-          empty-text="暂无岗位"
-        >
-          <el-table-column prop="name" label="岗位名称" min-width="160" sortable />
-          <el-table-column prop="company" label="公司" min-width="140" />
-          <el-table-column prop="city" label="城市" min-width="120" />
-          <el-table-column label="投递量" min-width="120" sortable="custom">
+        <div class="dashboard-layout">
+          <div class="dashboard-main">
+            <div class="section-header">
+              <h3>岗位列表</h3>
+              <span class="section-hint">可排序查看投递、匹配度和待处理量</span>
+            </div>
+
+            <el-table
+              :data="jobsList"
+              stripe
+              style="width: 100%"
+              :loading="loading"
+              empty-text="暂无岗位"
+            >
+              <el-table-column prop="name" label="岗位名称" min-width="160" sortable />
+              <el-table-column prop="company" label="公司" min-width="140" />
+              <el-table-column prop="city" label="城市" min-width="120" />
+              <el-table-column label="投递量" min-width="120" sortable="custom">
+                <template #default="{ row }">
+                  <el-tag type="info">{{ row.submissions }}</el-tag>
+                </template>
+              </el-table-column>
+              <el-table-column label="平均匹配度" min-width="140" sortable="custom">
+                <template #default="{ row }">
+                  <el-progress :percentage="row.avgMatch" :stroke-width="8" color="#409eff" />
+                </template>
+              </el-table-column>
+              <el-table-column label="待处理" min-width="120" sortable="custom">
+                <template #default="{ row }">
+                  <el-tag :type="row.pendingReports > 0 ? 'warning' : 'success'">
+                    {{ row.pendingReports }}
+                  </el-tag>
+                </template>
+              </el-table-column>
+              <el-table-column prop="updated_at" label="最近更新" min-width="160" sortable>
+                <template #default="{ row }">
+                  {{ new Date(row.updated_at).toLocaleDateString('zh-CN') }}
+                </template>
+              </el-table-column>
+              <el-table-column label="操作" min-width="200" fixed="right">
+                <template #default="{ row }">
+                  <el-button link type="primary" :icon="View" @click="handleViewReport(row)">报告</el-button>
+                  <el-button link type="warning" :icon="Edit" @click="handleEditJob(row)">编辑</el-button>
+                  <el-button link type="danger" :icon="Delete" @click="handleDeleteJob(row)">删除</el-button>
+                </template>
+              </el-table-column>
+            </el-table>
+          </div>
+
+          <div class="dashboard-side">
+            <div class="side-card">
+              <h4>岗位概况</h4>
+              <div class="overview-item">
+                <span>活跃岗位</span>
+                <strong>{{ stats.openJobs }}</strong>
+              </div>
+              <div class="overview-item">
+                <span>待处理报告</span>
+                <strong>{{ stats.pendingReports }}</strong>
+              </div>
+              <div class="overview-item">
+                <span>平均匹配度</span>
+                <strong>{{ stats.avgMatchScore }}%</strong>
+              </div>
+            </div>
+
+            <div class="side-card">
+              <h4>快捷入口</h4>
+              <el-button class="action-btn" type="primary" plain block @click="activeTab = 'candidates'">查看所有候选人报告</el-button>
+              <el-button class="action-btn" type="success" plain block>人才池管理</el-button>
+              <el-button class="action-btn" type="info" plain block>数据分析中心</el-button>
+            </div>
+
+            <div class="side-card">
+              <h4>最新岗位</h4>
+              <div v-if="jobsList.length === 0" class="empty-state">暂无岗位</div>
+              <div v-for="job in jobsList.slice(0, 3)" :key="job.id" class="recent-item">
+                <div class="recent-title">{{ job.name }}</div>
+                <div class="recent-meta">{{ new Date(job.created_at).toLocaleDateString('zh-CN') }}</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </el-tab-pane>
+
+      <!-- ==================== 候选人管理 Tab ==================== -->
+      <el-tab-pane label="候选人管理" name="candidates">
+        <div class="candidate-toolbar">
+          <el-select v-model="candidateFilter.jobId" placeholder="按岗位筛选" clearable style="width: 200px" @change="handleFilterChange">
+            <el-option v-for="opt in jobOptions" :key="opt.value" :label="opt.label" :value="opt.value" />
+          </el-select>
+          <el-select v-model="candidateFilter.status" placeholder="按状态筛选" clearable style="width: 160px" @change="handleFilterChange">
+            <el-option label="已完成" value="completed" />
+            <el-option label="进行中" value="pending" />
+          </el-select>
+          <el-button :icon="ArrowRight" @click="loadCandidates">刷新</el-button>
+          <span class="candidate-count">共 {{ candidateTotal }} 位候选人</span>
+        </div>
+
+        <el-table :data="candidateList" v-loading="candidateLoading" stripe style="width: 100%" empty-text="暂无候选人评估记录">
+          <el-table-column prop="candidate_name" label="候选人" min-width="120">
             <template #default="{ row }">
-              <el-tag type="info">{{ row.submissions }}</el-tag>
+              <div class="candidate-name-cell">
+                <el-icon :size="16" color="#409eff"><User /></el-icon>
+                <span>{{ row.candidate_name || '未知' }}</span>
+              </div>
             </template>
           </el-table-column>
-          <el-table-column label="平均匹配度" min-width="140" sortable="custom">
+          <el-table-column prop="candidate_email" label="邮箱" min-width="180" />
+          <el-table-column prop="job_title" label="应聘岗位" min-width="140" />
+          <el-table-column label="匹配度" min-width="150" sortable>
             <template #default="{ row }">
-              <el-progress :percentage="row.avgMatch" :stroke-width="8" color="#409eff" />
+              <div v-if="row.match_score != null" class="score-cell">
+                <el-progress
+                  :percentage="Math.round(row.match_score)"
+                  :stroke-width="10"
+                  :color="getScoreColor(row.match_score)"
+                  style="flex: 1"
+                />
+                <span class="score-num" :style="{ color: getScoreColor(row.match_score) }">{{ Math.round(row.match_score) }}%</span>
+              </div>
+              <el-tag v-else type="info" size="small">未评分</el-tag>
             </template>
           </el-table-column>
-          <el-table-column label="待处理" min-width="120" sortable="custom">
+          <el-table-column label="状态" min-width="100">
             <template #default="{ row }">
-              <el-tag :type="row.pendingReports > 0 ? 'warning' : 'success'">
-                {{ row.pendingReports }}
-              </el-tag>
+              <el-tag :type="getStatusType(row.assessment_status)" size="small">{{ getStatusText(row.assessment_status) }}</el-tag>
             </template>
           </el-table-column>
-          <el-table-column prop="updated_at" label="最近更新" min-width="160" sortable>
+          <el-table-column label="评估时间" min-width="140" sortable>
             <template #default="{ row }">
-              {{ new Date(row.updated_at).toLocaleDateString('zh-CN') }}
+              {{ new Date(row.created_at).toLocaleDateString('zh-CN') }}
             </template>
           </el-table-column>
-          <el-table-column label="操作" min-width="200" fixed="right">
+          <el-table-column label="操作" min-width="120" fixed="right">
             <template #default="{ row }">
-              <el-button link type="primary" :icon="View" @click="handleViewReport(row)">报告</el-button>
-              <el-button link type="warning" :icon="Edit" @click="handleEditJob(row)">编辑</el-button>
-              <el-button link type="danger" :icon="Delete" @click="handleDeleteJob(row)">删除</el-button>
+              <el-button link type="primary" :icon="Document" @click="viewCandidateReport(row)" :disabled="row.assessment_status !== 'completed'">
+                查看报告
+              </el-button>
             </template>
           </el-table-column>
         </el-table>
+      </el-tab-pane>
+    </el-tabs>
+
+    <!-- 候选人报告预览弹窗 -->
+    <el-dialog v-model="showReportDialog" title="候选人评估报告" width="680px" top="5vh">
+      <div v-if="reportLoading" class="report-loading">
+        <el-icon class="is-loading" :size="32"><ArrowRight /></el-icon>
+        <p>正在加载报告…</p>
       </div>
-
-      <div class="dashboard-side">
-        <div class="side-card">
-          <h4>岗位概况</h4>
-          <div class="overview-item">
-            <span>活跃岗位</span>
-            <strong>{{ stats.openJobs }}</strong>
-          </div>
-          <div class="overview-item">
-            <span>待处理报告</span>
-            <strong>{{ stats.pendingReports }}</strong>
-          </div>
-          <div class="overview-item">
-            <span>平均匹配度</span>
-            <strong>{{ stats.avgMatchScore }}%</strong>
+      <div v-else-if="selectedReport" class="report-preview">
+        <div class="report-section">
+          <h4>基本信息</h4>
+          <div class="report-info-grid">
+            <div><span class="label">候选人：</span>{{ selectedReport.candidate_name || '—' }}</div>
+            <div><span class="label">应聘岗位：</span>{{ selectedReport.job_title || '—' }}</div>
+            <div><span class="label">评估模式：</span>{{ selectedReport.assessment_mode || '—' }}</div>
+            <div><span class="label">评估时间：</span>{{ selectedReport.created_at ? new Date(selectedReport.created_at).toLocaleDateString('zh-CN') : '—' }}</div>
           </div>
         </div>
 
-        <div class="side-card">
-          <h4>快捷入口</h4>
-          <el-button class="action-btn" type="primary" plain block>查看所有候选人报告</el-button>
-          <el-button class="action-btn" type="success" plain block>人才池管理</el-button>
-          <el-button class="action-btn" type="info" plain block>数据分析中心</el-button>
+        <div class="report-section" v-if="selectedReport.match_score != null">
+          <h4>匹配得分</h4>
+          <div class="big-score" :style="{ color: getScoreColor(selectedReport.match_score) }">
+            {{ Math.round(selectedReport.match_score) }}<small>%</small>
+          </div>
+          <el-progress :percentage="Math.round(selectedReport.match_score)" :stroke-width="14" :color="getScoreColor(selectedReport.match_score)" />
         </div>
 
-        <div class="side-card">
-          <h4>最新岗位</h4>
-          <div v-if="jobsList.length === 0" class="empty-state">暂无岗位</div>
-          <div v-for="job in jobsList.slice(0, 3)" :key="job.id" class="recent-item">
-            <div class="recent-title">{{ job.name }}</div>
-            <div class="recent-meta">{{ new Date(job.created_at).toLocaleDateString('zh-CN') }}</div>
+        <div class="report-section" v-if="selectedReport.personality_traits">
+          <h4>性格特质</h4>
+          <div class="trait-list">
+            <div v-for="(val, key) in selectedReport.personality_traits" :key="key" class="trait-item">
+              <span class="trait-label">{{ key }}</span>
+              <el-progress :percentage="Math.round(val * 100)" :stroke-width="8" :show-text="true" />
+            </div>
           </div>
+        </div>
+
+        <div class="report-section" v-if="selectedReport.strengths?.length">
+          <h4>优势</h4>
+          <ul class="report-list success">
+            <li v-for="(s, i) in selectedReport.strengths" :key="i">{{ s }}</li>
+          </ul>
+        </div>
+        <div class="report-section" v-if="selectedReport.gaps?.length">
+          <h4>待提升</h4>
+          <ul class="report-list warning">
+            <li v-for="(g, i) in selectedReport.gaps" :key="i">{{ g }}</li>
+          </ul>
+        </div>
+        <div class="report-section" v-if="selectedReport.recommendations?.length">
+          <h4>建议</h4>
+          <ul class="report-list info">
+            <li v-for="(r, i) in selectedReport.recommendations" :key="i">{{ r }}</li>
+          </ul>
         </div>
       </div>
-    </div>
+      <div v-else class="report-empty">暂无报告数据</div>
+      <template #footer>
+        <el-button @click="showReportDialog = false">关闭</el-button>
+      </template>
+    </el-dialog>
 
     <el-dialog v-model="showCreateDialog" title="创建新岗位" width="500px">
       <el-form :model="createFormData" label-width="100px">
@@ -499,5 +730,152 @@ onMounted(() => {
   .kpi-grid {
     grid-template-columns: 1fr;
   }
+}
+
+/* ==================== 候选人管理 Tab ==================== */
+.hr-tabs {
+  flex: 1;
+}
+
+.hr-tabs :deep(.el-tabs__header) {
+  background: #ffffff;
+  border-radius: 12px 12px 0 0;
+  padding: 0 20px;
+  box-shadow: 0 4px 12px rgba(18, 28, 45, 0.06);
+  margin-bottom: 20px;
+}
+
+.hr-tabs :deep(.el-tabs__item) {
+  font-size: 15px;
+  height: 48px;
+  line-height: 48px;
+}
+
+.candidate-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+  padding: 16px 20px;
+  background: #ffffff;
+  border-radius: 12px;
+  box-shadow: 0 4px 12px rgba(18, 28, 45, 0.06);
+}
+
+.candidate-count {
+  margin-left: auto;
+  color: #6b7280;
+  font-size: 13px;
+}
+
+.candidate-name-cell {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.score-cell {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.score-num {
+  font-weight: 700;
+  font-size: 14px;
+  min-width: 40px;
+  text-align: right;
+}
+
+/* ==================== 报告预览弹窗 ==================== */
+.report-loading {
+  text-align: center;
+  padding: 40px 0;
+  color: #6b7280;
+}
+
+.report-preview {
+  max-height: 65vh;
+  overflow-y: auto;
+}
+
+.report-section {
+  margin-bottom: 20px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid #f3f4f6;
+}
+
+.report-section:last-child {
+  border-bottom: none;
+}
+
+.report-section h4 {
+  margin: 0 0 12px;
+  font-size: 15px;
+  color: #1f2937;
+}
+
+.report-info-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  font-size: 13px;
+  color: #374151;
+}
+
+.report-info-grid .label {
+  color: #6b7280;
+}
+
+.big-score {
+  font-size: 48px;
+  font-weight: 800;
+  text-align: center;
+  margin-bottom: 12px;
+}
+
+.big-score small {
+  font-size: 20px;
+  font-weight: 500;
+}
+
+.trait-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.trait-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.trait-label {
+  min-width: 80px;
+  font-size: 13px;
+  color: #374151;
+  text-transform: capitalize;
+}
+
+.report-list {
+  padding-left: 18px;
+  margin: 0;
+}
+
+.report-list li {
+  margin-bottom: 6px;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.report-list.success li::marker { color: #67c23a; }
+.report-list.warning li::marker { color: #e6a23c; }
+.report-list.info li::marker { color: #409eff; }
+
+.report-empty {
+  text-align: center;
+  color: #9ca3af;
+  padding: 40px 0;
 }
 </style>

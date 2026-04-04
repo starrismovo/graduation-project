@@ -326,6 +326,7 @@ const applying = ref(false)
 
 // HR 表单数据
 const formData = ref({
+  jobId: null,
   jobName: '',
   roleCategory: 'backend',
   jdText: '',
@@ -367,6 +368,10 @@ const parseJD = async () => {
     ElMessage.warning('请输入岗位描述')
     return
   }
+  if (!formData.value.jobId) {
+    ElMessage.warning('请先创建或选择一个岗位')
+    return
+  }
 
   loading.value = true
   try {
@@ -401,6 +406,10 @@ const addSkill = () => {
 const saveRequirements = async () => {
   if (!formData.value.skills.length) {
     ElMessage.warning('请至少添加一项技能需求')
+    return
+  }
+  if (!formData.value.jobId) {
+    ElMessage.warning('请先创建或选择一个岗位')
     return
   }
 

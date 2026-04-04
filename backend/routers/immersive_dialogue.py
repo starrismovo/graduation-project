@@ -15,6 +15,7 @@ os.environ['PADDLEOCR_HOME'] = str(Path.home() / ".paddleocr")
 
 from typing import Optional, List, Dict, Any
 from fastapi import APIRouter, HTTPException, Depends, Query, UploadFile, File
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from database import get_db
@@ -26,6 +27,27 @@ from services.immersive_dialogue import (
 
 
 router = APIRouter(prefix="/assessment/immersive", tags=["沉浸式对话"])
+
+
+# ==================== 请求体模型 ====================
+
+class NextQuestionRequest(BaseModel):
+    candidate_id: str
+    role_id: str = "hr"
+    role_name: Optional[str] = None
+    conversation_depth: int = 0
+    history: List[Dict[str, Any]] = []
+    target_position: Optional[str] = None
+
+
+class AnalyzeResponseRequest(BaseModel):
+    candidate_id: str
+    candidate_name: Optional[str] = None
+    current_speaker: str = "hr"
+    candidate_response: str
+    conversation_depth: int = 0
+    previous_messages: List[Dict[str, Any]] = []
+    target_position: Optional[str] = None
 
 
 # ==================== candidate_id 验证器 ====================
@@ -56,21 +78,14 @@ def _validate_candidate_id(candidate_id: str) -> str:
 
 @router.post("/next-question")
 async def get_next_question(
-    candidate_id: str = Query(..., description="候选人ID"),
-    role_id: str = Query(..., description="提问角色ID"),
-    role_name: Optional[str] = Query(None, description="角色名称"),
-    conversation_depth: int = Query(0, description="对话深度"),
-    history: str = Query("[]", description="对话历史 JSON"),
-    target_position: Optional[str] = Query(None, description="目标岗位"),
+    request: NextQuestionRequest,
     db: Session = Depends(get_db)
 ):
     """
     生成下一个问题
     
     Args:
-        candidate_id: 候选人ID
-        role_id: 角色ID (hr/tech_lead/product/cto)
-        conversation_depth: 对话深度 (0-10)
+        request: NextQuestionRequest JSON body
     
     Returns:
         {
@@ -87,20 +102,23 @@ async def get_next_question(
     
     try:
         # ✅ 验证 candidate_id
-        candidate_id = _validate_candidate_id(candidate_id)
+        candidate_id = _validate_candidate_id(request.candidate_id)
         
-        import json
-        conversation_history = json.loads(history) if history else []
+        # 解析角色，无效时默认 HR
+        try:
+            role = RoleType(request.role_id)
+        except ValueError:
+            role = RoleType.HR
         
         service = ImmersiveDialogueService(db)
         
         result = await service.generate_next_question(
-            candidate_id=candidate_id,
+            id=candidate_id,
             candidate_name="",  # 可从数据库获取
-            current_role=RoleType(role_id),
-            conversation_history=conversation_history,
-            conversation_depth=conversation_depth,
-            target_position=target_position
+            current_role=role,
+            conversation_history=request.history,
+            conversation_depth=request.conversation_depth,
+            target_position=request.target_position
         )
         
         return {
@@ -110,20 +128,14 @@ async def get_next_question(
         }
     
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=f"无效的角色: {e}")
+        raise HTTPException(status_code=400, detail=f"参数无效: {e}")
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"生成问题失败: {str(e)}")
 
 
 @router.post("/analyze-response")
 async def analyze_candidate_response(
-    candidate_id: str = Query(..., description="候选人ID"),
-    candidate_name: Optional[str] = Query(None),
-    current_speaker: str = Query(..., description="提问者角色"),
-    candidate_response: str = Query(..., description="候选人回答"),
-    conversation_depth: int = Query(0),
-    previous_messages: str = Query("[]", description="历史消息 JSON"),
-    target_position: Optional[str] = Query(None),
+    request: AnalyzeResponseRequest,
     db: Session = Depends(get_db)
 ):
     """
@@ -151,21 +163,24 @@ async def analyze_candidate_response(
     
     try:
         # ✅ 验证 candidate_id
-        candidate_id = _validate_candidate_id(candidate_id)
+        candidate_id = _validate_candidate_id(request.candidate_id)
         
-        import json
-        messages = json.loads(previous_messages) if previous_messages else []
+        # 解析角色，无效时默认 HR
+        try:
+            role = RoleType(request.current_speaker)
+        except ValueError:
+            role = RoleType.HR
         
         service = ImmersiveDialogueService(db)
         
         result = await service.analyze_candidate_response(
-            candidate_id=candidate_id,
-            candidate_name=candidate_name or "候选人",
-            current_speaker=RoleType(current_speaker),
-            candidate_response=candidate_response,
-            conversation_history=messages,
-            conversation_depth=conversation_depth,
-            target_position=target_position
+            id=candidate_id,
+            candidate_name=request.candidate_name or "候选人",
+            current_speaker=role,
+            candidate_response=request.candidate_response,
+            conversation_history=request.previous_messages,
+            conversation_depth=request.conversation_depth,
+            target_position=request.target_position
         )
         
         return {
@@ -175,7 +190,7 @@ async def analyze_candidate_response(
         }
     
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=f"无效的角色: {e}")
+        raise HTTPException(status_code=400, detail=f"参数无效: {e}")
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"分析失败: {str(e)}")
 
@@ -409,6 +424,160 @@ async def get_session_details(
     
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"查询失败: {str(e)}")
+
+
+# ==================== 简历/进度检查接口 ====================
+
+@router.get("/check-resume/{candidate_id}")
+async def check_resume(candidate_id: str, db: Session = Depends(get_db)):
+    """检查候选人是否已有简历/个人信息数据"""
+    try:
+        candidate_id = _validate_candidate_id(candidate_id)
+        
+        from models.user import User
+        user = db.query(User).filter(User.id == int(candidate_id)).first()
+        
+        if not user:
+            return {"code": 200, "data": {"has_resume": False}}
+        
+        has_resume = bool(user.resume_url) or bool(user.skills) or bool(user.education)
+        
+        return {
+            "code": 200,
+            "data": {
+                "has_resume": has_resume,
+                "resume_info": {
+                    "name": user.real_name or user.username or "",
+                    "email": user.email or "",
+                    "education": user.education or "",
+                    "skills": user.skills or [],
+                    "resume_url": user.resume_url or "",
+                } if has_resume else None
+            }
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"查询失败: {str(e)}")
+
+
+@router.get("/check-progress/{candidate_id}")
+async def check_progress(candidate_id: str, db: Session = Depends(get_db)):
+    """检查候选人是否有进行中的评估"""
+    try:
+        candidate_id = _validate_candidate_id(candidate_id)
+        
+        from models.assessment import AssessmentRecord, AssessmentStatus
+        
+        pending = db.query(AssessmentRecord).filter(
+            AssessmentRecord.candidate_id == int(candidate_id),
+            AssessmentRecord.assessment_status == AssessmentStatus.PENDING,
+            AssessmentRecord.is_deleted == False
+        ).order_by(AssessmentRecord.updated_at.desc()).first()
+        
+        if pending:
+            return {
+                "code": 200,
+                "data": {
+                    "has_progress": True,
+                    "assessment_id": pending.id,
+                    "job_id": pending.job_id,
+                    "job_title": pending.job_title,
+                    "created_at": pending.created_at.isoformat() if pending.created_at else None,
+                    "updated_at": pending.updated_at.isoformat() if pending.updated_at else None,
+                    "total_rounds": pending.total_rounds or 0,
+                }
+            }
+        
+        return {"code": 200, "data": {"has_progress": False}}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"查询失败: {str(e)}")
+
+
+@router.post("/update-progress")
+async def update_assessment_progress(
+    request_data: Dict[str, Any],
+    db: Session = Depends(get_db)
+):
+    """
+    保存/更新评估进度（自动保存和手动保存通用）
+    
+    Args:
+        request_data: {
+            "candidate_id": "123",
+            "assessment_id": 456 (可选, 更新已有记录时传入),
+            "job_id": 1,
+            "job_title": "前端工程师",
+            "status": "pending" | "completed",
+            "total_rounds": 5,
+            "duration_minutes": 3.5,
+            "conversation_depth": 5,
+            "conversation_summary": "...",
+            "match_score": 78.5
+        }
+    """
+    try:
+        from models.assessment import AssessmentRecord, AssessmentStatus
+        
+        candidate_id = request_data.get("candidate_id")
+        if candidate_id:
+            candidate_id = _validate_candidate_id(str(candidate_id))
+        
+        assessment_id = request_data.get("assessment_id")
+        status_str = request_data.get("status", "pending")
+        
+        status_map = {
+            "pending": AssessmentStatus.PENDING,
+            "completed": AssessmentStatus.COMPLETED,
+            "failed": AssessmentStatus.FAILED,
+        }
+        status = status_map.get(status_str, AssessmentStatus.PENDING)
+        
+        if assessment_id:
+            # 更新已有记录
+            record = db.query(AssessmentRecord).filter(
+                AssessmentRecord.id == int(assessment_id)
+            ).first()
+            if not record:
+                raise HTTPException(status_code=404, detail="评估记录不存在")
+            
+            record.assessment_status = status
+            record.total_rounds = request_data.get("total_rounds", record.total_rounds)
+            record.duration_minutes = request_data.get("duration_minutes", record.duration_minutes)
+            record.conversation_depth = request_data.get("conversation_depth", record.conversation_depth)
+            record.conversation_summary = request_data.get("conversation_summary", record.conversation_summary)
+            if request_data.get("match_score") is not None:
+                record.match_score = request_data["match_score"]
+        else:
+            # 创建新记录
+            record = AssessmentRecord(
+                candidate_id=int(candidate_id),
+                job_id=request_data.get("job_id", 0),
+                job_title=request_data.get("job_title", "未知岗位"),
+                assessment_status=status,
+                assessment_mode="immersive",
+                total_rounds=request_data.get("total_rounds", 0),
+                duration_minutes=request_data.get("duration_minutes", 0),
+                conversation_depth=request_data.get("conversation_depth", 0),
+                conversation_summary=request_data.get("conversation_summary", ""),
+                match_score=request_data.get("match_score"),
+            )
+            db.add(record)
+        
+        db.commit()
+        db.refresh(record)
+        
+        return {
+            "code": 200,
+            "data": {
+                "assessment_id": record.id,
+                "status": record.assessment_status.value if record.assessment_status else None,
+            },
+            "message": "进度已保存"
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"保存进度失败: {str(e)}")
 
 
 # ==================== 简历解析接口 ====================

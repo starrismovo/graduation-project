@@ -4,6 +4,7 @@
 
 import logging
 from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from datetime import datetime
 from typing import List, Optional
@@ -32,11 +33,15 @@ router = APIRouter(prefix="/jobs", tags=["job_requirements"])
 
 # ==================== 岗位需求管理 ====================
 
+class CreateFromJDRequest(BaseModel):
+    """从JD创建岗位需求的请求体"""
+    job_id: int
+    jd_text: str
+    role_category: str
+
 @router.post("/requirements/create-from-jd", response_model=dict)
 async def create_requirements_from_jd(
-    job_id: int,
-    jd_text: str = Query(..., description="岗位描述文本"),
-    role_category: str = Query(..., description="岗位类别"),
+    body: CreateFromJDRequest,
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user)
 ):
@@ -44,13 +49,16 @@ async def create_requirements_from_jd(
     从岗位描述文本自动生成结构化需求
     
     Args:
-        job_id: 岗位 ID
-        jd_text: 原始 JD 文本
-        role_category: 岗位类别（backend/frontend/product/design等）
+        body.job_id: 岗位 ID
+        body.jd_text: 原始 JD 文本
+        body.role_category: 岗位类别（backend/frontend/product/design等）
     
     Returns:
         生成的需求结构
     """
+    job_id = body.job_id
+    jd_text = body.jd_text
+    role_category = body.role_category
     
     # 验证岗位存在
     job = db.query(Job).filter(Job.id == job_id).first()
@@ -58,7 +66,8 @@ async def create_requirements_from_jd(
         raise HTTPException(status_code=404, detail="岗位不存在")
     
     # 验证权限（只有 HR 或岗位创建者可以修改）
-    if job.creator_id != current_user.get("id"):
+    user_id = current_user.id if hasattr(current_user, 'id') else current_user.get("id")
+    if job.creator_id != user_id:
         raise HTTPException(status_code=403, detail="无权修改此岗位需求")
     
     try:
@@ -160,7 +169,8 @@ async def update_job_requirements(
         raise HTTPException(status_code=404, detail="岗位不存在")
     
     # 验证权限
-    if job.creator_id != current_user.get("id"):
+    user_id2 = current_user.id if hasattr(current_user, 'id') else current_user.get("id")
+    if job.creator_id != user_id2:
         raise HTTPException(status_code=403, detail="无权修改此岗位需求")
     
     try:

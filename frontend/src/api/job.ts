@@ -62,6 +62,25 @@ export const getJobMatch = (candidateId: number, jobId: number) => {
 // ==================== 岗位列表 API ====================
 
 /**
+ * 创建岗位
+ */
+export const createJob = (data: {
+  name: string
+  description: string
+  company: string
+  category: string
+  city: string
+  salary_min: number
+  salary_max: number
+  required_traits?: Record<string, any>
+}) => {
+  return request.post('/jobs/', {
+    ...data,
+    required_traits: data.required_traits || {}
+  })
+}
+
+/**
  * 获取所有岗位
  */
 export const getAllJobs = () => {
