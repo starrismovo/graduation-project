@@ -8,8 +8,8 @@ from schemas.schemas import (
     JobCreate, JobResponse, JobCardResponse,
     InterviewStatsResponse, HomeDataResponse
 )
-from typing import List, Optional
-from sqlalchemy import and_
+from typing import List, Optional, Dict, Any
+from sqlalchemy import and_, or_, func
 from routers.user import get_current_user
 
 router = APIRouter(prefix="/jobs", tags=["岗位管理"])
@@ -61,14 +61,6 @@ def get_jobs(
         query = query.filter(Job.salary_min <= salary_max)
     
     return query.all()
-
-@router.get("/{job_id}", response_model=JobResponse)
-def get_job(job_id: int, db: Session = Depends(get_db)):
-    """获取岗位详情"""
-    job = db.query(Job).filter(Job.id == job_id).first()
-    if not job:
-        raise HTTPException(status_code=404, detail="岗位不存在")
-    return job
 
 @router.get("/recommended/cards", response_model=List[JobCardResponse])
 def get_recommended_jobs(
@@ -227,3 +219,101 @@ def get_home_page_data(
         user_username=current_user.username,
         user_is_hr=current_user.is_hr
     )
+
+
+@router.get("/filters")
+def get_job_filters(db: Session = Depends(get_db)):
+    """获取岗位筛选选项（城市列表和类别列表）"""
+    cities = db.query(Job.city).distinct().order_by(
+        func.count(Job.id).desc()
+    ).group_by(Job.city).limit(50).all()
+    
+    categories = db.query(Job.category).distinct().order_by(
+        func.count(Job.id).desc()
+    ).group_by(Job.category).limit(30).all()
+    
+    return {
+        "cities": [c[0] for c in cities if c[0]],
+        "categories": [c[0] for c in categories if c[0]]
+    }
+
+
+@router.get("/search")
+def search_jobs(
+    keyword: Optional[str] = Query(None, description="搜索关键词（职位名/公司/描述）"),
+    city: Optional[str] = Query(None, description="城市筛选"),
+    category: Optional[str] = Query(None, description="类别筛选"),
+    salary_min: Optional[float] = Query(None, description="最低薪资(k)"),
+    salary_max: Optional[float] = Query(None, description="最高薪资(k)"),
+    page: int = Query(1, ge=1, description="页码"),
+    page_size: int = Query(12, ge=1, le=48, description="每页数量"),
+    db: Session = Depends(get_db)
+):
+    """搜索岗位（支持关键词、筛选、分页）"""
+    query = db.query(Job)
+    
+    # 关键词搜索
+    if keyword:
+        like_pattern = f"%{keyword}%"
+        query = query.filter(
+            or_(
+                Job.name.like(like_pattern),
+                Job.company.like(like_pattern),
+                Job.description.like(like_pattern),
+                Job.city.like(like_pattern)
+            )
+        )
+    
+    # 城市筛选
+    if city:
+        query = query.filter(Job.city == city)
+    
+    # 类别筛选
+    if category:
+        query = query.filter(Job.category == category)
+    
+    # 薪资范围筛选
+    if salary_min is not None:
+        query = query.filter(Job.salary_max >= salary_min)
+    if salary_max is not None:
+        query = query.filter(Job.salary_min <= salary_max)
+    
+    # 总数
+    total = query.count()
+    
+    # 分页
+    offset = (page - 1) * page_size
+    items = query.order_by(Job.id.desc()).offset(offset).limit(page_size).all()
+    
+    # 格式化返回
+    job_list = []
+    for job in items:
+        job_list.append({
+            "id": job.id,
+            "name": job.name,
+            "company": job.company,
+            "city": job.city,
+            "category": job.category,
+            "salary": f"{int(job.salary_min)}k-{int(job.salary_max)}k" if job.salary_min and job.salary_max else None,
+            "salary_min": job.salary_min,
+            "salary_max": job.salary_max,
+            "description": job.description[:120] + "..." if job.description and len(job.description) > 120 else job.description,
+        })
+    
+    return {
+        "items": job_list,
+        "total": total,
+        "page": page,
+        "page_size": page_size,
+        "pages": (total + page_size - 1) // page_size
+    }
+
+
+# 注意：动态路径参数路由必须放在所有固定路径路由之后
+@router.get("/{job_id}", response_model=JobResponse)
+def get_job(job_id: int, db: Session = Depends(get_db)):
+    """获取岗位详情"""
+    job = db.query(Job).filter(Job.id == job_id).first()
+    if not job:
+        raise HTTPException(status_code=404, detail="岗位不存在")
+    return job

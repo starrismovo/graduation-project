@@ -1,0 +1,64 @@
+2026-04-04 18:15:27,745 [INFO] SELECT DATABASE()
+2026-04-04 18:15:27,746 [INFO] [raw sql] {}
+2026-04-04 18:15:27,747 [INFO] SELECT @@sql_mode
+2026-04-04 18:15:27,747 [INFO] [raw sql] {}
+2026-04-04 18:15:27,748 [INFO] SELECT @@lower_case_table_names
+2026-04-04 18:15:27,748 [INFO] [raw sql] {}
+2026-04-04 18:15:27,748 [INFO] BEGIN (implicit)
+2026-04-04 18:15:27,748 [INFO] DESCRIBE `hr_matching`.`users`
+2026-04-04 18:15:27,748 [INFO] [raw sql] {}
+2026-04-04 18:15:27,752 [INFO] DESCRIBE `hr_matching`.`jobs`
+2026-04-04 18:15:27,752 [INFO] [raw sql] {}
+2026-04-04 18:15:27,752 [INFO] DESCRIBE `hr_matching`.`interviews`
+2026-04-04 18:15:27,752 [INFO] [raw sql] {}
+2026-04-04 18:15:27,758 [INFO] DESCRIBE `hr_matching`.`assessment_records`
+2026-04-04 18:15:27,758 [INFO] [raw sql] {}
+2026-04-04 18:15:27,760 [INFO] DESCRIBE `hr_matching`.`candidate_personality_profiles`
+2026-04-04 18:15:27,760 [INFO] [raw sql] {}
+2026-04-04 18:15:27,762 [INFO] DESCRIBE `hr_matching`.`assessment_match_analyses`
+2026-04-04 18:15:27,762 [INFO] [raw sql] {}
+2026-04-04 18:15:27,764 [INFO] DESCRIBE `hr_matching`.`personality_trait_descriptions`
+2026-04-04 18:15:27,764 [INFO] [raw sql] {}
+2026-04-04 18:15:27,766 [INFO] DESCRIBE `hr_matching`.`scenarios`
+2026-04-04 18:15:27,766 [INFO] [raw sql] {}
+2026-04-04 18:15:27,768 [INFO] DESCRIBE `hr_matching`.`interview_responses`
+2026-04-04 18:15:27,768 [INFO] [raw sql] {}
+2026-04-04 18:15:27,770 [INFO] DESCRIBE `hr_matching`.`trait_scores`
+2026-04-04 18:15:27,770 [INFO] [raw sql] {}
+2026-04-04 18:15:27,773 [INFO] DESCRIBE `hr_matching`.`scenario_summaries`
+2026-04-04 18:15:27,773 [INFO] [raw sql] {}
+2026-04-04 18:15:27,775 [INFO] DESCRIBE `hr_matching`.`evaluation_frameworks`
+2026-04-04 18:15:27,775 [INFO] [raw sql] {}
+2026-04-04 18:15:27,777 [INFO] DESCRIBE `hr_matching`.`conversation_turns`
+2026-04-04 18:15:27,777 [INFO] [raw sql] {}
+2026-04-04 18:15:27,778 [INFO] DESCRIBE `hr_matching`.`conversation_analyses`
+2026-04-04 18:15:27,779 [INFO] [raw sql] {}
+2026-04-04 18:15:27,780 [INFO] DESCRIBE `hr_matching`.`job_requirement_tags`
+2026-04-04 18:15:27,780 [INFO] [raw sql] {}
+2026-04-04 18:15:27,783 [INFO] DESCRIBE `hr_matching`.`job_skill_requirements`
+2026-04-04 18:15:27,783 [INFO] [raw sql] {}
+2026-04-04 18:15:27,784 [INFO] DESCRIBE `hr_matching`.`job_personality_frameworks`
+2026-04-04 18:15:27,784 [INFO] [raw sql] {}
+2026-04-04 18:15:27,784 [INFO] DESCRIBE `hr_matching`.`candidate_job_applications`
+2026-04-04 18:15:27,784 [INFO] [raw sql] {}
+2026-04-04 18:15:27,791 [INFO] DESCRIBE `hr_matching`.`boss_raw_data`
+2026-04-04 18:15:27,791 [INFO] [raw sql] {}
+2026-04-04 18:15:27,794 [INFO] COMMIT
+2026-04-04 18:15:27,797 [INFO] 开始筛选数据...
+2026-04-04 18:15:27,797 [INFO] BEGIN (implicit)
+2026-04-04 18:15:27,798 [INFO] 
+            SELECT * FROM boss_raw_data 
+            WHERE 
+                is_processed = 0
+                AND job_description IS NOT NULL
+                AND salary_min > 5000
+                AND position_name IS NOT NULL
+                AND city IN ('北京', '上海', '深圳', '杭州', '广州', '成都', '武汉', '郑州')
+                AND salary_min < 50000  -- 排除过高的职位
+            ORDER BY RAND()
+            LIMIT 5000
+        
+2026-04-04 18:15:27,798 [INFO] [generated in 0.00085s] {}
+2026-04-04 18:15:40,280 [INFO] 精选了 5,000 条记录
+2026-04-04 18:15:40,321 [ERROR] 错误: 'salary_desc' is an invalid keyword argument for Job
+2026-04-04 18:15:40,322 [INFO] ROLLBACK

@@ -27,6 +27,12 @@ const router = createRouter({
           component: () => import('../views/HomePage.vue')
         },
         {
+          path: 'jobs',
+          name: 'JobList',
+          component: () => import('../views/JobListView.vue'),
+          meta: { title: '岗位浏览' }
+        },
+        {
           path: 'immersive',
           name: 'ImmersiveAssessment',
           component: () => import('../views/assessment/ImmersiveRoleDialogue.vue'),

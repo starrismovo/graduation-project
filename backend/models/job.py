@@ -7,7 +7,7 @@ class Job(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String(100), nullable=False)  # 岗位名称
-    description = Column(String(500), nullable=False)  # 岗位描述
+    description = Column(String(2000), nullable=False)  # 岗位描述
     company = Column(String(100), nullable=False)  # 公司名称
     category = Column(String(50), nullable=False)  # 岗位类别：技术岗、产品岗、设计岗等
     city = Column(String(50), nullable=False)  # 工作地点

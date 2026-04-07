@@ -34,6 +34,10 @@ from prompts.immersive_roles import (
 )
 from utils.llm_client import LLMClient
 from utils.trait_evaluator import TraitEvaluator
+from services.agents.interviewer_agent import InterviewerAgent
+from services.agents.evaluator_agent import EvaluatorAgent
+from services.agents.decision_agent import DecisionAgent
+from services.agents.interview_state import AdaptiveInterviewState
 
 
 class AssessmentPhaseType(str, Enum):
@@ -87,13 +91,39 @@ ROLE_CONFIG = {
 
 
 class ImmersiveDialogueService:
-    """沉浸式对话服务主类"""
+    """沉浸式对话服务主类 - 三 Agent 协同架构"""
+    
+    # 类级别的面试状态缓存（按 candidate_id 存储）
+    _interview_states: Dict[str, AdaptiveInterviewState] = {}
+    # 类级别的最新决策缓存
+    _latest_decisions: Dict[str, Dict[str, Any]] = {}
     
     def __init__(self, db: Session):
         self.db = db
         self.llm_client = LLMClient()
         self.trait_evaluator = TraitEvaluator()
+        self.interviewer_agent = InterviewerAgent(self.llm_client)
+        self.evaluator_agent = EvaluatorAgent(self.llm_client)
+        self.decision_agent = DecisionAgent(self.llm_client)
         self.assessment_record = None
+
+    def _get_or_create_state(self, candidate_id: str, job_info: Optional[Dict[str, Any]] = None) -> AdaptiveInterviewState:
+        """获取或创建面试状态"""
+        if candidate_id not in self._interview_states:
+            state = AdaptiveInterviewState()
+            # 初始化岗位需求技能
+            if job_info:
+                skills_raw = job_info.get("required_skills", job_info.get("skills", []))
+                if isinstance(skills_raw, list):
+                    # 去除括号内的标注如 "Python(必需)" → "Python"
+                    clean_skills = []
+                    for s in skills_raw:
+                        name = s.split("(")[0].strip() if "(" in s else s.strip()
+                        if name:
+                            clean_skills.append(name)
+                    state.init_required_skills(clean_skills)
+            self._interview_states[candidate_id] = state
+        return self._interview_states[candidate_id]
     
     # ==================== 核心对话流程 ====================
     
@@ -105,80 +135,100 @@ class ImmersiveDialogueService:
         conversation_history: List[Dict[str, str]],
         conversation_depth: int,
         target_position: Optional[str] = None,
+        job_info: Optional[Dict[str, Any]] = None,
+        resume_info: Optional[Dict[str, Any]] = None,
         **kwargs
     ) -> Dict[str, Any]:
         """
-        生成下一个问题
+        生成下一个问题（三 Agent 协同模式）
         
-        Args:
-            id: 候选人ID
-            candidate_name: 候选人名字
-            current_role: 当前提问角色
-            conversation_history: 对话历史
-            conversation_depth: 对话深度（0-10）
-            target_position: 目标岗位
-            
-        Return:
-            {
-                "question": "问题内容",
-                "tags": ["标签1", "标签2"],
-                "suggestions": ["建议1", "建议2"],
-                "context": "建议文字",
-                "focus_area": "重点评估区域",
-                "expected_traits": ["特质1", "特质2"]
-            }
+        流程：
+        1. 获取面试状态
+        2. 获取 DecisionAgent 上一轮决策指令（如有）
+        3. 将决策指令传递给 InterviewerAgent
+        4. InterviewerAgent 生成自适应问题
         """
         try:
             role_config = ROLE_CONFIG.get(current_role)
             if not role_config:
                 raise HTTPException(status_code=400, detail="无效的角色")
             
-            # 1. 构建对话上下文
-            context = self._build_conversation_context(
-                id=id,
-                candidate_name=candidate_name,
+            # 补充信息
+            if job_info is None:
+                job_info = {}
+            if not job_info.get("title") and target_position:
+                job_info["title"] = target_position
+            if resume_info is None:
+                resume_info = {}
+            if not resume_info.get("name") and candidate_name:
+                resume_info["name"] = candidate_name
+
+            # 加载数据库数据
+            if not job_info.get("description") and job_info.get("id"):
+                job_info = self._load_job_info(job_info["id"], job_info)
+            if not resume_info.get("skills") and id:
+                resume_info = self._load_resume_info(id, resume_info)
+
+            # ===== 获取面试状态 =====
+            interview_state = self._get_or_create_state(id, job_info)
+            
+            # 同步角色信息
+            role_id = current_role.value
+            # 如果 DecisionAgent 建议切换角色，使用建议角色
+            latest_decision = self._latest_decisions.get(id, {})
+            suggested_role = latest_decision.get("suggested_role")
+            if suggested_role and suggested_role != role_id:
+                try:
+                    current_role = RoleType(suggested_role)
+                    role_id = suggested_role
+                    role_config = ROLE_CONFIG.get(current_role, role_config)
+                except ValueError:
+                    pass
+            interview_state.current_role = role_id
+
+            # ===== 获取决策指令 =====
+            decision_directive = latest_decision.get("directive", {})
+            state_context = interview_state.to_context_dict()
+
+            # ===== 调用 InterviewerAgent（携带决策指令）=====
+            result = await self.interviewer_agent.generate_question(
+                role_id=role_id,
+                job_info=job_info,
+                resume_info=resume_info,
                 conversation_history=conversation_history,
-                conversation_depth=conversation_depth,
-                target_position=target_position
+                depth=conversation_depth,
+                round_number=len([m for m in conversation_history if m.get("role") != "candidate"]) + 1,
+                total_rounds=12,
+                decision_directive=decision_directive,
+                interview_state_context=state_context,
             )
             
-            # 2. 调用 LLM 生成问题
-            system_prompt = role_config["system_prompt"]
-            user_prompt = self._build_question_prompt(
-                context=context,
-                conversation_depth=conversation_depth,
-                focus_traits=role_config["focus_traits"]
-            )
-            
-            response = await self.llm_client.call_async(
-                system_prompt=system_prompt,
-                user_prompt=user_prompt,
-                temperature=0.7,
-                max_tokens=300
-            )
-            
-            # 3. 解析 LLM 响应
-            question_data = self._parse_llm_response(response.content)
-            
-            # 4. 生成智能建议
+            # 更新当前关注技能
+            focus_area = result.get("focus_area", "")
+            if focus_area:
+                interview_state.current_focus_skill = focus_area
+
+            # 生成智能建议
             suggestions = await self._generate_smart_suggestions(
-                question=question_data.get("question"),
+                question=result.get("question"),
                 role=current_role,
                 conversation_depth=conversation_depth
             )
             
-            return {
-                "question": question_data.get("question", ""),
-                "tags": question_data.get("tags", []),
-                "suggestions": suggestions,
-                "context": question_data.get("context"),
-                "focus_area": question_data.get("focus_area"),
-                "expected_traits": role_config["focus_traits"]
+            result["suggestions"] = suggestions
+            # 附加面试状态信息给前端
+            result["interview_state"] = {
+                "difficulty_level": interview_state.difficulty_level.value,
+                "performance_trend": interview_state.performance_trend.value,
+                "total_questions": interview_state.total_questions,
+                "coverage": interview_state.get_coverage_summary(),
+                "current_role": role_id,
+                "decision_action": latest_decision.get("action", "continue"),
             }
+            return result
             
         except Exception as e:
             print(f"生成问题失败: {e}")
-            # 返回备用问题
             return self._get_fallback_question(current_role)
     
     async def analyze_candidate_response(
@@ -190,84 +240,155 @@ class ImmersiveDialogueService:
         conversation_history: List[Dict[str, str]],
         conversation_depth: int,
         target_position: Optional[str] = None,
+        job_info: Optional[Dict[str, Any]] = None,
+        resume_info: Optional[Dict[str, Any]] = None,
         **kwargs
     ) -> Dict[str, Any]:
         """
-        分析候选人回答
+        分析候选人回答（三 Agent 协同模式）
         
-        Return:
-            {
-                "scores": {
-                    "沟通能力": 7.5,
-                    "问题解决": 8.0,
-                    ...
-                },
-                "sentiment": {
-                    "emotion": "自信",
-                    "confidence": 85
-                },
-                "patterns": [
-                    {
-                        "name": "结构化思维",
-                        "description": "回答...",
-                        "confidence": 78,
-                        "color": "#67c23a"
-                    }
-                ],
-                "feedback": "实时反馈文字",
-                "next_action": "continue|switch_role|end_phase"
-            }
+        流程：
+        1. EvaluatorAgent 评估回答（含技能差距识别）
+        2. 更新 AdaptiveInterviewState
+        3. DecisionAgent 根据评估结果和状态做出决策
+        4. 缓存决策，供下次 generate_next_question 使用
         """
         try:
             role_config = ROLE_CONFIG.get(current_speaker)
             if not role_config:
                 raise HTTPException(status_code=400, detail="无效的角色")
             
-            # 1. 调用 LLM 评估回答
-            evaluation = await self._evaluate_response_with_llm(
-                current_speaker=current_speaker,
+            if job_info is None:
+                job_info = {}
+            if not job_info.get("title") and target_position:
+                job_info["title"] = target_position
+            if resume_info is None:
+                resume_info = {}
+            if not resume_info.get("name") and candidate_name:
+                resume_info["name"] = candidate_name
+
+            # 加载数据库数据
+            if not job_info.get("description") and job_info.get("id"):
+                job_info = self._load_job_info(job_info["id"], job_info)
+            if not resume_info.get("skills") and id:
+                resume_info = self._load_resume_info(id, resume_info)
+
+            # ===== 获取面试状态 =====
+            interview_state = self._get_or_create_state(id, job_info)
+            state_context = interview_state.to_context_dict()
+
+            # 提取上一个问题
+            last_question = ""
+            last_question_info = {}
+            for msg in reversed(conversation_history or []):
+                if msg.get("role") != "candidate":
+                    last_question = msg.get("content", "")
+                    last_question_info = {
+                        "focus_area": msg.get("focus_area", interview_state.current_focus_skill or "综合"),
+                    }
+                    break
+
+            # ===== Step 1: EvaluatorAgent 评估（含技能差距识别）=====
+            eval_result = await self.evaluator_agent.evaluate(
                 candidate_response=candidate_response,
+                last_question=last_question,
+                role_id=current_speaker.value,
+                job_info=job_info,
+                resume_info=resume_info,
                 conversation_history=conversation_history,
-                conversation_depth=conversation_depth,
-                focus_traits=role_config["focus_traits"]
+                depth=conversation_depth,
+                interview_state_context=state_context,
             )
-            
-            # 2. 提取特质评分
-            scores = self.trait_evaluator.extract_scores(evaluation)
-            
-            # 3. 分析情绪与表达
-            sentiment = await self._analyze_sentiment(candidate_response)
-            
-            # 4. 识别行为模式
-            patterns = self.trait_evaluator.detect_patterns(
-                response=candidate_response,
-                evaluation=evaluation
+
+            # ===== Step 2: 更新面试状态 =====
+            interview_state.update_after_evaluation(
+                evaluation_result=eval_result,
+                question_info=last_question_info,
             )
-            
-            # 5. 决定下一步行动
-            next_action = self._determine_next_action(
-                conversation_depth=conversation_depth,
-                scores=scores
+
+            # ===== Step 3: DecisionAgent 做出下一步决策 =====
+            decision = await self.decision_agent.decide(
+                evaluation_result=eval_result,
+                interview_state=interview_state,
+                job_info=job_info,
+                resume_info=resume_info,
+                max_questions=12,
             )
-            
-            # 6. 生成实时反馈
-            feedback = evaluation.get("feedback", "")
-            
-            return {
-                "scores": scores,
-                "sentiment": sentiment,
-                "patterns": patterns,
-                "feedback": feedback,
-                "next_action": next_action,
-                "raw_evaluation": evaluation  # 用于调试
+
+            # ===== Step 4: 缓存决策供下轮使用 =====
+            self._latest_decisions[id] = decision
+
+            # 构建返回结果（保持向后兼容）
+            result = eval_result.copy()
+            result["decision"] = {
+                "action": decision.get("action", "continue"),
+                "reasoning": decision.get("reasoning", ""),
+                "priority_gaps": decision.get("priority_gaps", []),
+                "suggested_difficulty": decision.get("suggested_difficulty", 3),
+                "suggested_role": decision.get("suggested_role", current_speaker.value),
+                "should_end": decision.get("should_end", False),
             }
+            result["interview_state"] = interview_state.to_context_dict()
+
+            # 如果 DecisionAgent 建议结束，更新 next_action
+            if decision.get("should_end"):
+                result["next_action"] = "end_phase"
+
+            return result
             
         except Exception as e:
             print(f"分析回答失败: {e}")
-            # 返回默认评价
             return self._get_fallback_analysis()
     
-    # ==================== LLM 调用逻辑 ====================
+    # ==================== 数据加载（简历 + 岗位） ====================
+
+    def _load_job_info(self, job_id: int, existing: Dict[str, Any]) -> Dict[str, Any]:
+        """从数据库加载岗位信息，合并到 existing dict"""
+        try:
+            from models.job import Job
+            from models.job_requirement import JobSkillRequirement
+
+            job = self.db.query(Job).filter(Job.id == int(job_id)).first()
+            if job:
+                existing.setdefault("title", job.name)
+                existing.setdefault("name", job.name)
+                existing.setdefault("description", job.description or "")
+                existing.setdefault("company", job.company or "")
+                existing.setdefault("category", job.category or "")
+
+                # 加载技能需求
+                skill_reqs = self.db.query(JobSkillRequirement).filter(
+                    JobSkillRequirement.job_id == int(job_id)
+                ).all()
+                if skill_reqs:
+                    existing.setdefault("required_skills", [
+                        f"{s.skill_name}({'必需' if s.is_must_have else '加分'})"
+                        for s in skill_reqs
+                    ])
+        except Exception as e:
+            print(f"加载岗位信息失败: {e}")
+        return existing
+
+    def _load_resume_info(self, candidate_id: str, existing: Dict[str, Any]) -> Dict[str, Any]:
+        """从数据库加载候选人简历信息，合并到 existing dict"""
+        try:
+            from models.user import User
+
+            user = self.db.query(User).filter(User.id == int(candidate_id)).first()
+            if user:
+                existing.setdefault("name", user.real_name or user.username or "")
+                existing.setdefault("email", user.email or "")
+                existing.setdefault("education", user.education or "")
+                existing.setdefault("major", user.major or "")
+                existing.setdefault("experience_years", user.experience_years)
+                existing.setdefault("desired_job", user.desired_job or "")
+                if user.skills and not existing.get("skills"):
+                    existing["skills"] = user.skills if isinstance(user.skills, list) else []
+        except Exception as e:
+            print(f"加载简历信息失败: {e}")
+        return existing
+
+    # ==================== LLM 调用逻辑（旧版保留兼容） ====================
     
     def _build_conversation_context(
         self,
@@ -388,35 +509,40 @@ class ImmersiveDialogueService:
         role: RoleType,
         conversation_depth: int
     ) -> List[str]:
-        """生成智能建议"""
-        
-        prompt = f"""
-基于以下问题，为候选人生成 2-3 个简短的建议或开场想法。
-这些建议应该帮助候选人更好地理解问题并给出有质量的回答。
+        """生成智能建议（本地规则，无需 LLM 调用）"""
+        if not question:
+            return ["可以结合自身经历来回答", "尝试用STAR模型组织回答"]
 
-【问题】
-{question}
+        role_config = ROLE_CONFIG.get(role, ROLE_CONFIG[RoleType.HR])
+        focus = role_config.get("focus_traits", ["综合能力"])[0]
 
-【要求】
-- 每条建议控制在 15-20 个字以内
-- 建议应该是开放式的，启发而非应该
-- 难度应该与对话深度 ({conversation_depth}/10) 匹配
+        suggestions_pool = {
+            "hr": [
+                "先简要概括，再展开细节",
+                "结合具体案例来说明",
+                "可以提到团队合作的经历",
+            ],
+            "tech_lead": [
+                "描述你的技术方案选择理由",
+                "可以对比不同方案的优劣",
+                "说明遇到的挑战和解决过程",
+            ],
+            "product": [
+                "从用户需求出发进行分析",
+                "可以列举具体的数据支持",
+                "描述你的决策思考过程",
+            ],
+            "cto": [
+                "从全局视角分析利弊",
+                "可以谈谈长期规划和愿景",
+                "结合行业趋势来阐述",
+            ],
+        }
 
-只返回一个 JSON 数组，格式：["建议1", "建议2", "建议3"]
-"""
-        
-        response = await self.llm_client.call_async(
-            system_prompt="你是一个经验丰富的面试官，善于帮助候选人回答问题。",
-            user_prompt=prompt,
-            temperature=0.6,
-            max_tokens=200
-        )
-        
-        try:
-            suggestions = json.loads(response.content)
-            return suggestions if isinstance(suggestions, list) else []
-        except:
-            return []
+        pool = suggestions_pool.get(role.value, suggestions_pool["hr"])
+        # 根据深度偏移选择
+        start = conversation_depth % len(pool)
+        return pool[start:] + pool[:start]
     
     async def _analyze_sentiment(self, text: str) -> Dict[str, Any]:
         """分析文本情绪"""

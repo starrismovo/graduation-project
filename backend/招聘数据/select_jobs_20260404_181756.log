@@ -1,0 +1,64 @@
+2026-04-04 18:17:57,236 [INFO] SELECT DATABASE()
+2026-04-04 18:17:57,236 [INFO] [raw sql] {}
+2026-04-04 18:17:57,237 [INFO] SELECT @@sql_mode
+2026-04-04 18:17:57,237 [INFO] [raw sql] {}
+2026-04-04 18:17:57,238 [INFO] SELECT @@lower_case_table_names
+2026-04-04 18:17:57,238 [INFO] [raw sql] {}
+2026-04-04 18:17:57,239 [INFO] BEGIN (implicit)
+2026-04-04 18:17:57,240 [INFO] DESCRIBE `hr_matching`.`users`
+2026-04-04 18:17:57,240 [INFO] [raw sql] {}
+2026-04-04 18:17:57,242 [INFO] DESCRIBE `hr_matching`.`jobs`
+2026-04-04 18:17:57,242 [INFO] [raw sql] {}
+2026-04-04 18:17:57,244 [INFO] DESCRIBE `hr_matching`.`interviews`
+2026-04-04 18:17:57,244 [INFO] [raw sql] {}
+2026-04-04 18:17:57,246 [INFO] DESCRIBE `hr_matching`.`assessment_records`
+2026-04-04 18:17:57,246 [INFO] [raw sql] {}
+2026-04-04 18:17:57,248 [INFO] DESCRIBE `hr_matching`.`candidate_personality_profiles`
+2026-04-04 18:17:57,248 [INFO] [raw sql] {}
+2026-04-04 18:17:57,250 [INFO] DESCRIBE `hr_matching`.`assessment_match_analyses`
+2026-04-04 18:17:57,250 [INFO] [raw sql] {}
+2026-04-04 18:17:57,251 [INFO] DESCRIBE `hr_matching`.`personality_trait_descriptions`
+2026-04-04 18:17:57,251 [INFO] [raw sql] {}
+2026-04-04 18:17:57,254 [INFO] DESCRIBE `hr_matching`.`scenarios`
+2026-04-04 18:17:57,255 [INFO] [raw sql] {}
+2026-04-04 18:17:57,256 [INFO] DESCRIBE `hr_matching`.`interview_responses`
+2026-04-04 18:17:57,257 [INFO] [raw sql] {}
+2026-04-04 18:17:57,258 [INFO] DESCRIBE `hr_matching`.`trait_scores`
+2026-04-04 18:17:57,258 [INFO] [raw sql] {}
+2026-04-04 18:17:57,260 [INFO] DESCRIBE `hr_matching`.`scenario_summaries`
+2026-04-04 18:17:57,260 [INFO] [raw sql] {}
+2026-04-04 18:17:57,262 [INFO] DESCRIBE `hr_matching`.`evaluation_frameworks`
+2026-04-04 18:17:57,262 [INFO] [raw sql] {}
+2026-04-04 18:17:57,263 [INFO] DESCRIBE `hr_matching`.`conversation_turns`
+2026-04-04 18:17:57,264 [INFO] [raw sql] {}
+2026-04-04 18:17:57,265 [INFO] DESCRIBE `hr_matching`.`conversation_analyses`
+2026-04-04 18:17:57,265 [INFO] [raw sql] {}
+2026-04-04 18:17:57,267 [INFO] DESCRIBE `hr_matching`.`job_requirement_tags`
+2026-04-04 18:17:57,267 [INFO] [raw sql] {}
+2026-04-04 18:17:57,270 [INFO] DESCRIBE `hr_matching`.`job_skill_requirements`
+2026-04-04 18:17:57,270 [INFO] [raw sql] {}
+2026-04-04 18:17:57,272 [INFO] DESCRIBE `hr_matching`.`job_personality_frameworks`
+2026-04-04 18:17:57,272 [INFO] [raw sql] {}
+2026-04-04 18:17:57,274 [INFO] DESCRIBE `hr_matching`.`candidate_job_applications`
+2026-04-04 18:17:57,274 [INFO] [raw sql] {}
+2026-04-04 18:17:57,277 [INFO] DESCRIBE `hr_matching`.`boss_raw_data`
+2026-04-04 18:17:57,277 [INFO] [raw sql] {}
+2026-04-04 18:17:57,280 [INFO] COMMIT
+2026-04-04 18:17:57,280 [INFO] 开始筛选数据...
+2026-04-04 18:17:57,280 [INFO] BEGIN (implicit)
+2026-04-04 18:17:57,280 [INFO] 
+            SELECT * FROM boss_raw_data 
+            WHERE 
+                is_processed = 0
+                AND job_description IS NOT NULL
+                AND salary_min > 5000
+                AND position_name IS NOT NULL
+                AND city IN ('北京', '上海', '深圳', '杭州', '广州', '成都', '武汉', '郑州')
+                AND salary_min < 50000  -- 排除过高的职位
+            ORDER BY RAND()
+            LIMIT 5000
+        
+2026-04-04 18:17:57,284 [INFO] [generated in 0.00062s] {}
+2026-04-04 18:18:09,661 [INFO] 精选了 5,000 条记录
+2026-04-04 18:18:09,703 [ERROR] 错误: cannot convert float NaN to integer
+2026-04-04 18:18:09,703 [INFO] ROLLBACK

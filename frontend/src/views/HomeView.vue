@@ -73,8 +73,8 @@ async function loadData() {
 
 function startNewAssessment() {
   showWelcome.value = false
-  // 跳转到评估流程（先选择岗位或直接进入对话）
-  router.push('/immersive')
+  // 先去选择岗位
+  router.push('/home/jobs')
 }
 
 function viewLatestReport() {
@@ -88,7 +88,7 @@ function viewRecord(record: any) {
 }
 
 function goToAssessmentWithJob(jobId: number) {
-  router.push(`/assessment/${jobId}`)
+  router.push({ path: '/home/immersive', query: { jobId: String(jobId) } })
 }
 
 onMounted(() => {

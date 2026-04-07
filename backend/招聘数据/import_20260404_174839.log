@@ -1,0 +1,62 @@
+2026-04-04 17:48:39,021 [INFO] 日志文件: D:\Desktop\graduation-project\backend\招聘数据\import_20260404_174839.log
+2026-04-04 17:48:39,480 [INFO] SELECT DATABASE()
+2026-04-04 17:48:39,480 [INFO] [raw sql] {}
+2026-04-04 17:48:39,488 [INFO] SELECT @@sql_mode
+2026-04-04 17:48:39,488 [INFO] [raw sql] {}
+2026-04-04 17:48:39,488 [INFO] SELECT @@lower_case_table_names
+2026-04-04 17:48:39,490 [INFO] [raw sql] {}
+2026-04-04 17:48:39,490 [INFO] BEGIN (implicit)
+2026-04-04 17:48:39,537 [INFO] SELECT count(boss_raw_data.id) AS count_1 
+FROM boss_raw_data
+2026-04-04 17:48:39,537 [INFO] [generated in 0.00057s] {}
+2026-04-04 17:48:39,707 [INFO] ROLLBACK
+2026-04-04 17:48:39,709 [INFO] 
+当前数据库状态: boss_raw_data 有 1,598,811 条记录
+2026-04-04 17:48:39,709 [INFO] 
+执行: 从原始数据筛选到 jobs 表
+2026-04-04 17:48:39,709 [INFO] BEGIN (implicit)
+2026-04-04 17:48:39,710 [INFO] DESCRIBE `hr_matching`.`users`
+2026-04-04 17:48:39,710 [INFO] [raw sql] {}
+2026-04-04 17:48:39,712 [INFO] DESCRIBE `hr_matching`.`jobs`
+2026-04-04 17:48:39,713 [INFO] [raw sql] {}
+2026-04-04 17:48:39,715 [INFO] DESCRIBE `hr_matching`.`interviews`
+2026-04-04 17:48:39,715 [INFO] [raw sql] {}
+2026-04-04 17:48:39,716 [INFO] DESCRIBE `hr_matching`.`assessment_records`
+2026-04-04 17:48:39,716 [INFO] [raw sql] {}
+2026-04-04 17:48:39,716 [INFO] DESCRIBE `hr_matching`.`candidate_personality_profiles`
+2026-04-04 17:48:39,716 [INFO] [raw sql] {}
+2026-04-04 17:48:39,722 [INFO] DESCRIBE `hr_matching`.`assessment_match_analyses`
+2026-04-04 17:48:39,722 [INFO] [raw sql] {}
+2026-04-04 17:48:39,724 [INFO] DESCRIBE `hr_matching`.`personality_trait_descriptions`
+2026-04-04 17:48:39,725 [INFO] [raw sql] {}
+2026-04-04 17:48:39,727 [INFO] DESCRIBE `hr_matching`.`scenarios`
+2026-04-04 17:48:39,727 [INFO] [raw sql] {}
+2026-04-04 17:48:39,728 [INFO] DESCRIBE `hr_matching`.`interview_responses`
+2026-04-04 17:48:39,729 [INFO] [raw sql] {}
+2026-04-04 17:48:39,730 [INFO] DESCRIBE `hr_matching`.`trait_scores`
+2026-04-04 17:48:39,731 [INFO] [raw sql] {}
+2026-04-04 17:48:39,733 [INFO] DESCRIBE `hr_matching`.`scenario_summaries`
+2026-04-04 17:48:39,733 [INFO] [raw sql] {}
+2026-04-04 17:48:39,735 [INFO] DESCRIBE `hr_matching`.`evaluation_frameworks`
+2026-04-04 17:48:39,735 [INFO] [raw sql] {}
+2026-04-04 17:48:39,737 [INFO] DESCRIBE `hr_matching`.`conversation_turns`
+2026-04-04 17:48:39,738 [INFO] [raw sql] {}
+2026-04-04 17:48:39,740 [INFO] DESCRIBE `hr_matching`.`conversation_analyses`
+2026-04-04 17:48:39,741 [INFO] [raw sql] {}
+2026-04-04 17:48:39,743 [INFO] DESCRIBE `hr_matching`.`job_requirement_tags`
+2026-04-04 17:48:39,743 [INFO] [raw sql] {}
+2026-04-04 17:48:39,745 [INFO] DESCRIBE `hr_matching`.`job_skill_requirements`
+2026-04-04 17:48:39,745 [INFO] [raw sql] {}
+2026-04-04 17:48:39,747 [INFO] DESCRIBE `hr_matching`.`job_personality_frameworks`
+2026-04-04 17:48:39,748 [INFO] [raw sql] {}
+2026-04-04 17:48:39,750 [INFO] DESCRIBE `hr_matching`.`candidate_job_applications`
+2026-04-04 17:48:39,750 [INFO] [raw sql] {}
+2026-04-04 17:48:39,752 [INFO] DESCRIBE `hr_matching`.`boss_raw_data`
+2026-04-04 17:48:39,752 [INFO] [raw sql] {}
+2026-04-04 17:48:39,753 [INFO] COMMIT
+2026-04-04 17:48:39,756 [INFO] BEGIN (implicit)
+2026-04-04 17:48:39,759 [INFO] SELECT boss_raw_data.id AS boss_raw_data_id, boss_raw_data.company_name AS boss_raw_data_company_name, boss_raw_data.position_name AS boss_raw_data_position_name, boss_raw_data.city AS boss_raw_data_city, boss_raw_data.district AS boss_raw_data_district, boss_raw_data.salary_min AS boss_raw_data_salary_min, boss_raw_data.salary_max AS boss_raw_data_salary_max, boss_raw_data.job_description AS boss_raw_data_job_description, boss_raw_data.education AS boss_raw_data_education, boss_raw_data.experience AS boss_raw_data_experience, boss_raw_data.recruit_count AS boss_raw_data_recruit_count, boss_raw_data.job_category AS boss_raw_data_job_category, boss_raw_data.job_type AS boss_raw_data_job_type, boss_raw_data.company_location AS boss_raw_data_company_location, boss_raw_data.work_location AS boss_raw_data_work_location, boss_raw_data.publish_date AS boss_raw_data_publish_date, boss_raw_data.end_date AS boss_raw_data_end_date, boss_raw_data.publish_year AS boss_raw_data_publish_year, boss_raw_data.end_year AS boss_raw_data_end_year, boss_raw_data.source AS boss_raw_data_source, boss_raw_data.source_id AS boss_raw_data_source_id, boss_raw_data.created_at AS boss_raw_data_created_at, boss_raw_data.updated_at AS boss_raw_data_updated_at, boss_raw_data.is_processed AS boss_raw_data_is_processed 
+FROM boss_raw_data 
+WHERE boss_raw_data.is_processed = %(is_processed_1)s AND boss_raw_data.job_description IS NOT NULL AND boss_raw_data.salary_min > %(salary_min_1)s AND boss_raw_data.position_name IS NOT NULL
+2026-04-04 17:48:39,761 [INFO] [generated in 0.00182s] {'is_processed_1': 0, 'salary_min_1': 0}
+2026-04-04 17:49:58,467 [INFO] ROLLBACK

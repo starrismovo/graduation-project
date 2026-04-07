@@ -32,7 +32,10 @@ class LLMResponse:
 
 
 class LLMClient:
-    """统一的 LLM 客户端"""
+    """统一的 LLM 客户端（连接池复用）"""
+    
+    # 类级共享连接池，避免每次调用重建 TCP/SSL 连接
+    _shared_client: Optional[httpx.AsyncClient] = None
     
     def __init__(self, provider: Optional[LLMProvider] = None):
         self.provider = provider or self._get_configured_provider()
@@ -40,6 +43,21 @@ class LLMClient:
         self.model = os.getenv("ROAD2ALL_MODEL", "gpt-4o")
         self.api_base = os.getenv("ROAD2ALL_API_BASE", "https://api.road2all.tech/v1")
         self.timeout = 60
+    
+    @classmethod
+    def _get_shared_client(cls) -> httpx.AsyncClient:
+        """获取或创建共享的 httpx 异步客户端（连接池复用）"""
+        if cls._shared_client is None or cls._shared_client.is_closed:
+            cls._shared_client = httpx.AsyncClient(
+                timeout=60,
+                verify=False,
+                limits=httpx.Limits(
+                    max_connections=10,
+                    max_keepalive_connections=5,
+                    keepalive_expiry=120,
+                ),
+            )
+        return cls._shared_client
     
     def _get_configured_provider(self) -> LLMProvider:
         """获取配置的提供商"""
@@ -114,25 +132,25 @@ class LLMClient:
         }
         
         try:
-            async with httpx.AsyncClient(timeout=self.timeout) as client:
-                response = await client.post(
-                    f"{self.api_base}/chat/completions",
-                    headers=headers,
-                    json=payload
+            client = self._get_shared_client()
+            response = await client.post(
+                f"{self.api_base}/chat/completions",
+                headers=headers,
+                json=payload
+            )
+            
+            if response.status_code == 200:
+                data = response.json()
+                content = data["choices"][0]["message"]["content"]
+                tokens = data.get("usage", {}).get("total_tokens", 0)
+                return LLMResponse(
+                    content=content,
+                    tokens_used=tokens,
+                    model=self.model
                 )
-                
-                if response.status_code == 200:
-                    data = response.json()
-                    content = data["choices"][0]["message"]["content"]
-                    tokens = data.get("usage", {}).get("total_tokens", 0)
-                    return LLMResponse(
-                        content=content,
-                        tokens_used=tokens,
-                        model=self.model
-                    )
-                else:
-                    print(f"API 调用错误: {response.status_code} - {response.text}")
-                    raise Exception(f"LLM API 失败: {response.status_code}")
+            else:
+                print(f"API 调用错误: {response.status_code} - {response.text}")
+                raise Exception(f"LLM API 失败: {response.status_code}")
         
         except asyncio.TimeoutError:
             print("LLM API 调用超时")
@@ -166,24 +184,24 @@ class LLMClient:
         }
         
         try:
-            async with httpx.AsyncClient(timeout=self.timeout) as client:
-                response = await client.post(
-                    "https://api.openai.com/v1/chat/completions",
-                    headers=headers,
-                    json=payload
+            client = self._get_shared_client()
+            response = await client.post(
+                "https://api.openai.com/v1/chat/completions",
+                headers=headers,
+                json=payload
+            )
+            
+            if response.status_code == 200:
+                data = response.json()
+                content = data["choices"][0]["message"]["content"]
+                tokens = data.get("usage", {}).get("total_tokens", 0)
+                return LLMResponse(
+                    content=content,
+                    tokens_used=tokens,
+                    model=self.model
                 )
-                
-                if response.status_code == 200:
-                    data = response.json()
-                    content = data["choices"][0]["message"]["content"]
-                    tokens = data.get("usage", {}).get("total_tokens", 0)
-                    return LLMResponse(
-                        content=content,
-                        tokens_used=tokens,
-                        model=self.model
-                    )
-                else:
-                    raise Exception(f"OpenAI API 失败: {response.status_code}")
+            else:
+                raise Exception(f"OpenAI API 失败: {response.status_code}")
         
         except Exception as e:
             print(f"OpenAI 调用异常: {e}")

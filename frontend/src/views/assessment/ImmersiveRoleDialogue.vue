@@ -61,7 +61,7 @@
         </div>
         
         <!-- 实时情绪与语气分析 -->
-        <div class="sentiment-monitor" v-if="latestSentiment && currentStep >= 4">
+        <div class="sentiment-monitor" v-if="latestSentiment && currentStep >= 3">
           <div class="sentiment-indicator">
             <span class="label">候选人状态:</span>
             <el-tag :type="getSentimentType(latestSentiment.emotion)" size="small">
@@ -240,29 +240,8 @@
           </div>
         </div>
 
-        <!-- Step 2: 选择岗位 -->
-        <div v-if="currentStep === 2" class="conversation-starter job-selection-briefing">
-          <div class="starter-content">
-            <div class="greeting-avatar">
-              <img :src="aiInterviewerAvatar" />
-            </div>
-            <h4>🎯 选择岗位</h4>
-            <p class="starter-tip">根据你的信息，为你推荐了以下岗位。请选择你想应聘的岗位：</p>
-            
-            <!-- 岗位选择组件 - 候选人模式 -->
-            <div class="job-manager-wrapper">
-              <JobRequirementsManager 
-                :mode="'candidate'"
-                :candidate-id="parsedCandidateId"
-                @job-selected="handleJobSelected"
-                @apply-job="handleApplyJob"
-              />
-            </div>
-          </div>
-        </div>
-
-        <!-- Step 3: 面试说明与准备 -->
-        <div v-if="currentStep === 3" class="conversation-starter interview-briefing">
+        <!-- Step 2: 面试说明与准备 -->
+        <div v-if="currentStep === 2" class="conversation-starter interview-briefing">
           <div class="starter-content">
             <div class="greeting-avatar">
               <img :src="aiInterviewerAvatar" />
@@ -335,8 +314,8 @@
           </div>
         </div>
 
-        <!-- Step 5: 评估报告 -->
-        <div v-if="currentStep === 5" class="conversation-starter report-section">
+        <!-- Step 4: 评估报告 -->
+        <div v-if="currentStep === 4" class="conversation-starter report-section">
           <div class="starter-content report-content">
             <div class="greeting-avatar">
               <img :src="aiInterviewerAvatar" />
@@ -510,7 +489,7 @@
       </div>
 
       <!-- 智能输入区 -->
-      <div class="input-area" v-if="currentStep >= 4">
+      <div class="input-area" v-if="currentStep >= 3">
         <!-- 上下文提示条 -->
         <div v-if="contextHint" class="context-hint">
           <el-icon><i class="el-icon-info"></i></el-icon>
@@ -525,7 +504,7 @@
             type="textarea"
             :placeholder="dynamicPlaceholder"
             :rows="3"
-            :disabled="isProcessing || currentStep < 4"
+            :disabled="isProcessing || currentStep < 3"
             @keydown.ctrl.enter="submitMessage"
             @keydown.meta.enter="submitMessage"
           />
@@ -712,11 +691,12 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onBeforeUnmount, nextTick, watch } from 'vue'
+import { useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import * as echarts from 'echarts'
 import { useAssessmentStore } from '@/stores/assessment'
 import UploadInfoDialog from '@/components/UploadInfoDialog.vue'
-import JobRequirementsManager from '@/components/JobRequirementsManager.vue'
+import request from '@/utils/request'
 import {
   checkResume,
   checkProgress,
@@ -777,20 +757,20 @@ const emit = defineEmits<{
   (e: 'save', data: any): void
 }>()
 
-// Store
+// Store & Route
 const assessmentStore = useAssessmentStore()
+const route = useRoute()
 
 // ==================== 流程控制 ====================
 const assessmentSteps = [
   '填写信息',
   '确认信息',
-  '选择岗位',
   '面试说明',
   '多轮面试',
   '生成报告'
 ]
 
-const currentStep = ref(0)  // 0: 填写, 1: 确认, 2: 选择岗位, 3: 说明, 4+: 面试中
+const currentStep = ref(0)  // 0: 填写, 1: 确认, 2: 说明, 3: 面试, 4: 报告
 const isAnalyzing = ref(false)
 const infoConfirmed = ref(false)
 const selectedJobId = ref<number | null>(null)  // 已选择的岗位ID
@@ -871,6 +851,12 @@ const detectedPatterns = ref<Pattern[]>([])
 const reportLoading = ref(false)
 const reportData = ref<any>(null)
 const reportRecordId = ref<number | null>(null)
+
+// ==================== 三Agent自适应状态 ====================
+const interviewState = ref<any>(null)       // 后端面试状态快照
+const latestDecision = ref<any>(null)       // DecisionAgent 最新决策
+const shouldEndInterview = ref(false)       // DecisionAgent 建议结束
+
 // ==================== 统计数据 ====================
 const respondedCount = ref(0)
 const avgResponseTime = ref(0)
@@ -896,12 +882,12 @@ const radarChart = ref<any>(null)
 // ==================== 计算属性 ====================
 const dynamicPlaceholder = computed(() => {
   if (isProcessing.value) return '正在分析中...'
-  if (currentStep.value < 4) return '请先完成前置步骤...'
+  if (currentStep.value < 3) return '请先完成前置步骤...'
   return `请详细描述你的想法和经验...`
 })
 
 const canSubmit = computed(() => {
-  return !isProcessing.value && currentStep.value >= 4 && userInput.value.trim().length > 0
+  return !isProcessing.value && currentStep.value >= 3 && userInput.value.trim().length > 0
 })
 
 // 安全解析候选人 ID - 防御性编程，层级化降级
@@ -1184,25 +1170,8 @@ async function proceedToStep1() {
 }
 
 async function proceedToStep2() {
-  // 从Step 1进入Step 2，显示岗位选择
+  // 直接进入面试说明
   currentStep.value = 2
-  await scrollToBottom()
-}
-
-// 处理岗位选择
-function handleJobSelected(jobId: number) {
-  selectedJobId.value = jobId
-  console.log('已选择岗位:', jobId)
-}
-
-// 处理应聘岗位
-async function handleApplyJob(data: any) {
-  console.log('应聘岗位:', data)
-  selectedJobTitle.value = data.jobName || ''
-  ElMessage.success(`已应聘岗位: ${data.jobName}`)
-  
-  // 进入面试说明阶段
-  currentStep.value = 3
   await scrollToBottom()
 }
 
@@ -1220,7 +1189,7 @@ async function proceedFromDialogComponent(info: CandidateInfo) {
 }
 
 async function startInterview() {
-  currentStep.value = 4
+  currentStep.value = 3
   respondedCount.value = 0
   
   // 启动计时器
@@ -1269,14 +1238,13 @@ async function startInterview() {
   await scrollToBottom()
   
   // 延迟后生成第一个问题
-  await new Promise(resolve => setTimeout(resolve, 1000))
+  await new Promise(resolve => setTimeout(resolve, 500))
   await generateNextQuestion()
 }
 
 // ==================== 对话逻辑 ====================
 async function generateNextQuestion() {
   isTyping.value = true
-  await new Promise(resolve => setTimeout(resolve, 1200))
   
   // 获取下一个问题
   const question = await fetchNextQuestion()
@@ -1317,30 +1285,46 @@ async function submitMessage() {
   await scrollToBottom()
   
   try {
-    // 1. 分析回答
-    const analysis = await analyzeResponse(content)
+    // 合并请求：分析回答 + 生成下一题（单次 API 往返）
+    const result = await analyzeAndFetchNext(content)
     
-    // 2. 更新评分
-    updateScores(analysis.scores)
+    // 1. 更新评分
+    updateScores(result.analysis.scores)
     
-    // 3. 更新情绪
-    latestSentiment.value = analysis.sentiment
+    // 2. 更新情绪
+    latestSentiment.value = result.analysis.sentiment
     
-    // 4. 更新模式
-    if (analysis.patterns) {
-      updatePatterns(analysis.patterns)
+    // 3. 更新模式
+    if (result.analysis.patterns) {
+      updatePatterns(result.analysis.patterns)
     }
     
-    // 5. 添加反馈
-    messages.value[messages.value.length - 1].aiFeedback = analysis.feedback
+    // 4. 添加反馈
+    messages.value[messages.value.length - 1].aiFeedback = result.analysis.feedback
     
-    // 6. 检查是否完成
-    if (respondedCount.value >= interviewPlan.value.totalQuestions) {
+    // 5. 检查是否完成
+    if (respondedCount.value >= interviewPlan.value.totalQuestions || result.shouldEnd) {
+      shouldEndInterview.value = true
       completeInterview()
-    } else {
-      // 7. 每次回答后自动保存
+    } else if (result.nextQuestion) {
+      // 6. 每次回答后自动保存
       doAutoSave()
-      // 8. 生成下一个问题
+      // 7. 直接显示下一个问题（无需再发请求）
+      isTyping.value = true
+      await new Promise(resolve => setTimeout(resolve, 600))
+      messages.value.push({
+        role: 'ai',
+        content: result.nextQuestion.content,
+        time: nowTime(),
+        tags: result.nextQuestion.tags
+      })
+      isTyping.value = false
+      currentPhase.value = result.nextQuestion.phase || '多轮面试中'
+      contextHint.value = result.nextQuestion.context || null
+      await scrollToBottom()
+      inputRef.value?.focus()
+    } else {
+      doAutoSave()
       await generateNextQuestion()
     }
     
@@ -1356,6 +1340,20 @@ async function analyzeResponse(content: string) {
   try {
     const cid = String(parsedCandidateId.value || props.candidateId || '')
     
+    // 构建简历信息
+    const resumePayload: Record<string, any> = {}
+    if (candidateInfo.value.name) resumePayload.name = candidateInfo.value.name
+    if (candidateInfo.value.education) resumePayload.education = candidateInfo.value.education
+    const rawSkills = candidateInfo.value.skills || existingResumeInfo.value?.skills
+    if (rawSkills) {
+      resumePayload.skills = Array.isArray(rawSkills) ? rawSkills : String(rawSkills).split(/[,，]/).map((s: string) => s.trim()).filter(Boolean)
+    }
+
+    // 构建岗位信息
+    const jobPayload: Record<string, any> = {}
+    if (selectedJobId.value) jobPayload.id = selectedJobId.value
+    if (selectedJobTitle.value) jobPayload.title = selectedJobTitle.value
+
     const response = await fetch(
       `http://127.0.0.1:8000/assessment/immersive/analyze-response`,
       {
@@ -1371,6 +1369,9 @@ async function analyzeResponse(content: string) {
           candidate_response: content,
           conversation_depth: respondedCount.value,
           previous_messages: messages.value.slice(-5).map(m => ({ role: m.role, content: m.content })),
+          target_position: selectedJobTitle.value || undefined,
+          resume_info: Object.keys(resumePayload).length > 0 ? resumePayload : undefined,
+          job_info: Object.keys(jobPayload).length > 0 ? jobPayload : undefined,
         })
       }
     )
@@ -1381,11 +1382,20 @@ async function analyzeResponse(content: string) {
     
     const data = await response.json()
     if (data.code === 200 && data.data) {
+      // 捕获 DecisionAgent 决策和面试状态
+      if (data.data.decision) {
+        latestDecision.value = data.data.decision
+        shouldEndInterview.value = !!data.data.decision.should_end
+      }
+      if (data.data.interview_state) {
+        interviewState.value = data.data.interview_state
+      }
       return {
         scores: data.data.scores || {},
         sentiment: data.data.sentiment || { emotion: '专注', confidence: 75 },
         patterns: data.data.patterns || [],
-        feedback: data.data.feedback || '很好的回答！'
+        feedback: data.data.feedback || '很好的回答！',
+        decision: data.data.decision || null
       }
     }
   } catch (error) {
@@ -1419,10 +1429,112 @@ function getLocalFallbackAnalysis() {
   }
 }
 
+// ==================== 合并请求：分析回答 + 生成下一题 ====================
+async function analyzeAndFetchNext(content: string) {
+  try {
+    const cid = String(parsedCandidateId.value || props.candidateId || '')
+
+    // 构建简历信息
+    const resumePayload: Record<string, any> = {}
+    if (candidateInfo.value.name) resumePayload.name = candidateInfo.value.name
+    if (candidateInfo.value.education) resumePayload.education = candidateInfo.value.education
+    const rawSkills = candidateInfo.value.skills || existingResumeInfo.value?.skills
+    if (rawSkills) {
+      resumePayload.skills = Array.isArray(rawSkills) ? rawSkills : String(rawSkills).split(/[,，]/).map((s: string) => s.trim()).filter(Boolean)
+    }
+
+    // 构建岗位信息
+    const jobPayload: Record<string, any> = {}
+    if (selectedJobId.value) jobPayload.id = selectedJobId.value
+    if (selectedJobTitle.value) jobPayload.title = selectedJobTitle.value
+
+    const response = await fetch(
+      `http://127.0.0.1:8000/assessment/immersive/analyze-and-next`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('access_token') || ''}`
+        },
+        body: JSON.stringify({
+          candidate_id: cid,
+          candidate_name: candidateInfo.value.name || '',
+          current_speaker: 'hr',
+          candidate_response: content,
+          conversation_depth: respondedCount.value,
+          previous_messages: messages.value.slice(-6).map(m => ({ role: m.role, content: m.content })),
+          target_position: selectedJobTitle.value || undefined,
+          resume_info: Object.keys(resumePayload).length > 0 ? resumePayload : undefined,
+          job_info: Object.keys(jobPayload).length > 0 ? jobPayload : undefined,
+        })
+      }
+    )
+
+    if (response.ok) {
+      const data = await response.json()
+      if (data.code === 200 && data.data) {
+        const analysis = data.data.analysis || {}
+        const nextQ = data.data.next_question
+
+        // 更新面试状态
+        if (analysis.decision) {
+          latestDecision.value = analysis.decision
+        }
+        if (analysis.interview_state) {
+          interviewState.value = analysis.interview_state
+        }
+
+        return {
+          analysis: {
+            scores: analysis.scores || {},
+            sentiment: analysis.sentiment || { emotion: '专注', confidence: 75 },
+            patterns: analysis.patterns || [],
+            feedback: analysis.feedback || '很好的回答！',
+          },
+          nextQuestion: nextQ ? {
+            content: nextQ.question || nextQ.content || '',
+            tags: nextQ.tags || [],
+            context: nextQ.context || null,
+            phase: nextQ.phase || nextQ.interview_state?.current_role || '多轮面试'
+          } : null,
+          shouldEnd: !!data.data.should_end
+        }
+      }
+    }
+  } catch (error) {
+    console.warn('合并请求失败:', error)
+  }
+
+  // 降级：返回本地备用
+  const fallback = getLocalFallbackAnalysis()
+  return {
+    analysis: fallback,
+    nextQuestion: null,
+    shouldEnd: false
+  }
+}
+
 async function fetchNextQuestion() {
   try {
     const cid = String(parsedCandidateId.value || props.candidateId || '')
     
+    // 构建简历信息 (简历驱动提问)
+    const resumePayload: Record<string, any> = {}
+    if (candidateInfo.value.name) resumePayload.name = candidateInfo.value.name
+    if (candidateInfo.value.email) resumePayload.email = candidateInfo.value.email
+    if (candidateInfo.value.education) resumePayload.education = candidateInfo.value.education
+    if (candidateInfo.value.projects) resumePayload.projects = candidateInfo.value.projects
+    // skills 可能是字符串或数组
+    const rawSkills = candidateInfo.value.skills || existingResumeInfo.value?.skills
+    if (rawSkills) {
+      resumePayload.skills = Array.isArray(rawSkills) ? rawSkills : String(rawSkills).split(/[,，]/).map((s: string) => s.trim()).filter(Boolean)
+    }
+
+    // 构建岗位信息
+    const jobPayload: Record<string, any> = {}
+    if (selectedJobId.value) jobPayload.id = selectedJobId.value
+    if (selectedJobTitle.value) jobPayload.title = selectedJobTitle.value
+
     const response = await fetch(
       `http://127.0.0.1:8000/assessment/immersive/next-question`,
       {
@@ -1437,6 +1549,9 @@ async function fetchNextQuestion() {
           role_name: 'AI面试官',
           conversation_depth: respondedCount.value,
           history: messages.value.filter(m => m.role === 'ai').map(m => ({ role: 'ai', content: m.content })),
+          target_position: selectedJobTitle.value || undefined,
+          resume_info: Object.keys(resumePayload).length > 0 ? resumePayload : undefined,
+          job_info: Object.keys(jobPayload).length > 0 ? jobPayload : undefined,
         })
       }
     )
@@ -1444,11 +1559,15 @@ async function fetchNextQuestion() {
     if (response.ok) {
       const data = await response.json()
       if (data.code === 200 && data.data) {
+        // 更新面试状态
+        if (data.data.interview_state) {
+          interviewState.value = data.data.interview_state
+        }
         return {
-          content: data.data.content,
+          content: data.data.question || data.data.content,
           tags: data.data.tags || [],
           context: data.data.context,
-          phase: data.data.phase
+          phase: data.data.phase || data.data.interview_state?.current_role || '多轮面试'
         }
       }
     }
@@ -1497,7 +1616,7 @@ function updatePatterns(patterns: Pattern[]) {
 
 function completeInterview() {
   ElMessage.success('✨ 面试完成！正在生成报告...')
-  currentStep.value = 5  // 进入报告阶段
+  currentStep.value = 4  // 进入报告阶段
   
   // 停止计时器 & 自动保存
   if (timerInterval.value) {
@@ -1736,7 +1855,7 @@ function getProgressSnapshot(): LocalProgress {
 
 function doAutoSave() {
   const cid = parsedCandidateId.value
-  if (!cid || currentStep.value < 4) return  // 面试阶段才自动保存
+  if (!cid || currentStep.value < 3) return  // 面试阶段才自动保存
 
   // 保存到 localStorage
   saveLocalProgress(cid, getProgressSnapshot())
@@ -1797,7 +1916,7 @@ function restoreFromLocal(progress: LocalProgress) {
   selectedJobTitle.value = progress.jobTitle || ''
 
   // 恢复计时
-  if (progress.currentStep >= 4 && progress.startTime) {
+  if (progress.currentStep >= 3 && progress.startTime) {
     startTime.value = Date.now() - (progress.elapsedTime || 0)
     timerInterval.value = window.setInterval(() => {
       elapsedTime.value = Date.now() - startTime.value
@@ -1812,13 +1931,33 @@ function restoreFromLocal(progress: LocalProgress) {
 // ==================== 页面退出保存 ====================
 function handleBeforeUnload() {
   const cid = parsedCandidateId.value
-  if (!cid || currentStep.value < 4) return
+  if (!cid || currentStep.value < 3) return
 
   saveLocalProgress(cid, getProgressSnapshot())
 }
 
 // ==================== 生命周期 ====================
 onMounted(async () => {
+  // 从路由参数读取预选的岗位ID
+  const queryJobId = route.query.jobId
+  if (queryJobId) {
+    const jid = Number(queryJobId)
+    if (!isNaN(jid) && jid > 0) {
+      selectedJobId.value = jid
+      // 获取岗位名称
+      try {
+        const res = await request.get(`/jobs/${jid}`)
+        const job = res.data?.data || res.data
+        if (job?.name) {
+          selectedJobTitle.value = job.name
+          console.log('从路由预选岗位:', job.name)
+        }
+      } catch {
+        console.warn('获取预选岗位信息失败')
+      }
+    }
+  }
+
   const cid = parsedCandidateId.value
   if (!cid) {
     initLoading.value = false
@@ -1828,7 +1967,7 @@ onMounted(async () => {
   try {
     // 1) 先检查本地是否有保存的进度
     const local = loadLocalProgress(cid)
-    if (local && local.currentStep >= 4 && local.messages.length > 0) {
+    if (local && local.currentStep >= 3 && local.messages.length > 0) {
       localSavedProgress.value = local
       // 弹窗询问是否继续
       try {
@@ -3032,6 +3171,7 @@ onBeforeUnmount(() => {
   overflow-y: auto;
   padding: 24px 32px;
   background: #fafbfc;
+  scroll-behavior: smooth;
 }
 
 .conversation-starter {
@@ -3121,6 +3261,10 @@ onBeforeUnmount(() => {
   align-items: flex-start;
 }
 
+.ai-message .message-body {
+  border-radius: 2px 12px 12px 12px;
+}
+
 .message-avatar {
   flex-shrink: 0;
   width: 40px;
@@ -3184,6 +3328,12 @@ onBeforeUnmount(() => {
   color: #2c3e50;
   font-size: 14px;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+  word-break: break-word;
+  overflow-wrap: break-word;
+}
+
+.message-body p {
+  margin: 0;
 }
 
 .candidate-message {
@@ -3191,10 +3341,11 @@ onBeforeUnmount(() => {
   gap: 12px;
   align-items: flex-start;
   justify-content: flex-end;
-  flex-direction: row-reverse;
 }
 
 .candidate-message .message-content {
+  flex: 0 0 auto;
+  max-width: 75%;
   display: flex;
   flex-direction: column;
   align-items: flex-end;
@@ -3204,6 +3355,7 @@ onBeforeUnmount(() => {
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   color: #fff;
   border: none;
+  border-radius: 12px 2px 12px 12px;
   box-shadow: 0 2px 6px rgba(102, 126, 234, 0.25);
 }
 

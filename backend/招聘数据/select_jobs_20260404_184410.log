@@ -1,0 +1,71 @@
+2026-04-04 18:44:11,244 [INFO] SELECT DATABASE()
+2026-04-04 18:44:11,245 [INFO] [raw sql] {}
+2026-04-04 18:44:11,246 [INFO] SELECT @@sql_mode
+2026-04-04 18:44:11,246 [INFO] [raw sql] {}
+2026-04-04 18:44:11,247 [INFO] SELECT @@lower_case_table_names
+2026-04-04 18:44:11,248 [INFO] [raw sql] {}
+2026-04-04 18:44:11,249 [INFO] BEGIN (implicit)
+2026-04-04 18:44:11,249 [INFO] DESCRIBE `hr_matching`.`users`
+2026-04-04 18:44:11,250 [INFO] [raw sql] {}
+2026-04-04 18:44:11,252 [INFO] DESCRIBE `hr_matching`.`jobs`
+2026-04-04 18:44:11,252 [INFO] [raw sql] {}
+2026-04-04 18:44:11,254 [INFO] DESCRIBE `hr_matching`.`interviews`
+2026-04-04 18:44:11,254 [INFO] [raw sql] {}
+2026-04-04 18:44:11,255 [INFO] DESCRIBE `hr_matching`.`assessment_records`
+2026-04-04 18:44:11,256 [INFO] [raw sql] {}
+2026-04-04 18:44:11,257 [INFO] DESCRIBE `hr_matching`.`candidate_personality_profiles`
+2026-04-04 18:44:11,258 [INFO] [raw sql] {}
+2026-04-04 18:44:11,259 [INFO] DESCRIBE `hr_matching`.`assessment_match_analyses`
+2026-04-04 18:44:11,259 [INFO] [raw sql] {}
+2026-04-04 18:44:11,259 [INFO] DESCRIBE `hr_matching`.`personality_trait_descriptions`
+2026-04-04 18:44:11,259 [INFO] [raw sql] {}
+2026-04-04 18:44:11,262 [INFO] DESCRIBE `hr_matching`.`scenarios`
+2026-04-04 18:44:11,262 [INFO] [raw sql] {}
+2026-04-04 18:44:11,263 [INFO] DESCRIBE `hr_matching`.`interview_responses`
+2026-04-04 18:44:11,263 [INFO] [raw sql] {}
+2026-04-04 18:44:11,265 [INFO] DESCRIBE `hr_matching`.`trait_scores`
+2026-04-04 18:44:11,266 [INFO] [raw sql] {}
+2026-04-04 18:44:11,267 [INFO] DESCRIBE `hr_matching`.`scenario_summaries`
+2026-04-04 18:44:11,267 [INFO] [raw sql] {}
+2026-04-04 18:44:11,268 [INFO] DESCRIBE `hr_matching`.`evaluation_frameworks`
+2026-04-04 18:44:11,269 [INFO] [raw sql] {}
+2026-04-04 18:44:11,270 [INFO] DESCRIBE `hr_matching`.`conversation_turns`
+2026-04-04 18:44:11,270 [INFO] [raw sql] {}
+2026-04-04 18:44:11,272 [INFO] DESCRIBE `hr_matching`.`conversation_analyses`
+2026-04-04 18:44:11,272 [INFO] [raw sql] {}
+2026-04-04 18:44:11,273 [INFO] DESCRIBE `hr_matching`.`job_requirement_tags`
+2026-04-04 18:44:11,273 [INFO] [raw sql] {}
+2026-04-04 18:44:11,274 [INFO] DESCRIBE `hr_matching`.`job_skill_requirements`
+2026-04-04 18:44:11,274 [INFO] [raw sql] {}
+2026-04-04 18:44:11,275 [INFO] DESCRIBE `hr_matching`.`job_personality_frameworks`
+2026-04-04 18:44:11,276 [INFO] [raw sql] {}
+2026-04-04 18:44:11,278 [INFO] DESCRIBE `hr_matching`.`candidate_job_applications`
+2026-04-04 18:44:11,278 [INFO] [raw sql] {}
+2026-04-04 18:44:11,279 [INFO] DESCRIBE `hr_matching`.`boss_raw_data`
+2026-04-04 18:44:11,280 [INFO] [raw sql] {}
+2026-04-04 18:44:11,282 [INFO] COMMIT
+2026-04-04 18:44:11,283 [INFO] 开始筛选数据...
+2026-04-04 18:44:11,284 [INFO] BEGIN (implicit)
+2026-04-04 18:44:11,285 [INFO] 
+            SELECT * FROM boss_raw_data 
+            WHERE 
+                is_processed = 0
+                AND job_description IS NOT NULL
+                AND salary_min > 5000
+                AND position_name IS NOT NULL
+                AND city IN ('北京', '上海', '深圳', '杭州', '广州', '成都', '武汉', '郑州')
+                AND salary_min < 50000  -- 排除过高的职位
+            ORDER BY RAND()
+            LIMIT 5000
+        
+2026-04-04 18:44:11,286 [INFO] [generated in 0.00090s] {}
+2026-04-04 18:44:24,276 [INFO] 精选了 5,000 条记录
+2026-04-04 18:44:24,715 [INFO] INSERT INTO jobs (name, description, company, category, city, salary_min, salary_max, required_traits, creator_id) VALUES (%(name)s, %(description)s, %(company)s, %(category)s, %(city)s, %(salary_min)s, %(salary_max)s, %(required_traits)s, %(creator_id)s)
+2026-04-04 18:44:24,716 [INFO] [generated in 0.00074s] {'name': '云计算/Linux运维工程师实习+转正', 'description': '一、Openstack云计算运维定岗委培实习工程师职位描述：伴随着“互联网+”行动计划，当今IT及ICT产业的趋势就是“云端”。各大如：百度、腾讯、阿里巴巴等都在主打“云”的解决方案，他们拥有互联网及移动互联网门户，也与之对应的建立了自己的数据中心；任职要求：1、大专以上学历，理工科专业，所含专业包括计算机、电子信息、软件工程、自动化、测控、机电等。2、在京工作一年后要求回当地工作的，可申请调回当地省会城市的分公司或合作企业工作。3、入职前同意参加四个月的企业岗前项目实训。', 'company': '北京蓝色曙光信息技术有限公司', 'category': 'nan', 'city': '北京', 'salary_min': 8.0, 'salary_max': 10.0, 'required_traits': '{"\\u5916\\u5411\\u6027": 4, "\\u5b9c\\u4eba\\u6027": 5, "\\u5c3d\\u8d23\\u6027": 7, "\\u795e\\u7ecf\\u8d28": 4, "\\u5f00\\u653e\\u6027": 8}', 'creator_id': None}
+2026-04-04 18:44:24,719 [INFO] INSERT INTO jobs (name, description, company, category, city, salary_min, salary_max, required_traits, creator_id) VALUES (%(name)s, %(description)s, %(company)s, %(category)s, %(city)s, %(salary_min)s, %(salary_max)s, %(required_traits)s, %(creator_id)s)
+2026-04-04 18:44:24,719 [INFO] [cached since 0.004473s ago] {'name': '集团董事长助理', 'description': '岗位职责  1、协助董事长处理日常事务，合理安排董事长的日程计划；  2、在董事长授权的范围内协助董事长进行商务谈判，做好汇报和联络工作；  3、在董事长授权的范围内对集团的运营管理，战略部署等进行组织和协调工作；  4、传达、检查和督促董事长各种决策的贯彻、落实和执行情况，并及时向董事长汇报进度 ... (227 characters truncated) ... 一本院校）；  2、熟悉行业和企业的运营模式及特点。  3、C1驾照，2年以上驾驶经验。    工作时间：9:00-18:00  上班地址：天府新区麓山大道二段36号建国汽车    福利待遇：  六险一金、带薪年假、绩效奖金、员工餐、员工旅游、产假、哺乳假、二胎假、工会礼金。搜索马 克 数 据 网', 'company': '成都建国汽车贸易有限公司', 'category': '全职', 'city': '成都', 'salary_min': 10.0, 'salary_max': 15.0, 'required_traits': '{"\\u5916\\u5411\\u6027": 5, "\\u5b9c\\u4eba\\u6027": 5, "\\u5c3d\\u8d23\\u6027": 6, "\\u795e\\u7ecf\\u8d28": 4, "\\u5f00\\u653e\\u6027": 5}', 'creator_id': None}
+2026-04-04 18:44:24,722 [INFO] ROLLBACK
+2026-04-04 18:44:24,730 [ERROR] 错误: (pymysql.err.DataError) (1406, "Data too long for column 'description' at row 1")
+[SQL: INSERT INTO jobs (name, description, company, category, city, salary_min, salary_max, required_traits, creator_id) VALUES (%(name)s, %(description)s, %(company)s, %(category)s, %(city)s, %(salary_min)s, %(salary_max)s, %(required_traits)s, %(creator_id)s)]
+[parameters: {'name': '集团董事长助理', 'description': '岗位职责  1、协助董事长处理日常事务，合理安排董事长的日程计划；  2、在董事长授权的范围内协助董事长进行商务谈判，做好汇报和联络工作；  3、在董事长授权的范围内对集团的运营管理，战略部署等进行组织和协调工作；  4、传达、检查和督促董事长各种决策的贯彻、落实和执行情况，并及时向董事长汇报进度 ... (227 characters truncated) ... 一本院校）；  2、熟悉行业和企业的运营模式及特点。  3、C1驾照，2年以上驾驶经验。    工作时间：9:00-18:00  上班地址：天府新区麓山大道二段36号建国汽车    福利待遇：  六险一金、带薪年假、绩效奖金、员工餐、员工旅游、产假、哺乳假、二胎假、工会礼金。搜索马 克 数 据 网', 'company': '成都建国汽车贸易有限公司', 'category': '全职', 'city': '成都', 'salary_min': 10.0, 'salary_max': 15.0, 'required_traits': '{"\\u5916\\u5411\\u6027": 5, "\\u5b9c\\u4eba\\u6027": 5, "\\u5c3d\\u8d23\\u6027": 6, "\\u795e\\u7ecf\\u8d28": 4, "\\u5f00\\u653e\\u6027": 5}', 'creator_id': None}]
+(Background on this error at: https://sqlalche.me/e/20/9h9h)

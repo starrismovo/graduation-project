@@ -38,6 +38,8 @@ class NextQuestionRequest(BaseModel):
     conversation_depth: int = 0
     history: List[Dict[str, Any]] = []
     target_position: Optional[str] = None
+    job_info: Optional[Dict[str, Any]] = None      # 岗位信息 { title, description, required_skills, id }
+    resume_info: Optional[Dict[str, Any]] = None    # 简历信息 { name, education, skills, projects }
 
 
 class AnalyzeResponseRequest(BaseModel):
@@ -48,6 +50,8 @@ class AnalyzeResponseRequest(BaseModel):
     conversation_depth: int = 0
     previous_messages: List[Dict[str, Any]] = []
     target_position: Optional[str] = None
+    job_info: Optional[Dict[str, Any]] = None       # 岗位信息
+    resume_info: Optional[Dict[str, Any]] = None    # 简历信息
 
 
 # ==================== candidate_id 验证器 ====================
@@ -118,7 +122,9 @@ async def get_next_question(
             current_role=role,
             conversation_history=request.history,
             conversation_depth=request.conversation_depth,
-            target_position=request.target_position
+            target_position=request.target_position,
+            job_info=request.job_info,
+            resume_info=request.resume_info
         )
         
         return {
@@ -180,7 +186,9 @@ async def analyze_candidate_response(
             candidate_response=request.candidate_response,
             conversation_history=request.previous_messages,
             conversation_depth=request.conversation_depth,
-            target_position=request.target_position
+            target_position=request.target_position,
+            job_info=request.job_info,
+            resume_info=request.resume_info
         )
         
         return {
@@ -193,6 +201,95 @@ async def analyze_candidate_response(
         raise HTTPException(status_code=400, detail=f"参数无效: {e}")
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"分析失败: {str(e)}")
+
+
+# ==================== 合并接口：分析回答 + 生成下一题（减少往返） ====================
+
+class AnalyzeAndNextRequest(BaseModel):
+    """合并请求：分析回答并生成下一个问题"""
+    candidate_id: str
+    candidate_name: Optional[str] = None
+    current_speaker: str = "hr"
+    candidate_response: str
+    conversation_depth: int = 0
+    previous_messages: List[Dict[str, Any]] = []
+    target_position: Optional[str] = None
+    job_info: Optional[Dict[str, Any]] = None
+    resume_info: Optional[Dict[str, Any]] = None
+
+
+@router.post("/analyze-and-next")
+async def analyze_and_generate_next(
+    request: AnalyzeAndNextRequest,
+    db: Session = Depends(get_db)
+):
+    """
+    合并接口：分析候选人回答 + 生成下一个问题（单次往返）
+    
+    Returns:
+        {
+            "code": 200,
+            "data": {
+                "analysis": { scores, sentiment, patterns, feedback, decision, ... },
+                "next_question": { question, tags, suggestions, context, ... }
+            }
+        }
+    """
+    try:
+        candidate_id = _validate_candidate_id(request.candidate_id)
+        try:
+            role = RoleType(request.current_speaker)
+        except ValueError:
+            role = RoleType.HR
+
+        service = ImmersiveDialogueService(db)
+
+        # Step 1: 分析回答（含 Evaluator + Decision）
+        analysis = await service.analyze_candidate_response(
+            id=candidate_id,
+            candidate_name=request.candidate_name or "候选人",
+            current_speaker=role,
+            candidate_response=request.candidate_response,
+            conversation_history=request.previous_messages,
+            conversation_depth=request.conversation_depth,
+            target_position=request.target_position,
+            job_info=request.job_info,
+            resume_info=request.resume_info
+        )
+
+        # Step 2: 判断是否应结束
+        should_end = analysis.get("decision", {}).get("should_end", False)
+        next_question = None
+
+        if not should_end:
+            # Step 3: 生成下一个问题（携带 Decision 指令）
+            next_question = await service.generate_next_question(
+                id=candidate_id,
+                candidate_name=request.candidate_name or "",
+                current_role=role,
+                conversation_history=request.previous_messages + [
+                    {"role": "candidate", "content": request.candidate_response}
+                ],
+                conversation_depth=request.conversation_depth + 1,
+                target_position=request.target_position,
+                job_info=request.job_info,
+                resume_info=request.resume_info
+            )
+
+        return {
+            "code": 200,
+            "data": {
+                "analysis": analysis,
+                "next_question": next_question,
+                "should_end": should_end,
+            },
+            "message": "分析并生成成功"
+        }
+
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=f"参数无效: {e}")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"处理失败: {str(e)}")
 
 
 # ==================== 会话管理接口 ====================
