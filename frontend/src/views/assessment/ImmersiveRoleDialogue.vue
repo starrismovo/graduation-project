@@ -17,12 +17,10 @@
       </div>
 
       <!-- 面板内容（info模式）覆盖在背景上，半透明白色背景 -->
-      <div v-if="leftPanelMode === 'info'" class="panel-overlay">
-        <!-- 关闭按钮 -->
+        <div v-if="leftPanelMode === 'info'" class="panel-overlay">
         <div class="panel-title">
-          <el-button text icon="Close" @click="toggleLeftPanel('svg')" class="close-btn" />
           <el-icon><i class="el-icon-user"></i></el-icon>
-          <span>候选人信息</span>
+          <span>面试流程</span>
           <el-tag v-if="currentStep >= 1" size="small" type="success">已填充</el-tag>
         </div>
         <!-- 流程指示器 -->
@@ -30,8 +28,7 @@
           <div 
             v-for="(step, idx) in assessmentSteps" 
             :key="idx"
-            :class="['step', { active: idx === currentStep, completed: idx < currentStep }]"
-            @click="currentStep = idx"
+            :class="['step', { active: idx === currentStep, completed: idx < currentStep, locked: isInterviewLocked }]"
           >
             <div class="step-number">{{ idx + 1 }}</div>
             <div class="step-title">{{ step }}</div>
@@ -43,6 +40,17 @@
     <!-- 中间主对话区：沉浸式聊天界面 -->
     <div class="dialogue-container">
       <div class="dialogue-header">
+        <div class="job-info-bar">
+          <div class="job-info-main">
+            <span class="job-info-label">当前面试岗位</span>
+            <strong class="job-info-title">{{ currentJobDisplayTitle }}</strong>
+          </div>
+          <div class="job-info-meta">
+            <el-tag size="small" effect="dark" type="warning">{{ currentInterviewStatusLabel }}</el-tag>
+            <span v-if="selectedJobId" class="job-info-id">岗位ID: {{ selectedJobId }}</span>
+          </div>
+        </div>
+
         <div class="session-info">
           <div class="header-content">
             <div class="ai-profile">
@@ -93,13 +101,42 @@
             <p>正在检查您的信息，请稍候</p>
           </div>
 
-          <!-- 有历史简历：选择使用历史 or 上传新简历 -->
+          <div v-else-if="!hasAssessmentPath" class="starter-content assessment-entry-choice">
+            <div class="greeting-avatar">
+              <img :src="aiInterviewerAvatar" />
+            </div>
+            <h4>{{ introScene.title }}</h4>
+            <p>{{ introScene.lines[0] }}</p>
+            <p class="starter-tip">{{ introScene.lines[1] }}</p>
+
+            <div class="entry-choice-grid">
+              <button class="entry-choice-card primary" @click="startResumeAssessmentEntry">
+                <div class="entry-choice-icon">🧾</div>
+                <div class="entry-choice-title">基于简历开始综合评估</div>
+                <div class="entry-choice-desc">
+                  {{ hasExistingResume ? '系统将优先使用你已有的履历画像进入综合评估，也可随后替换为新简历。' : '系统会先解析你的简历，再围绕履历背景、通用能力与发展潜力进行综合评估。' }}
+                </div>
+              </button>
+
+              <button class="entry-choice-card secondary" @click="goSelectJob">
+                <div class="entry-choice-icon">🎯</div>
+                <div class="entry-choice-title">返回选择岗位评估</div>
+                <div class="entry-choice-desc">
+                  先从岗位浏览锁定目标岗位，再进入针对岗位要求、技能和匹配度的定向评估面试。
+                </div>
+              </button>
+            </div>
+          </div>
+
+          <!-- 有历史简历：先告知岗位与流程，再决定沿用信息或更新简历 -->
           <div v-else-if="hasExistingResume" class="starter-content">
             <div class="greeting-avatar">
               <img :src="aiInterviewerAvatar" />
             </div>
-            <h4>欢迎回来！</h4>
-            <p>系统检测到您已有个人信息记录，您可以选择：</p>
+            <h4>{{ introScene.title }}</h4>
+            <p>{{ introScene.lines[0] }}</p>
+            <p>{{ introScene.lines[1] }}</p>
+            <p class="starter-tip">{{ introScene.lines[2] }}</p>
             
             <div class="resume-choice-area">
               <div class="resume-history-card" v-if="existingResumeInfo">
@@ -126,10 +163,10 @@
 
               <div class="resume-choice-buttons">
                 <el-button type="primary" size="large" @click="useExistingResume">
-                  ✅ 使用已有信息
+                  ✅ 使用已有信息并启动面试
                 </el-button>
                 <el-button size="large" @click="openUploadDialog">
-                  📄 上传新简历
+                  📄 上传新简历替换
                 </el-button>
               </div>
             </div>
@@ -140,11 +177,12 @@
             <div class="greeting-avatar">
               <img :src="aiInterviewerAvatar" />
             </div>
-            <h4>欢迎来到 AI 情境面试系统</h4>
-            <p>你好！我是 AI 面试官，很高兴认识你。</p>
-            <p class="starter-tip">请先完善你的个人信息或上传简历</p>
+            <h4>{{ introScene.title }}</h4>
+            <p>{{ introScene.lines[0] }}</p>
+            <p>{{ introScene.lines[1] }}</p>
+            <p class="starter-tip">{{ introScene.lines[2] }}</p>
             <el-button type="primary" @click="openUploadDialog" class="upload-action-btn" size="large">
-              📋 上传完善信息
+              📋 上传简历并开始
             </el-button>
           </div>
         </div>
@@ -155,8 +193,8 @@
             <div class="greeting-avatar">
               <img :src="aiInterviewerAvatar" />
             </div>
-            <h4>✅ 信息已确认</h4>
-            <p>我已成功分析了你的基本信息和背景</p>
+            <h4>{{ introScene.title }}</h4>
+            <p>{{ introScene.lines[0] }}</p>
             
             <!-- 显示解析的信息 -->
             <div v-if="parsedResumeData" class="parsed-info-display">
@@ -222,21 +260,16 @@
                 <div class="info-header">📊 评估维度 ({{ parsedResumeData.assessed_dimensions.length }}项)</div>
                 <div class="dimensions-list">
                   <div v-for="(dim, idx) in parsedResumeData.assessed_dimensions" :key="idx" class="dimension-item">
-                    {{ ['🎯', '⚡', '🔥', '✨', '🚀'][idx % 5] }} {{ dim }}
+                    {{ getDimensionIcon(Number(idx)) }} {{ dim }}
                   </div>
                 </div>
               </div>
             </div>
 
-            <p class="starter-tip" style="margin-top: 16px;">准备好了吗？点击下方按钮开始面试</p>
-            <el-button 
-              type="primary" 
-              @click="proceedToStep2" 
-              size="large"
-              class="start-interview-btn"
-            >
-              🎯 准备开始面试
-            </el-button>
+            <div class="auto-progress-tip">
+              <el-icon class="is-loading"><i class="el-icon-loading"></i></el-icon>
+              <span>{{ introScene.status }}</span>
+            </div>
           </div>
         </div>
 
@@ -246,10 +279,10 @@
             <div class="greeting-avatar">
               <img :src="aiInterviewerAvatar" />
             </div>
-            <h4>📢 面试流程说明</h4>
+            <h4>{{ introScene.title }}</h4>
             
             <div class="briefing-content">
-              <p>我已为你制定了个性化的评估计划：</p>
+              <p>{{ introScene.lines[0] }}</p>
               
               <div class="interview-plan">
                 <div class="plan-item">
@@ -300,17 +333,13 @@
                 </div>
               </div>
 
-              <p class="starter-tip">我会在下方实时显示分析结果，请尽量详细地表达你的想法</p>
+              <p class="starter-tip">{{ introScene.lines[1] }}</p>
             </div>
 
-            <el-button 
-              type="primary" 
-              @click="startInterview" 
-              size="large"
-              class="start-interview-btn"
-            >
-              ▶️ 开始面试
-            </el-button>
+            <div class="auto-progress-tip">
+              <el-icon class="is-loading"><i class="el-icon-loading"></i></el-icon>
+              <span>{{ introScene.status }}</span>
+            </div>
           </div>
         </div>
 
@@ -690,16 +719,17 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onBeforeUnmount, nextTick, watch } from 'vue'
-import { useRoute } from 'vue-router'
+import { ref, computed, onMounted, onBeforeUnmount, nextTick } from 'vue'
+import { useRoute, useRouter, onBeforeRouteLeave } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import * as echarts from 'echarts'
 import { useAssessmentStore } from '@/stores/assessment'
-import UploadInfoDialog from '@/components/UploadInfoDialog.vue'
 import request from '@/utils/request'
 import {
   checkResume,
   checkProgress,
+  getNextQuestion,
+  analyzeInterviewResponse,
+  analyzeAndGetNextQuestion,
   updateProgress,
   saveAssessmentResult,
   fetchReport,
@@ -743,6 +773,20 @@ interface Pattern {
   color: string
 }
 
+interface IntroScene {
+  title: string
+  lines: string[]
+  status?: string
+}
+
+type AssessmentMode = 'job' | 'resume' | null
+
+const dimensionIcons = ['🎯', '⚡', '🔥', '✨', '🚀'] as const
+
+function getDimensionIcon(index: number): string {
+  return dimensionIcons[index % dimensionIcons.length]
+}
+
 // ==================== Props & Emits ====================
 const props = defineProps<{
   candidateId: string
@@ -760,19 +804,21 @@ const emit = defineEmits<{
 // Store & Route
 const assessmentStore = useAssessmentStore()
 const route = useRoute()
+const router = useRouter()
 
 // ==================== 流程控制 ====================
 const assessmentSteps = [
-  '填写信息',
-  '确认信息',
-  '面试说明',
-  '多轮面试',
-  '生成报告'
+  '岗位确认',
+  '简历解析',
+  '面试启动',
+  'Agent面试',
+  '评估报告'
 ]
 
 const currentStep = ref(0)  // 0: 填写, 1: 确认, 2: 说明, 3: 面试, 4: 报告
 const isAnalyzing = ref(false)
 const infoConfirmed = ref(false)
+const assessmentMode = ref<AssessmentMode>(null)
 const selectedJobId = ref<number | null>(null)  // 已选择的岗位ID
 const backendAssessmentId = ref<number | null>(null)  // 后端评估记录ID
 const selectedJobTitle = ref('')  // 已选择的岗位名称
@@ -790,6 +836,8 @@ const leftPanelMode = ref<'svg' | 'info'>('svg')  // svg: 显示欢迎图片, in
 // SVG 图像地址列表
 const svgList = ['/个人信息.svg','/个人信息2.svg','/个人信息3.svg']
 const svgImageUrl = ref<string>(svgList[Math.floor(Math.random()*svgList.length)])
+const FLOW_AUTO_ADVANCE_DELAY = 1200
+let flowAdvanceTimer: number | null = null
 
 
 // 上传对话框状态
@@ -867,6 +915,47 @@ const avgResponseLength = computed(() => {
     .reduce((sum, m) => sum + m.content.length, 0)
   return Math.round(total / respondedCount.value)
 })
+
+const hasResolvedJobTarget = computed(() => {
+  return Boolean(
+    selectedJobId.value ||
+    inProgressInfo.value?.job_id ||
+    props.initialContext?.job_id ||
+    selectedJobTitle.value ||
+    inProgressInfo.value?.job_title ||
+    props.initialContext?.job_title
+  )
+})
+
+const hasAssessmentPath = computed(() => hasResolvedJobTarget.value || assessmentMode.value === 'resume')
+
+const currentJobDisplayTitle = computed(() => {
+  if (hasResolvedJobTarget.value) {
+    return (
+      selectedJobTitle.value ||
+      inProgressInfo.value?.job_title ||
+      props.initialContext?.job_title ||
+      '岗位评估'
+    )
+  }
+
+  if (assessmentMode.value === 'resume') {
+    return '简历综合评估'
+  }
+
+  return '未选择岗位'
+})
+
+const isInterviewLocked = computed(() => currentStep.value >= 1 && currentStep.value < 4)
+
+const currentInterviewStatusLabel = computed(() => {
+  if (currentStep.value >= 4) return '报告生成中'
+  if (currentStep.value >= 3) return '面试进行中'
+  if (currentStep.value >= 1) return '面试准备中'
+  if (hasInProgress.value) return '可继续面试'
+  return '待开始'
+})
+
 const clarityScore = computed(() => {
   return Math.max(5, Math.min(10, (avgResponseLength.value / 50) * 2 + 5))
 })
@@ -888,6 +977,70 @@ const dynamicPlaceholder = computed(() => {
 
 const canSubmit = computed(() => {
   return !isProcessing.value && currentStep.value >= 3 && userInput.value.trim().length > 0
+})
+
+const introScene = computed<IntroScene>(() => {
+  if (initLoading.value) {
+    return {
+      title: '正在连接面试现场',
+      lines: ['正在核验候选人身份与评估上下文', '正在载入本场面试所需的 Agent 会话资源'],
+      status: '请稍候，系统即将完成接入。'
+    }
+  }
+
+  if (currentStep.value === 0 && !hasAssessmentPath.value) {
+    return {
+      title: '请选择本场评估方式',
+      lines: ['你可以直接基于简历进入综合评估，也可以先返回选择岗位，再进行针对岗位的定向评估', '岗位评估更强调匹配度，简历综合评估更强调履历与通用潜力'],
+      status: ''
+    }
+  }
+
+  if (currentStep.value === 0 && hasExistingResume.value) {
+    return {
+      title: hasResolvedJobTarget.value ? '岗位上下文已注入' : '综合评估链路已就绪',
+      lines: [
+        hasResolvedJobTarget.value ? `当前岗位：${currentJobDisplayTitle.value}` : '当前模式：简历综合评估',
+        hasResolvedJobTarget.value ? '系统已检测到你的历史履历信息，正在准备岗位匹配型面试链路' : '系统已检测到你的历史履历信息，正在准备基于履历画像的综合评估链路',
+        '你可以直接沿用已有画像，也可以替换为新的简历内容'
+      ],
+      status: '确认履历后，面试 Agent 将立即接管会话。'
+    }
+  }
+
+  if (currentStep.value === 0) {
+    return {
+      title: hasResolvedJobTarget.value ? '岗位上下文已注入' : '综合评估链路已就绪',
+      lines: [
+        hasResolvedJobTarget.value ? `当前岗位：${currentJobDisplayTitle.value}` : '当前模式：简历综合评估',
+        hasResolvedJobTarget.value ? '系统将先解析你的简历与经历，再动态生成本场岗位评估策略' : '系统将先解析你的简历与经历，再动态生成综合评估策略',
+        '信息完成后，面试 Agent 会自动进入正式提问'
+      ],
+      status: '请先上传简历或补全信息。'
+    }
+  }
+
+  if (currentStep.value === 1) {
+    return {
+      title: '候选人画像构建完成',
+      lines: ['我已完成对你的背景、技能和评估关注维度的初步建模'],
+      status: hasResolvedJobTarget.value ? '正在生成岗位定制化面试计划，即将自动开始。' : '正在生成基于履历画像的综合评估计划，即将自动开始。'
+    }
+  }
+
+  if (currentStep.value === 2) {
+    return {
+      title: 'Agent 面试链路已就绪',
+      lines: [hasResolvedJobTarget.value ? '我已结合岗位需求和履历信息，为你生成本场个性化评估计划' : '我已结合你的履历背景和能力线索，为你生成本场综合评估计划', '接下来我会连续推进提问、分析和决策，请尽量完整作答'],
+      status: '系统正在启动面试 Agent，马上进入正式提问。'
+    }
+  }
+
+  return {
+    title: '面试已启动',
+    lines: ['系统正在进入正式提问阶段'],
+    status: ''
+  }
 })
 
 // 安全解析候选人 ID - 防御性编程，层级化降级
@@ -923,8 +1076,40 @@ const parsedCandidateId = computed(() => {
 })
 
 // ==================== 简历上传与解析 ====================
-function toggleLeftPanel(mode: 'svg' | 'info') {
-  leftPanelMode.value = mode
+function goSelectJob() {
+  router.push('/home/jobs')
+}
+
+function startResumeAssessmentEntry() {
+  assessmentMode.value = 'resume'
+  leftPanelMode.value = 'info'
+
+  if (hasExistingResume.value) {
+    void useExistingResume()
+    return
+  }
+
+  openUploadDialog()
+}
+
+function clearFlowAdvanceTimer() {
+  if (flowAdvanceTimer) {
+    clearTimeout(flowAdvanceTimer)
+    flowAdvanceTimer = null
+  }
+}
+
+function queueBriefingAndInterviewStart() {
+  clearFlowAdvanceTimer()
+  flowAdvanceTimer = window.setTimeout(async () => {
+    currentStep.value = 2
+    await scrollToBottom()
+
+    clearFlowAdvanceTimer()
+    flowAdvanceTimer = window.setTimeout(async () => {
+      await startInterview()
+    }, FLOW_AUTO_ADVANCE_DELAY)
+  }, FLOW_AUTO_ADVANCE_DELAY)
 }
 
 function openUploadDialog() {
@@ -963,6 +1148,7 @@ async function useExistingResume() {
   currentStep.value = 1  // 直接跳到确认信息
   ElMessage.success('已加载历史信息')
   await scrollToBottom()
+  queueBriefingAndInterviewStart()
 }
 
 function cancelUpload() {
@@ -1156,6 +1342,7 @@ async function proceedToStep1() {
       
       // 自动滚动到下面
       await scrollToBottom()
+      queueBriefingAndInterviewStart()
       
       ElMessage.success('信息解析成功！')
     } else {
@@ -1167,12 +1354,6 @@ async function proceedToStep1() {
   } finally {
     isAnalyzing.value = false
   }
-}
-
-async function proceedToStep2() {
-  // 直接进入面试说明
-  currentStep.value = 2
-  await scrollToBottom()
 }
 
 // 从弹窗点击确认进入下一步
@@ -1189,6 +1370,8 @@ async function proceedFromDialogComponent(info: CandidateInfo) {
 }
 
 async function startInterview() {
+  if (currentStep.value >= 3) return
+
   currentStep.value = 3
   respondedCount.value = 0
   
@@ -1227,9 +1410,13 @@ async function startInterview() {
   await new Promise(resolve => setTimeout(resolve, 500))
   
   // 添加面试开始消息
+  const openingMessage = hasResolvedJobTarget.value
+    ? `好的，我们开始吧！本场将围绕岗位“${currentJobDisplayTitle.value}”展开评估。\n\n我会从经历背景、岗位能力和综合潜力三个方向持续推进提问，并根据你的回答实时调整深度。`
+    : `好的，我们开始吧！本场将进行简历综合评估。\n\n我会围绕你的履历背景、通用能力和发展潜力持续推进提问，并根据你的回答实时调整深度。`
+
   messages.value.push({
     role: 'ai',
-    content: `好的，我们开始吧！我是本次的AI面试官，将从多个维度考察你的能力。\n\n第一个问题中，我们先从了解你的背景和工作经验开始。请放松，提供尽可能详细和真实的回答。`,
+    content: openingMessage,
     time: nowTime(),
     tags: ['面试开始', '破冰']
   })
@@ -1354,48 +1541,37 @@ async function analyzeResponse(content: string) {
     if (selectedJobId.value) jobPayload.id = selectedJobId.value
     if (selectedJobTitle.value) jobPayload.title = selectedJobTitle.value
 
-    const response = await fetch(
-      `http://127.0.0.1:8000/assessment/immersive/analyze-response`,
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('access_token') || ''}`
-        },
-        body: JSON.stringify({
-          candidate_id: cid,
-          candidate_name: candidateInfo.value.name || '',
-          current_speaker: 'hr',
-          candidate_response: content,
-          conversation_depth: respondedCount.value,
-          previous_messages: messages.value.slice(-5).map(m => ({ role: m.role, content: m.content })),
-          target_position: selectedJobTitle.value || undefined,
-          resume_info: Object.keys(resumePayload).length > 0 ? resumePayload : undefined,
-          job_info: Object.keys(jobPayload).length > 0 ? jobPayload : undefined,
-        })
-      }
-    )
-    
-    if (!response.ok) {
-      return getLocalFallbackAnalysis()
-    }
-    
-    const data = await response.json()
-    if (data.code === 200 && data.data) {
+    const data = await analyzeInterviewResponse({
+      candidate_id: cid,
+      candidate_name: candidateInfo.value.name || '',
+      role_id: 'hr',
+      candidate_response: content,
+      conversation_depth: respondedCount.value,
+      history: messages.value.slice(-5).map(m => ({
+        role: m.role === 'candidate' ? 'candidate' : 'assistant',
+        content: m.content
+      })),
+      target_position: selectedJobTitle.value || undefined,
+      resume_info: Object.keys(resumePayload).length > 0 ? resumePayload : undefined,
+      job_info: Object.keys(jobPayload).length > 0 ? jobPayload : undefined,
+    })
+
+    if (data.code === 200 && data.data?.analysis) {
+      const analysis = data.data.analysis
       // 捕获 DecisionAgent 决策和面试状态
-      if (data.data.decision) {
-        latestDecision.value = data.data.decision
-        shouldEndInterview.value = !!data.data.decision.should_end
+      if (analysis.decision) {
+        latestDecision.value = analysis.decision
+        shouldEndInterview.value = !!analysis.decision.should_end
       }
-      if (data.data.interview_state) {
-        interviewState.value = data.data.interview_state
+      if (analysis.interview_state) {
+        interviewState.value = analysis.interview_state
       }
       return {
-        scores: data.data.scores || {},
-        sentiment: data.data.sentiment || { emotion: '专注', confidence: 75 },
-        patterns: data.data.patterns || [],
-        feedback: data.data.feedback || '很好的回答！',
-        decision: data.data.decision || null
+        scores: analysis.scores || {},
+        sentiment: analysis.sentiment || { emotion: '专注', confidence: 75 },
+        patterns: analysis.patterns || [],
+        feedback: analysis.feedback || '很好的回答！',
+        decision: analysis.decision || null
       }
     }
   } catch (error) {
@@ -1448,57 +1624,47 @@ async function analyzeAndFetchNext(content: string) {
     if (selectedJobId.value) jobPayload.id = selectedJobId.value
     if (selectedJobTitle.value) jobPayload.title = selectedJobTitle.value
 
-    const response = await fetch(
-      `http://127.0.0.1:8000/assessment/immersive/analyze-and-next`,
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('access_token') || ''}`
-        },
-        body: JSON.stringify({
-          candidate_id: cid,
-          candidate_name: candidateInfo.value.name || '',
-          current_speaker: 'hr',
-          candidate_response: content,
-          conversation_depth: respondedCount.value,
-          previous_messages: messages.value.slice(-6).map(m => ({ role: m.role, content: m.content })),
-          target_position: selectedJobTitle.value || undefined,
-          resume_info: Object.keys(resumePayload).length > 0 ? resumePayload : undefined,
-          job_info: Object.keys(jobPayload).length > 0 ? jobPayload : undefined,
-        })
+    const data = await analyzeAndGetNextQuestion({
+      candidate_id: cid,
+      candidate_name: candidateInfo.value.name || '',
+      role_id: 'hr',
+      candidate_response: content,
+      conversation_depth: respondedCount.value,
+      history: messages.value.slice(-6).map(m => ({
+        role: m.role === 'candidate' ? 'candidate' : 'assistant',
+        content: m.content
+      })),
+      target_position: selectedJobTitle.value || undefined,
+      resume_info: Object.keys(resumePayload).length > 0 ? resumePayload : undefined,
+      job_info: Object.keys(jobPayload).length > 0 ? jobPayload : undefined,
+    })
+
+    if (data.code === 200 && data.data) {
+      const analysis = data.data.analysis || {}
+      const nextQ = data.data.question
+
+      // 更新面试状态
+      if (analysis.decision) {
+        latestDecision.value = analysis.decision
       }
-    )
+      if (analysis.interview_state) {
+        interviewState.value = analysis.interview_state
+      }
 
-    if (response.ok) {
-      const data = await response.json()
-      if (data.code === 200 && data.data) {
-        const analysis = data.data.analysis || {}
-        const nextQ = data.data.next_question
-
-        // 更新面试状态
-        if (analysis.decision) {
-          latestDecision.value = analysis.decision
-        }
-        if (analysis.interview_state) {
-          interviewState.value = analysis.interview_state
-        }
-
-        return {
-          analysis: {
-            scores: analysis.scores || {},
-            sentiment: analysis.sentiment || { emotion: '专注', confidence: 75 },
-            patterns: analysis.patterns || [],
-            feedback: analysis.feedback || '很好的回答！',
-          },
-          nextQuestion: nextQ ? {
-            content: nextQ.question || nextQ.content || '',
-            tags: nextQ.tags || [],
-            context: nextQ.context || null,
-            phase: nextQ.phase || nextQ.interview_state?.current_role || '多轮面试'
-          } : null,
-          shouldEnd: !!data.data.should_end
-        }
+      return {
+        analysis: {
+          scores: analysis.scores || {},
+          sentiment: analysis.sentiment || { emotion: '专注', confidence: 75 },
+          patterns: analysis.patterns || [],
+          feedback: analysis.feedback || '很好的回答！',
+        },
+        nextQuestion: nextQ ? {
+          content: nextQ.question || nextQ.content || '',
+          tags: nextQ.tags || [],
+          context: nextQ.context || null,
+          phase: nextQ.phase || nextQ.interview_state?.current_role || '多轮面试'
+        } : null,
+        shouldEnd: !!data.data.should_end
       }
     }
   } catch (error) {
@@ -1535,40 +1701,30 @@ async function fetchNextQuestion() {
     if (selectedJobId.value) jobPayload.id = selectedJobId.value
     if (selectedJobTitle.value) jobPayload.title = selectedJobTitle.value
 
-    const response = await fetch(
-      `http://127.0.0.1:8000/assessment/immersive/next-question`,
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('access_token') || ''}`
-        },
-        body: JSON.stringify({
-          candidate_id: cid,
-          role_id: 'hr',
-          role_name: 'AI面试官',
-          conversation_depth: respondedCount.value,
-          history: messages.value.filter(m => m.role === 'ai').map(m => ({ role: 'ai', content: m.content })),
-          target_position: selectedJobTitle.value || undefined,
-          resume_info: Object.keys(resumePayload).length > 0 ? resumePayload : undefined,
-          job_info: Object.keys(jobPayload).length > 0 ? jobPayload : undefined,
-        })
-      }
-    )
+    const data = await getNextQuestion({
+      candidate_id: cid,
+      candidate_name: candidateInfo.value.name || '',
+      role_id: 'hr',
+      conversation_depth: respondedCount.value,
+      history: messages.value.map(m => ({
+        role: m.role === 'candidate' ? 'candidate' : 'assistant',
+        content: m.content
+      })),
+      target_position: selectedJobTitle.value || undefined,
+      resume_info: Object.keys(resumePayload).length > 0 ? resumePayload : undefined,
+      job_info: Object.keys(jobPayload).length > 0 ? jobPayload : undefined,
+    })
     
-    if (response.ok) {
-      const data = await response.json()
-      if (data.code === 200 && data.data) {
-        // 更新面试状态
-        if (data.data.interview_state) {
-          interviewState.value = data.data.interview_state
-        }
-        return {
-          content: data.data.question || data.data.content,
-          tags: data.data.tags || [],
-          context: data.data.context,
-          phase: data.data.phase || data.data.interview_state?.current_role || '多轮面试'
-        }
+    if (data.code === 200 && data.data?.question) {
+      const question = data.data.question
+      if (question.interview_state) {
+        interviewState.value = question.interview_state
+      }
+      return {
+        content: question.question || question.content,
+        tags: question.tags || [],
+        context: question.context,
+        phase: question.phase || question.interview_state?.current_role || '多轮面试'
       }
     }
   } catch (error) {
@@ -1687,8 +1843,32 @@ async function generateReport(cid: number | null, overallScore: number, completi
   reportLoading.value = true
   
   try {
-    const jobId = selectedJobId.value || props.initialContext?.job_id || 1
+    const jobId = selectedJobId.value || props.initialContext?.job_id || null
     const personalityScores = mapScoresToBigFive(latestScores.value)
+
+    if (!jobId) {
+      reportData.value = {
+        ...buildLocalReport(personalityScores, overallScore),
+        report_mode: 'resume',
+        report_title: '简历综合评估报告',
+      }
+
+      if (cid) {
+        updateProgress({
+          candidate_id: cid,
+          assessment_id: backendAssessmentId.value ?? undefined,
+          job_title: currentJobDisplayTitle.value,
+          status: 'completed',
+          total_rounds: respondedCount.value,
+          duration_minutes: elapsedTime.value / 60000,
+          conversation_depth: respondedCount.value,
+          match_score: Math.round(overallScore * 10) / 10,
+          conversation_summary: `完成${respondedCount.value}轮综合评估，总时长${formatTime(elapsedTime.value)}`,
+        }).catch(e => console.warn('更新综合评估状态失败:', e))
+      }
+
+      return
+    }
     
     // 1. 保存评估结果到后端（生成报告数据）
     const saveRes = await saveAssessmentResult({
@@ -1929,12 +2109,44 @@ function restoreFromLocal(progress: LocalProgress) {
 }
 
 // ==================== 页面退出保存 ====================
-function handleBeforeUnload() {
+function handleBeforeUnload(event?: BeforeUnloadEvent) {
   const cid = parsedCandidateId.value
-  if (!cid || currentStep.value < 3) return
+  if (!cid || currentStep.value < 1 || currentStep.value >= 4) return
 
   saveLocalProgress(cid, getProgressSnapshot())
+
+  if (event) {
+    event.preventDefault()
+    event.returnValue = '当前面试尚未完成，离开后将中断本次面试流程。'
+  }
 }
+
+onBeforeRouteLeave(async (_, __, next) => {
+  if (!isInterviewLocked.value) {
+    next()
+    return
+  }
+
+  const cid = parsedCandidateId.value
+  if (cid) {
+    saveLocalProgress(cid, getProgressSnapshot())
+  }
+
+  try {
+    await ElMessageBox.confirm(
+      '当前面试正在进行或仍处于启动阶段。现在离开会中断本次面试链路，仅保留当前进度，确定离开吗？',
+      '离开面试',
+      {
+        confirmButtonText: '仍要离开',
+        cancelButtonText: '继续面试',
+        type: 'warning',
+      }
+    )
+    next()
+  } catch {
+    next(false)
+  }
+})
 
 // ==================== 生命周期 ====================
 onMounted(async () => {
@@ -1943,6 +2155,7 @@ onMounted(async () => {
   if (queryJobId) {
     const jid = Number(queryJobId)
     if (!isNaN(jid) && jid > 0) {
+      assessmentMode.value = 'job'
       selectedJobId.value = jid
       // 获取岗位名称
       try {
@@ -1998,6 +2211,9 @@ onMounted(async () => {
       hasInProgress.value = true
       inProgressInfo.value = progressRes.data
       backendAssessmentId.value = progressRes.data.assessment_id
+      if (progressRes.data.job_id) {
+        assessmentMode.value = 'job'
+      }
     }
 
     // 处理简历检查
@@ -2016,6 +2232,7 @@ onMounted(async () => {
 })
 
 onBeforeUnmount(() => {
+  clearFlowAdvanceTimer()
   stopAutoSave()
   handleBeforeUnload()
   window.removeEventListener('beforeunload', handleBeforeUnload)
@@ -2091,6 +2308,10 @@ onBeforeUnmount(() => {
   z-index: 1;
 }
 
+.step.locked {
+  cursor: default;
+}
+
 /* SVG 容器 */
 .svg-container {
   flex: 1;
@@ -2101,6 +2322,71 @@ onBeforeUnmount(() => {
   padding: 24px;
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   color: white;
+}
+
+.auto-progress-tip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 16px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: rgba(64, 158, 255, 0.08);
+  color: #1f2d3d;
+}
+
+.assessment-entry-choice {
+  max-width: 760px;
+}
+
+.entry-choice-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  margin-top: 24px;
+}
+
+.entry-choice-card {
+  width: 100%;
+  border: 1px solid #e4e7ed;
+  border-radius: 14px;
+  padding: 20px;
+  background: #fff;
+  text-align: left;
+  transition: all 0.22s ease;
+  cursor: pointer;
+}
+
+.entry-choice-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 12px 28px rgba(31, 45, 61, 0.08);
+}
+
+.entry-choice-card.primary {
+  border-color: rgba(64, 158, 255, 0.28);
+  background: linear-gradient(135deg, rgba(64, 158, 255, 0.08), rgba(64, 158, 255, 0.02));
+}
+
+.entry-choice-card.secondary {
+  border-color: rgba(144, 147, 153, 0.2);
+}
+
+.entry-choice-icon {
+  font-size: 24px;
+  margin-bottom: 12px;
+}
+
+.entry-choice-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: #303133;
+  margin-bottom: 8px;
+}
+
+.entry-choice-desc {
+  font-size: 13px;
+  line-height: 1.7;
+  color: #606266;
 }
 
 .svg-placeholder {
@@ -3101,6 +3387,53 @@ onBeforeUnmount(() => {
   color: #fff;
 }
 
+.job-info-bar {
+  max-width: 960px;
+  margin: 0 auto 12px;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 14px;
+  background: rgba(255, 255, 255, 0.14);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 10px;
+  backdrop-filter: blur(8px);
+}
+
+.job-info-main {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.job-info-label {
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  opacity: 0.82;
+}
+
+.job-info-title {
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 1.3;
+  word-break: break-word;
+}
+
+.job-info-meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+.job-info-id {
+  font-size: 12px;
+  opacity: 0.9;
+}
+
 .header-content {
   display: flex;
   justify-content: space-between;
@@ -3515,6 +3848,15 @@ onBeforeUnmount(() => {
     max-width: 90%;
   }
 
+  .job-info-bar {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .job-info-meta {
+    flex-wrap: wrap;
+  }
+
   .header-content {
     flex-direction: column;
     align-items: flex-start;
@@ -3529,6 +3871,10 @@ onBeforeUnmount(() => {
   .starter-content {
     max-width: 100%;
     padding: 0 12px;
+  }
+
+  .entry-choice-grid {
+    grid-template-columns: 1fr;
   }
 }
 

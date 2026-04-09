@@ -13,7 +13,9 @@ os.environ['PADDLE_OCR_LOCAL_MODEL_PATH'] = str(Path.home() / ".paddleocr" / "mo
 os.environ['PADDLE_REPO'] = ''
 os.environ['PADDLEOCR_HOME'] = str(Path.home() / ".paddleocr")
 
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Literal
+import time
+import importlib
 from fastapi import APIRouter, HTTPException, Depends, Query, UploadFile, File
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
@@ -54,6 +56,20 @@ class AnalyzeResponseRequest(BaseModel):
     resume_info: Optional[Dict[str, Any]] = None    # 简历信息
 
 
+class UnifiedAgentRequest(BaseModel):
+    """统一三 Agent 执行入口请求模型"""
+    operation: Literal["next_question", "analyze_response", "analyze_and_next"]
+    candidate_id: str
+    candidate_name: Optional[str] = None
+    role_id: str = "hr"
+    conversation_depth: int = 0
+    history: List[Dict[str, Any]] = []
+    candidate_response: Optional[str] = None
+    target_position: Optional[str] = None
+    job_info: Optional[Dict[str, Any]] = None
+    resume_info: Optional[Dict[str, Any]] = None
+
+
 # ==================== candidate_id 验证器 ====================
 
 def _validate_candidate_id(candidate_id: str) -> str:
@@ -78,7 +94,160 @@ def _validate_candidate_id(candidate_id: str) -> str:
     return normalized
 
 
+def _resolve_role(role_id: str) -> RoleType:
+    """解析角色，无效时默认 HR"""
+    try:
+        return RoleType(role_id)
+    except ValueError:
+        return RoleType.HR
+
+
+async def _run_next_question(
+    service: ImmersiveDialogueService,
+    *,
+    candidate_id: str,
+    role: RoleType,
+    history: List[Dict[str, Any]],
+    conversation_depth: int,
+    target_position: Optional[str],
+    job_info: Optional[Dict[str, Any]],
+    resume_info: Optional[Dict[str, Any]],
+    candidate_name: str = "",
+) -> Dict[str, Any]:
+    return await service.generate_next_question(
+        id=candidate_id,
+        candidate_name=candidate_name,
+        current_role=role,
+        conversation_history=history,
+        conversation_depth=conversation_depth,
+        target_position=target_position,
+        job_info=job_info,
+        resume_info=resume_info,
+    )
+
+
+async def _run_analyze_response(
+    service: ImmersiveDialogueService,
+    *,
+    candidate_id: str,
+    role: RoleType,
+    candidate_response: str,
+    history: List[Dict[str, Any]],
+    conversation_depth: int,
+    target_position: Optional[str],
+    job_info: Optional[Dict[str, Any]],
+    resume_info: Optional[Dict[str, Any]],
+    candidate_name: str,
+) -> Dict[str, Any]:
+    return await service.analyze_candidate_response(
+        id=candidate_id,
+        candidate_name=candidate_name or "候选人",
+        current_speaker=role,
+        candidate_response=candidate_response,
+        conversation_history=history,
+        conversation_depth=conversation_depth,
+        target_position=target_position,
+        job_info=job_info,
+        resume_info=resume_info,
+    )
+
+
+async def _run_unified_agent(
+    service: ImmersiveDialogueService,
+    request: UnifiedAgentRequest,
+) -> Dict[str, Any]:
+    candidate_id = _validate_candidate_id(request.candidate_id)
+    role = _resolve_role(request.role_id)
+    history = request.history or []
+    candidate_name = request.candidate_name or "候选人"
+
+    if request.operation == "next_question":
+        question = await _run_next_question(
+            service,
+            candidate_id=candidate_id,
+            role=role,
+            history=history,
+            conversation_depth=request.conversation_depth,
+            target_position=request.target_position,
+            job_info=request.job_info,
+            resume_info=request.resume_info,
+            candidate_name=request.candidate_name or "",
+        )
+        return {
+            "operation": request.operation,
+            "question": question,
+            "analysis": None,
+            "should_end": False,
+        }
+
+    if not request.candidate_response:
+        raise ValueError("candidate_response 不能为空")
+
+    analysis = await _run_analyze_response(
+        service,
+        candidate_id=candidate_id,
+        role=role,
+        candidate_response=request.candidate_response,
+        history=history,
+        conversation_depth=request.conversation_depth,
+        target_position=request.target_position,
+        job_info=request.job_info,
+        resume_info=request.resume_info,
+        candidate_name=candidate_name,
+    )
+
+    should_end = analysis.get("decision", {}).get("should_end", False)
+
+    if request.operation == "analyze_response":
+        return {
+            "operation": request.operation,
+            "question": None,
+            "analysis": analysis,
+            "should_end": should_end,
+        }
+
+    next_question = None
+    if not should_end:
+        next_question = await _run_next_question(
+            service,
+            candidate_id=candidate_id,
+            role=role,
+            history=history + [{"role": "candidate", "content": request.candidate_response}],
+            conversation_depth=request.conversation_depth + 1,
+            target_position=request.target_position,
+            job_info=request.job_info,
+            resume_info=request.resume_info,
+            candidate_name=request.candidate_name or "",
+        )
+
+    return {
+        "operation": request.operation,
+        "question": next_question,
+        "analysis": analysis,
+        "should_end": should_end,
+    }
+
+
 # ==================== 核心对话接口 ====================
+
+@router.post("/agent/execute")
+async def execute_agent_action(
+    request: UnifiedAgentRequest,
+    db: Session = Depends(get_db)
+):
+    """统一三 Agent 执行入口。"""
+    try:
+        service = ImmersiveDialogueService(db)
+        result = await _run_unified_agent(service, request)
+        return {
+            "code": 200,
+            "data": result,
+            "message": "执行成功"
+        }
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=f"参数无效: {e}")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"执行失败: {str(e)}")
 
 @router.post("/next-question")
 async def get_next_question(
@@ -105,26 +274,17 @@ async def get_next_question(
     """
     
     try:
-        # ✅ 验证 candidate_id
-        candidate_id = _validate_candidate_id(request.candidate_id)
-        
-        # 解析角色，无效时默认 HR
-        try:
-            role = RoleType(request.role_id)
-        except ValueError:
-            role = RoleType.HR
-        
         service = ImmersiveDialogueService(db)
-        
-        result = await service.generate_next_question(
-            id=candidate_id,
-            candidate_name="",  # 可从数据库获取
-            current_role=role,
-            conversation_history=request.history,
+        result = await _run_next_question(
+            service,
+            candidate_id=_validate_candidate_id(request.candidate_id),
+            role=_resolve_role(request.role_id),
+            history=request.history,
             conversation_depth=request.conversation_depth,
             target_position=request.target_position,
             job_info=request.job_info,
-            resume_info=request.resume_info
+            resume_info=request.resume_info,
+            candidate_name="",
         )
         
         return {
@@ -168,27 +328,18 @@ async def analyze_candidate_response(
     """
     
     try:
-        # ✅ 验证 candidate_id
-        candidate_id = _validate_candidate_id(request.candidate_id)
-        
-        # 解析角色，无效时默认 HR
-        try:
-            role = RoleType(request.current_speaker)
-        except ValueError:
-            role = RoleType.HR
-        
         service = ImmersiveDialogueService(db)
-        
-        result = await service.analyze_candidate_response(
-            id=candidate_id,
-            candidate_name=request.candidate_name or "候选人",
-            current_speaker=role,
+        result = await _run_analyze_response(
+            service,
+            candidate_id=_validate_candidate_id(request.candidate_id),
+            role=_resolve_role(request.current_speaker),
             candidate_response=request.candidate_response,
-            conversation_history=request.previous_messages,
+            history=request.previous_messages,
             conversation_depth=request.conversation_depth,
             target_position=request.target_position,
             job_info=request.job_info,
-            resume_info=request.resume_info
+            resume_info=request.resume_info,
+            candidate_name=request.candidate_name or "候选人",
         )
         
         return {
@@ -236,52 +387,29 @@ async def analyze_and_generate_next(
         }
     """
     try:
-        candidate_id = _validate_candidate_id(request.candidate_id)
-        try:
-            role = RoleType(request.current_speaker)
-        except ValueError:
-            role = RoleType.HR
-
         service = ImmersiveDialogueService(db)
-
-        # Step 1: 分析回答（含 Evaluator + Decision）
-        analysis = await service.analyze_candidate_response(
-            id=candidate_id,
-            candidate_name=request.candidate_name or "候选人",
-            current_speaker=role,
-            candidate_response=request.candidate_response,
-            conversation_history=request.previous_messages,
-            conversation_depth=request.conversation_depth,
-            target_position=request.target_position,
-            job_info=request.job_info,
-            resume_info=request.resume_info
-        )
-
-        # Step 2: 判断是否应结束
-        should_end = analysis.get("decision", {}).get("should_end", False)
-        next_question = None
-
-        if not should_end:
-            # Step 3: 生成下一个问题（携带 Decision 指令）
-            next_question = await service.generate_next_question(
-                id=candidate_id,
-                candidate_name=request.candidate_name or "",
-                current_role=role,
-                conversation_history=request.previous_messages + [
-                    {"role": "candidate", "content": request.candidate_response}
-                ],
-                conversation_depth=request.conversation_depth + 1,
+        unified_result = await _run_unified_agent(
+            service,
+            UnifiedAgentRequest(
+                operation="analyze_and_next",
+                candidate_id=request.candidate_id,
+                candidate_name=request.candidate_name,
+                role_id=request.current_speaker,
+                conversation_depth=request.conversation_depth,
+                history=request.previous_messages,
+                candidate_response=request.candidate_response,
                 target_position=request.target_position,
                 job_info=request.job_info,
-                resume_info=request.resume_info
+                resume_info=request.resume_info,
             )
+        )
 
         return {
             "code": 200,
             "data": {
-                "analysis": analysis,
-                "next_question": next_question,
-                "should_end": should_end,
+                "analysis": unified_result.get("analysis"),
+                "next_question": unified_result.get("question"),
+                "should_end": unified_result.get("should_end", False),
             },
             "message": "分析并生成成功"
         }
@@ -1091,10 +1219,10 @@ def _ocr_extract_text(content: bytes, file_ext: str) -> str:
             # 尝试方案 2: EasyOCR (备选)
             try:
                 logger.info("尝试使用 EasyOCR...")
-                import easyocr
                 from PIL import Image
-                
-                reader = easyocr.Reader(['ch'], gpu=False)
+
+                easyocr_module = importlib.import_module("easyocr")
+                reader = easyocr_module.Reader(['ch'], gpu=False)
                 logger.info("✅ EasyOCR 模型已加载")
                 
                 if file_ext == '.pdf':

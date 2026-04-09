@@ -5,6 +5,49 @@
 
 const BASE = '/assessment/immersive'
 
+export interface AgentExecutePayload {
+  operation: 'next_question' | 'analyze_response' | 'analyze_and_next'
+  candidate_id: string | number
+  candidate_name?: string
+  role_id?: string
+  conversation_depth?: number
+  history?: Array<Record<string, any>>
+  candidate_response?: string
+  target_position?: string
+  job_info?: Record<string, any>
+  resume_info?: Record<string, any>
+}
+
+export async function executeAgent(payload: AgentExecutePayload) {
+  const res = await fetch(`${BASE}/agent/execute`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  })
+  return res.json()
+}
+
+export async function getNextQuestion(payload: Omit<AgentExecutePayload, 'operation' | 'candidate_response'>) {
+  return executeAgent({
+    operation: 'next_question',
+    ...payload
+  })
+}
+
+export async function analyzeInterviewResponse(payload: Omit<AgentExecutePayload, 'operation'> & { candidate_response: string }) {
+  return executeAgent({
+    operation: 'analyze_response',
+    ...payload
+  })
+}
+
+export async function analyzeAndGetNextQuestion(payload: Omit<AgentExecutePayload, 'operation'> & { candidate_response: string }) {
+  return executeAgent({
+    operation: 'analyze_and_next',
+    ...payload
+  })
+}
+
 /** 检查候选人是否已有简历/个人信息 */
 export async function checkResume(candidateId: string | number) {
   const res = await fetch(`${BASE}/check-resume/${candidateId}`)

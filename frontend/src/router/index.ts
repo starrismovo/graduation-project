@@ -1,7 +1,6 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import LoginView from '@/views/LoginView.vue'
 import IndexView from '@/views/IndexView.vue'
-import AssessmentView from '@/views/ProfileView.vue'
 import JobManageView from '@/views/position/JobManageView.vue'
 import { useUserStore } from '@/stores/user'
 
@@ -34,12 +33,26 @@ const router = createRouter({
         },
         {
           path: 'immersive',
+          redirect: '/home/interviews'
+        },
+        {
+          path: 'interviews',
           name: 'ImmersiveAssessment',
           component: () => import('../views/assessment/ImmersiveRoleDialogue.vue'),
           meta: { 
             mode: 'immersive',
-            title: '沉浸式对话评估'
+            title: '我的面试'
           }
+        },
+        {
+          path: 'interviews/immersive',
+          redirect: '/home/interviews'
+        },
+        {
+          path: 'interviews/list',
+          name: 'MyInterviews',
+          component: () => import('../views/assessment/MyInterviewsPage.vue'),
+          meta: { title: '我的面试' }
         },
         {
           path: 'profile',
@@ -61,6 +74,12 @@ const router = createRouter({
           path: 'report/:recordId',
           name: 'AssessmentReport',
           component: () => import('../views/assessment/ReportPage.vue')
+        },
+        {
+          path: 'psychology',
+          name: 'PsychologyDetail',
+          component: () => import('../views/assessment/PsychologyDetailPage.vue'),
+          meta: { title: '心理解读' }
         }
       ]
     },

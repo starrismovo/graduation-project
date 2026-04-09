@@ -17,14 +17,16 @@ const updateActiveMenu = () => {
     activeMenu.value = 'home'
   } else if (path.startsWith('/home/profile')) {
     activeMenu.value = 'profile'
-  } else if (path.startsWith('/home/jobs') || path.startsWith('/home/immersive')) {
+  } else if (path.startsWith('/home/jobs')) {
     activeMenu.value = 'jobs'
+  } else if (path.startsWith('/home/interviews') || path.startsWith('/home/immersive')) {
+    activeMenu.value = 'interviews'
   } else if (path.startsWith('/home/job-manage')) {
     activeMenu.value = 'jobs-manage'
-  } else if (path.startsWith('/home/reports')) {
+  } else if (path.startsWith('/home/reports') || path.startsWith('/home/report')) {
     activeMenu.value = 'reports'
-  } else if (path.startsWith('/home/report')) {
-    activeMenu.value = 'reports'
+  } else if (path.startsWith('/home/psychology')) {
+    activeMenu.value = 'psychology'
   } else {
     activeMenu.value = 'home'
   }
@@ -86,10 +88,13 @@ const handleMenuSelect = (index: string) => {
       router.push('/home/jobs')
       break
     case 'interviews':
-      ElMessage.info('我的面试功能开发中')
+      router.push('/home/interviews')
       break
     case 'reports':
       router.push('/home/reports')
+      break
+    case 'psychology':
+      router.push('/home/psychology')
       break
     case 'jobs-manage':
       router.push('/home/job-manage')
@@ -216,6 +221,18 @@ const handleUserMenuCommand = (command: string) => {
                   <path fill-rule="evenodd" d="M4 5a2 2 0 012-2 3 3 0 003 3h2a3 3 0 003-3 2 2 0 012 2v11a2 2 0 01-2 2H6a2 2 0 01-2-2V5zm3 4a1 1 0 000 2h.01a1 1 0 100-2H7zm3 0a1 1 0 000 2h3a1 1 0 100-2h-3zm-3 4a1 1 0 100 2h.01a1 1 0 100-2H7zm3 0a1 1 0 100 2h3a1 1 0 100-2h-3z" clip-rule="evenodd" />
                 </svg>
                 <span>报告中心</span>
+              </button>
+              
+              <button 
+                :class="['nav-item', { active: activeMenu === 'psychology' }]"
+                @click="handleMenuSelect('psychology')"
+              >
+                <svg class="nav-icon" viewBox="0 0 20 20" fill="currentColor">
+                  <path d="M10.5 1.5H4.75A2.25 2.25 0 002.5 3.75v12.5A2.25 2.25 0 004.75 18.5h10.5a2.25 2.25 0 002.25-2.25V8" stroke="currentColor" stroke-width="1.5" fill="none"/>
+                  <path d="M10 10l3-3m0 0l3 3m-3-3v8" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+                  <circle cx="12" cy="5" r="1.5" fill="currentColor"/>
+                </svg>
+                <span>心理解读</span>
               </button>
             </template>
 

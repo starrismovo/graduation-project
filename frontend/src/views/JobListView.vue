@@ -112,7 +112,7 @@ function handleSizeChange(size: number) {
 
 // 开始面试评估
 function goToAssessment(jobId: number | string) {
-  router.push({ path: '/home/immersive', query: { jobId: String(jobId) } })
+  router.push({ path: '/home/interviews', query: { jobId: String(jobId) } })
 }
 
 // 监听筛选条件变化

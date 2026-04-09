@@ -205,7 +205,7 @@ const downloadReport = (recordId: number) => {
 
 // 开始新评估
 const startNewAssessment = () => {
-  router.push('/home/immersive')
+  router.push('/home/jobs')
 }
 
 // 格式化日期

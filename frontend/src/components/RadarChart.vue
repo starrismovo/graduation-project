@@ -5,7 +5,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, watch } from 'vue'
+import { ref, onMounted, onUnmounted, watch } from 'vue'
 import * as echarts from 'echarts'
 
 interface TraitData {
@@ -16,16 +16,17 @@ interface TraitData {
 const props = withDefaults(
   defineProps<{
     data?: TraitData[]
+    size?: number
   }>(),
   {
-    data: () => []
+    data: () => [],
+    size: 380
   }
 )
 
 const chartRoot = ref<HTMLElement | null>(null)
 let chart: echarts.ECharts | null = null
 
-// 初始化图表
 function initChart() {
   if (!chartRoot.value) return
 
@@ -35,9 +36,6 @@ function initChart() {
 
   if (!props.data || props.data.length === 0) {
     chart.setOption({
-      textStyle: {
-        color: '#909399'
-      },
       graphic: {
         elements: [
           {
@@ -45,9 +43,10 @@ function initChart() {
             left: 'center',
             top: 'center',
             style: {
-              text: '暂无数据',
-              fill: '#909399',
-              fontSize: 16
+              text: '暂无评估数据',
+              fill: '#c0c4cc',
+              fontSize: 14,
+              fontWeight: 400
             }
           }
         ]
@@ -56,79 +55,112 @@ function initChart() {
     return
   }
 
-  // 转换数据格式
   const traits = props.data.map((item) => item.name)
   const scores = props.data.map((item) => item.score || 0)
 
-  const option: echarts.EChartsOption = {
+  const option = {
+    tooltip: {
+      trigger: 'item',
+      backgroundColor: 'rgba(255,255,255,0.96)',
+      borderColor: '#e4e7ed',
+      borderWidth: 1,
+      padding: [10, 14],
+      textStyle: { color: '#303133', fontSize: 13 },
+      formatter: (params: any) => {
+        const data = params.data
+        if (!data || !data.value) return ''
+        return traits
+          .map((name, i) => {
+            const val = data.value[i]
+            const color = val >= 7 ? '#67c23a' : val >= 4 ? '#409eff' : '#e6a23c'
+            return `<span style="color:${color};font-weight:600">●</span> ${name}：<b>${val.toFixed(1)}</b> / 10`
+          })
+          .join('<br/>')
+      }
+    },
     radar: {
       indicator: traits.map((name) => ({
         name,
         max: 10
       })),
+      center: ['50%', '52%'],
+      radius: '68%',
       shape: 'polygon',
-      splitNumber: 4,
+      splitNumber: 5,
       name: {
-        textStyle: {
-          color: '#606266',
-          fontSize: 12
-        }
+        color: '#4a5568',
+        fontSize: 13,
+        fontWeight: 500,
+        padding: [2, 0]
       },
       splitLine: {
         lineStyle: {
-          color: ['#e4e7ed', '#e4e7ed', '#e4e7ed', '#e4e7ed']
+          color: 'rgba(148, 163, 184, 0.25)',
+          width: 1
         }
       },
       splitArea: {
         areaStyle: {
-          color: ['rgba(64, 158, 255, 0.05)', 'rgba(64, 158, 255, 0.08)', 'rgba(64, 158, 255, 0.1)', 'rgba(64, 158, 255, 0.12)']
+          color: [
+            'rgba(99, 102, 241, 0.02)',
+            'rgba(99, 102, 241, 0.04)',
+            'rgba(99, 102, 241, 0.06)',
+            'rgba(99, 102, 241, 0.08)',
+            'rgba(99, 102, 241, 0.10)'
+          ]
         }
       },
       axisLine: {
         lineStyle: {
-          color: '#c0c4cc'
+          color: 'rgba(148, 163, 184, 0.2)'
         }
       }
     },
     series: [
       {
-        name: '我的特质评分',
+        name: '心理特质',
         type: 'radar',
-        symbolSize: 4,
+        symbol: 'circle',
+        symbolSize: 6,
         data: [
           {
             value: scores,
             name: '评估结果',
             areaStyle: {
-              color: 'rgba(102, 126, 234, 0.3)'
+              color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+                { offset: 0, color: 'rgba(99, 102, 241, 0.35)' },
+                { offset: 1, color: 'rgba(139, 92, 246, 0.08)' }
+              ])
             },
             lineStyle: {
-              color: '#667eea',
-              width: 2
+              color: new echarts.graphic.LinearGradient(0, 0, 1, 0, [
+                { offset: 0, color: '#6366f1' },
+                { offset: 1, color: '#8b5cf6' }
+              ]),
+              width: 2.5,
+              shadowColor: 'rgba(99, 102, 241, 0.3)',
+              shadowBlur: 6
             },
             itemStyle: {
-              color: '#667eea',
+              color: '#6366f1',
               borderColor: '#fff',
-              borderWidth: 2
+              borderWidth: 2,
+              shadowColor: 'rgba(99, 102, 241, 0.4)',
+              shadowBlur: 4
             }
           }
         ],
-        smooth: true
+        animationDuration: 1200,
+        animationEasing: 'cubicInOut'
       }
-    ],
-    textStyle: {
-      color: '#606266'
-    }
+    ]
   }
 
-  chart.setOption(option)
+  chart.setOption(option, true)
 }
 
-// 响应式调整
 function handleResize() {
-  if (chart) {
-    chart.resize()
-  }
+  chart?.resize()
 }
 
 onMounted(() => {
@@ -136,32 +168,31 @@ onMounted(() => {
   window.addEventListener('resize', handleResize)
 })
 
-// 监听数据变化
+onUnmounted(() => {
+  window.removeEventListener('resize', handleResize)
+  chart?.dispose()
+  chart = null
+})
+
 watch(
   () => props.data,
-  () => {
-    initChart()
-  },
+  () => initChart(),
   { deep: true }
 )
 
-// 清理
-defineExpose({
-  chart,
-  resize: handleResize
-})
+defineExpose({ chart, resize: handleResize })
 </script>
 
 <style scoped>
 .radar-chart-wrapper {
   width: 100%;
-  min-height: 350px;
   display: flex;
   justify-content: center;
+  align-items: center;
 }
 
 .radar-chart {
-  width: 100%;
-  height: 350px;
+  width: v-bind("size + 'px'");
+  height: v-bind("size + 'px'");
 }
 </style>
