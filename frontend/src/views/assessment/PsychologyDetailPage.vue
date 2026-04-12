@@ -652,25 +652,24 @@ const goBack = () => {
     font-size: 14px;
   }
 
-  .dimensions-grid {
+  .dim-tabs {
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
+
+  .dim-tab {
+    flex: 1 1 calc(50% - 8px);
+    min-width: 140px;
+    transform: none !important;
+  }
+
+  .dim-detail-top {
     grid-template-columns: 1fr;
   }
 
   .video-wrapper {
     min-height: 220px;
     border-radius: 14px;
-  }
-
-  .feature-illustration-image {
-    max-height: 320px;
-  }
-
-  .dimension-illustration-wrap {
-    min-height: 200px;
-  }
-
-  .dimension-illustration {
-    max-height: 260px;
   }
 
   .video-description,

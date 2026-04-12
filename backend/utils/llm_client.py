@@ -6,6 +6,7 @@ LLM 客户端 - 统一的大模型调用接口
 import os
 import json
 import asyncio
+import logging
 from typing import Optional, Dict, Any
 from enum import Enum
 
@@ -13,6 +14,8 @@ import httpx
 from dotenv import load_dotenv
 
 load_dotenv()
+
+logger = logging.getLogger(__name__)
 
 
 class LLMProvider(str, Enum):
@@ -36,28 +39,97 @@ class LLMClient:
     
     # 类级共享连接池，避免每次调用重建 TCP/SSL 连接
     _shared_client: Optional[httpx.AsyncClient] = None
+    _shared_client_config: Optional[Dict[str, Any]] = None
     
     def __init__(self, provider: Optional[LLMProvider] = None):
         self.provider = provider or self._get_configured_provider()
         self.api_key = os.getenv("ROAD2ALL_API_KEY") or os.getenv("OPENAI_API_KEY")
         self.model = os.getenv("ROAD2ALL_MODEL", "gpt-4o")
         self.api_base = os.getenv("ROAD2ALL_API_BASE", "https://api.road2all.tech/v1")
-        self.timeout = 60
+        self.timeout = float(os.getenv("LLM_TIMEOUT", "60"))
+        self.max_retries = int(os.getenv("LLM_MAX_RETRIES", "2"))
+        self.retry_backoff = float(os.getenv("LLM_RETRY_BACKOFF", "0.6"))
+        self.trust_env = os.getenv("LLM_TRUST_ENV", "0").strip().lower() in ("1", "true", "yes", "on")
+        self.verify_ssl = os.getenv("LLM_VERIFY_SSL", "0").strip().lower() in ("1", "true", "yes", "on")
     
     @classmethod
-    def _get_shared_client(cls) -> httpx.AsyncClient:
+    def _get_shared_client(
+        cls,
+        *,
+        timeout: float,
+        trust_env: bool,
+        verify_ssl: bool,
+    ) -> httpx.AsyncClient:
         """获取或创建共享的 httpx 异步客户端（连接池复用）"""
-        if cls._shared_client is None or cls._shared_client.is_closed:
+        target_config = {
+            "timeout": timeout,
+            "trust_env": trust_env,
+            "verify_ssl": verify_ssl,
+        }
+
+        need_recreate = (
+            cls._shared_client is None
+            or cls._shared_client.is_closed
+            or cls._shared_client_config != target_config
+        )
+
+        if need_recreate:
+            if cls._shared_client is not None and not cls._shared_client.is_closed:
+                try:
+                    asyncio.create_task(cls._shared_client.aclose())
+                except Exception:
+                    pass
+
             cls._shared_client = httpx.AsyncClient(
-                timeout=60,
-                verify=False,
+                timeout=timeout,
+                verify=verify_ssl,
+                trust_env=trust_env,
                 limits=httpx.Limits(
                     max_connections=10,
                     max_keepalive_connections=5,
                     keepalive_expiry=120,
                 ),
             )
+            cls._shared_client_config = target_config
+
         return cls._shared_client
+
+    async def _post_with_retry(self, url: str, headers: Dict[str, str], payload: Dict[str, Any]) -> httpx.Response:
+        """对网络抖动进行轻量重试，减少 ConnectError 触发概率。"""
+        last_exc: Optional[Exception] = None
+        proxy_keys = ("HTTPS_PROXY", "HTTP_PROXY", "ALL_PROXY", "https_proxy", "http_proxy", "all_proxy")
+        proxy_in_env = any(os.getenv(k) for k in proxy_keys)
+
+        for attempt in range(self.max_retries + 1):
+            try:
+                client = self._get_shared_client(
+                    timeout=self.timeout,
+                    trust_env=self.trust_env,
+                    verify_ssl=self.verify_ssl,
+                )
+                return await client.post(url, headers=headers, json=payload)
+            except (httpx.ConnectError, httpx.ConnectTimeout, httpx.ReadTimeout, httpx.RemoteProtocolError) as e:
+                last_exc = e
+                if attempt < self.max_retries:
+                    wait = self.retry_backoff * (attempt + 1)
+                    logger.warning(
+                        "LLM 网络异常，准备重试: attempt=%s/%s type=%s trust_env=%s proxy_in_env=%s wait=%.1fs",
+                        attempt + 1,
+                        self.max_retries + 1,
+                        type(e).__name__,
+                        self.trust_env,
+                        proxy_in_env,
+                        wait,
+                    )
+                    await asyncio.sleep(wait)
+                    continue
+                break
+
+        raise Exception(
+            f"LLM 网络连接失败: type={type(last_exc).__name__ if last_exc else 'unknown'}, "
+            f"trust_env={self.trust_env}, proxy_in_env={proxy_in_env}. "
+            f"可尝试设置 LLM_TRUST_ENV=0 或检查代理/网络连通性。"
+        )
     
     def _get_configured_provider(self) -> LLMProvider:
         """获取配置的提供商"""
@@ -132,11 +204,10 @@ class LLMClient:
         }
         
         try:
-            client = self._get_shared_client()
-            response = await client.post(
-                f"{self.api_base}/chat/completions",
+            response = await self._post_with_retry(
+                url=f"{self.api_base}/chat/completions",
                 headers=headers,
-                json=payload
+                payload=payload,
             )
             
             if response.status_code == 200:
@@ -149,14 +220,27 @@ class LLMClient:
                     model=self.model
                 )
             else:
-                print(f"API 调用错误: {response.status_code} - {response.text}")
-                raise Exception(f"LLM API 失败: {response.status_code}")
+                response_text = response.text[:500] if response.text else ""
+                logger.error(
+                    "Road2All API 调用错误: status=%s body=%s",
+                    response.status_code,
+                    response_text,
+                )
+                raise Exception(
+                    f"LLM API 失败: status={response.status_code}, body={response_text or '<empty>'}"
+                )
         
         except asyncio.TimeoutError:
-            print("LLM API 调用超时")
+            logger.error("LLM API 调用超时")
             raise Exception("LLM API 调用超时")
         except Exception as e:
-            print(f"LLM 调用异常: {e}")
+            logger.error(
+                "LLM 调用异常: type=%s repr=%r str=%s",
+                type(e).__name__,
+                e,
+                str(e),
+                exc_info=True,
+            )
             raise
     
     async def _call_openai_async(
@@ -184,11 +268,10 @@ class LLMClient:
         }
         
         try:
-            client = self._get_shared_client()
-            response = await client.post(
-                "https://api.openai.com/v1/chat/completions",
+            response = await self._post_with_retry(
+                url="https://api.openai.com/v1/chat/completions",
                 headers=headers,
-                json=payload
+                payload=payload,
             )
             
             if response.status_code == 200:
@@ -201,10 +284,19 @@ class LLMClient:
                     model=self.model
                 )
             else:
-                raise Exception(f"OpenAI API 失败: {response.status_code}")
+                response_text = response.text[:500] if response.text else ""
+                raise Exception(
+                    f"OpenAI API 失败: status={response.status_code}, body={response_text or '<empty>'}"
+                )
         
         except Exception as e:
-            print(f"OpenAI 调用异常: {e}")
+            logger.error(
+                "OpenAI 调用异常: type=%s repr=%r str=%s",
+                type(e).__name__,
+                e,
+                str(e),
+                exc_info=True,
+            )
             raise
     
     def call_sync(

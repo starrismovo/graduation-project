@@ -125,8 +125,8 @@ function viewRecord(record: any) {
   router.push(`/journey-report/${record.job_id}`)
 }
 
-function goToAssessmentWithJob(jobId: number | string) {
-  router.push({ path: '/home/interviews', query: { jobId: String(jobId) } })
+function goToJobDetail(jobId: number | string) {
+  router.push(`/home/jobs/${jobId}`)
 }
 
 function goToPsychologyDetail() {
@@ -321,7 +321,7 @@ watchEffect(() => {
         <el-col :xs="24" :sm="12" :md="8" v-for="job in recommendedJobs.slice(0, 3)" :key="job.id">
           <JobCard 
             :job="job"
-            @assess="goToAssessmentWithJob"
+            @assess="goToJobDetail"
           />
         </el-col>
       </el-row>

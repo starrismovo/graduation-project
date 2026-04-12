@@ -17,6 +17,7 @@ const total = ref(0)
 const searchKeyword = ref('')
 const selectedCity = ref('')
 const selectedSalary = ref('')
+const sortBy = ref<'latest' | 'recommended' | 'salary_high' | 'salary_low'>('recommended')
 const currentPage = ref(1)
 const pageSize = ref(12)
 
@@ -39,6 +40,7 @@ async function loadJobs() {
     const params: any = {
       page: currentPage.value,
       page_size: pageSize.value,
+      sort_by: sortBy.value // 添加排序参数
     }
     if (searchKeyword.value.trim()) params.keyword = searchKeyword.value.trim()
     if (selectedCity.value) params.city = selectedCity.value
@@ -55,7 +57,31 @@ async function loadJobs() {
     const res = await request.get('/jobs/search', { params })
     const data = res.data?.data || res.data || {}
     
-    jobs.value = data.items || data.jobs || []
+    // 应用本地排序优化（客户端侧处理）
+    let jobsList = data.items || data.jobs || []
+    
+    if (sortBy.value === 'salary_high') {
+      jobsList.sort((a: any, b: any) => {
+        const aMax = b.salary_max || 999
+        const bMax = b.salary_max || 999
+        return bMax - aMax
+      })
+    } else if (sortBy.value === 'salary_low') {
+      jobsList.sort((a: any, b: any) => {
+        const aMin = a.salary_min || 0
+        const bMin = b.salary_min || 0
+        return aMin - bMin
+      })
+    } else if (sortBy.value === 'recommended') {
+      // 按 match_score 排序（推荐指数高的优先）
+      jobsList.sort((a: any, b: any) => {
+        const aScore = a.match_score || 0
+        const bScore = b.match_score || 0
+        return bScore - aScore
+      })
+    }
+    
+    jobs.value = jobsList
     total.value = data.total || jobs.value.length
   } catch (error) {
     console.error('加载岗位失败:', error)
@@ -110,13 +136,12 @@ function handleSizeChange(size: number) {
   loadJobs()
 }
 
-// 开始面试评估
-function goToAssessment(jobId: number | string) {
-  router.push({ path: '/home/interviews', query: { jobId: String(jobId) } })
+function goToJobDetail(jobId: number | string) {
+  router.push(`/home/jobs/${jobId}`)
 }
 
 // 监听筛选条件变化
-watch([selectedCity, selectedSalary], () => {
+watch([selectedCity, selectedSalary, sortBy], () => {
   currentPage.value = 1
   loadJobs()
 })
@@ -132,8 +157,8 @@ onMounted(() => {
     <!-- 页面头部 -->
     <div class="page-hero">
       <div class="hero-content">
-        <h1 class="hero-title">探索岗位，开启AI面试之旅</h1>
-        <p class="hero-desc">从 {{ total.toLocaleString() }} 个真实职位中，选择感兴趣的岗位进行AI智能体面试评估</p>
+        <h1 class="hero-title">探索岗位，先看详情再进入面试</h1>
+        <p class="hero-desc">从 {{ total.toLocaleString() }} 个真实职位中，先确认岗位信息，再决定加入面试 Hub 或直接发起 AI 面试</p>
         
         <!-- 搜索栏 -->
         <div class="search-box">
@@ -157,6 +182,45 @@ onMounted(() => {
 
     <!-- 筛选区域 -->
     <div class="filter-section">
+      <!-- 排序选项 -->
+      <div class="sort-controls">
+        <span class="sort-label">排序</span>
+        <div class="sort-buttons">
+          <button 
+            :class="['sort-btn', { active: sortBy === 'recommended' }]"
+            @click="sortBy = 'recommended'"
+            title="按推荐指数排序"
+          >
+            <svg class="sort-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+            推荐排序
+          </button>
+          <button 
+            :class="['sort-btn', { active: sortBy === 'latest' }]"
+            @click="sortBy = 'latest'"
+            title="按最新发布时间排序"
+          >
+            <svg class="sort-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2m0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8m.5-13H11v6l5.25 3.15.75-1.23-4.5-2.67z"/></svg>
+            最新
+          </button>
+          <button 
+            :class="['sort-btn', { active: sortBy === 'salary_high' }]"
+            @click="sortBy = 'salary_high'"
+            title="按薪资从高到低"
+          >
+            <svg class="sort-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>
+            薪资高
+          </button>
+          <button 
+            :class="['sort-btn', { active: sortBy === 'salary_low' }]"
+            @click="sortBy = 'salary_low'"
+            title="按薪资从低到高"
+          >
+            <svg class="sort-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z" transform="rotate(180 12 12)"/></svg>
+            薪资低
+          </button>
+        </div>
+      </div>
+
       <!-- 城市快捷标签 -->
       <div class="filter-group">
         <span class="filter-label">城市</span>
@@ -208,7 +272,7 @@ onMounted(() => {
     <div class="job-grid" v-loading="loading">
       <template v-if="jobs.length > 0">
         <div v-for="job in jobs" :key="job.id" class="grid-item">
-          <JobCard :job="job" @assess="goToAssessment" />
+          <JobCard :job="job" @assess="goToJobDetail" />
         </div>
       </template>
       
@@ -244,44 +308,46 @@ onMounted(() => {
 <style scoped>
 .job-list-page {
   min-height: calc(100vh - 60px);
-  background: #f5f7fa;
+  background: #f8f9fc;
 }
 
 /* ===== 顶部 Hero ===== */
 .page-hero {
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  padding: 40px 32px 48px;
+  padding: 56px 32px 64px;
   color: #fff;
+  box-shadow: 0 4px 20px rgba(102, 126, 234, 0.15);
 }
 
 .hero-content {
-  max-width: 720px;
+  max-width: 760px;
   margin: 0 auto;
   text-align: center;
 }
 
 .hero-title {
-  margin: 0 0 10px;
-  font-size: 28px;
+  margin: 0 0 14px;
+  font-size: 32px;
   font-weight: 700;
   letter-spacing: -0.5px;
 }
 
 .hero-desc {
-  margin: 0 0 24px;
-  font-size: 15px;
-  opacity: 0.85;
+  margin: 0 0 32px;
+  font-size: 16px;
+  opacity: 0.9;
+  line-height: 1.6;
 }
 
 /* 搜索框 */
 .search-box {
   display: flex;
   gap: 0;
-  max-width: 560px;
+  max-width: 600px;
   margin: 0 auto;
   border-radius: 12px;
   overflow: hidden;
-  box-shadow: 0 8px 24px rgba(0,0,0,0.15);
+  box-shadow: 0 8px 28px rgba(0,0,0,0.12);
 }
 
 .search-input {
@@ -313,27 +379,86 @@ onMounted(() => {
 
 /* ===== 筛选区 ===== */
 .filter-section {
-  max-width: 1200px;
-  margin: -20px auto 0;
-  padding: 20px 24px;
+  max-width: 1420px;
+  margin: -28px auto 0;
+  padding: 28px 32px;
   background: #fff;
-  border-radius: 14px;
-  box-shadow: 0 4px 16px rgba(0,0,0,0.06);
+  border-radius: 12px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06);
   position: relative;
   z-index: 1;
   margin-left: 24px;
   margin-right: 24px;
 }
 
+/* ===== 排序控制 ===== */
+.sort-controls {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 16px 0;
+  margin-bottom: 8px;
+  border-bottom: 3px solid #f0f1f3;
+}
+
+.sort-label {
+  flex-shrink: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: #606266;
+  width: 36px;
+}
+
+.sort-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  flex: 1;
+}
+
+.sort-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 13px;
+  border: 1px solid #e4e7ed;
+  border-radius: 20px;
+  background: #fff;
+  font-size: 13px;
+  font-weight: 500;
+  color: #606266;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  white-space: nowrap;
+}
+
+.sort-btn:hover {
+  border-color: #667eea;
+  color: #667eea;
+  background: rgba(102, 126, 234, 0.05);
+}
+
+.sort-btn.active {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border-color: transparent;
+  color: #fff;
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+}
+
+.sort-icon {
+  width: 14px;
+  height: 14px;
+}
+
 .filter-group {
   display: flex;
   align-items: flex-start;
-  gap: 12px;
-  padding: 8px 0;
+  gap: 16px;
+  padding: 12px 0;
 }
 
 .filter-group + .filter-group {
-  border-top: 1px solid #f2f3f5;
+  border-top: 1px solid #f0f1f3;
 }
 
 .filter-label {
@@ -348,7 +473,7 @@ onMounted(() => {
 .city-tags {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 10px;
 }
 
 .city-tag {
@@ -377,9 +502,9 @@ onMounted(() => {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding-top: 10px;
-  border-top: 1px solid #f2f3f5;
-  margin-top: 4px;
+  padding-top: 14px;
+  border-top: 1px solid #f0f1f3;
+  margin-top: 8px;
 }
 
 .result-info {
@@ -411,16 +536,30 @@ onMounted(() => {
 /* ===== 卡片网格 ===== */
 .job-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(290px, 1fr));
-  gap: 18px;
-  padding: 24px;
-  max-width: 1248px;
+  grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+  gap: 28px 24px;
+  padding: 40px 32px;
+  max-width: 1420px;
   margin: 0 auto;
   min-height: 200px;
+  background: #fafbfc;
+  border-radius: 8px;
 }
 
 .grid-item {
   display: flex;
+  animation: fadeInUp 0.5s ease-out;
+}
+
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 /* 空状态 */
@@ -429,7 +568,10 @@ onMounted(() => {
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: 60px 0;
+  padding: 80px 32px;
+  background: linear-gradient(135deg, rgba(102, 126, 234, 0.02) 0%, rgba(118, 75, 162, 0.02) 100%);
+  border-radius: 8px;
+  border: 2px dashed #e5e7eb;
 }
 
 .empty-icon svg {
@@ -447,7 +589,8 @@ onMounted(() => {
 .pagination-area {
   display: flex;
   justify-content: center;
-  padding: 8px 0 32px;
+  padding: 40px 32px 60px;
+  background: #fafbfc;
 }
 
 /* ===== 响应式 ===== */
@@ -471,8 +614,9 @@ onMounted(() => {
   }
   .job-grid {
     grid-template-columns: 1fr;
-    padding: 16px;
-    gap: 12px;
+    padding: 20px 16px;
+    gap: 16px;
+    background: transparent;
   }
   .search-box {
     flex-direction: column;
@@ -488,12 +632,33 @@ onMounted(() => {
   }
 }
 
+@media (min-width: 1200px) {
+  .job-grid {
+    grid-template-columns: repeat(auto-fit, minmax(335px, 1fr));
+    gap: 26px 22px;
+    padding: 36px 28px;
+  }
+}
+
 @media (min-width: 1400px) {
   .filter-section {
-    max-width: 1200px;
+    max-width: 1420px;
     margin-left: auto;
     margin-right: auto;
     margin-top: -20px;
+  }
+  .job-grid {
+    grid-template-columns: repeat(4, 1fr);
+    gap: 30px 24px;
+    padding: 40px 32px;
+  }
+}
+
+@media (min-width: 1600px) {
+  .job-grid {
+    grid-template-columns: repeat(4, 1fr);
+    gap: 32px 28px;
+    padding: 48px 40px;
   }
 }
 </style>

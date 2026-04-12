@@ -153,7 +153,13 @@ class DecisionAgent:
             return result
 
         except Exception as e:
-            logger.warning(f"[DecisionAgent] LLM 调用失败: {e}, 使用规则决策")
+            logger.warning(
+                "[DecisionAgent] LLM 调用失败: type=%s repr=%r str=%s, 使用规则决策",
+                type(e).__name__,
+                e,
+                str(e),
+                exc_info=True,
+            )
             return self._get_fallback_decision(interview_state, evaluation_result)
 
     # ==================== 规则引擎 ====================

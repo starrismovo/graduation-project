@@ -188,7 +188,13 @@ class EvaluatorAgent:
             }
 
         except Exception as e:
-            logger.warning(f"[EvaluatorAgent] LLM 调用失败: {e}, 使用备用评估")
+            logger.warning(
+                "[EvaluatorAgent] LLM 调用失败: type=%s repr=%r str=%s, 使用备用评估",
+                type(e).__name__,
+                e,
+                str(e),
+                exc_info=True,
+            )
             return self._get_fallback(role_id, depth)
 
     # ==================== 内部方法 ====================

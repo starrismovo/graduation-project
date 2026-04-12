@@ -245,11 +245,12 @@ def search_jobs(
     category: Optional[str] = Query(None, description="类别筛选"),
     salary_min: Optional[float] = Query(None, description="最低薪资(k)"),
     salary_max: Optional[float] = Query(None, description="最高薪资(k)"),
+    sort_by: str = Query("latest", regex="^(latest|recommended|salary_high|salary_low)$", description="排序方式"),
     page: int = Query(1, ge=1, description="页码"),
     page_size: int = Query(12, ge=1, le=48, description="每页数量"),
     db: Session = Depends(get_db)
 ):
-    """搜索岗位（支持关键词、筛选、分页）"""
+    """搜索岗位（支持关键词、筛选、排序、分页）"""
     query = db.query(Job)
     
     # 关键词搜索
@@ -278,12 +279,27 @@ def search_jobs(
     if salary_max is not None:
         query = query.filter(Job.salary_min <= salary_max)
     
-    # 总数
+    # 总数（在排序前获取）
     total = query.count()
+    
+    # 排序
+    if sort_by == "salary_high":
+        # 按薪资最高值降序
+        query = query.order_by(Job.salary_max.desc().nullslast(), Job.salary_min.desc().nullslast())
+    elif sort_by == "salary_low":
+        # 按薪资最低值升序
+        query = query.order_by(Job.salary_min, Job.salary_max)
+    elif sort_by == "recommended":
+        # 按 match_score 或推荐指数排序（需要关联性数据）
+        # 暂时按 ID 倒序（最新的假定为推荐的）
+        query = query.order_by(Job.id.desc())
+    else:  # latest
+        # 按最新发布时间（使用 ID 作为代理）
+        query = query.order_by(Job.id.desc())
     
     # 分页
     offset = (page - 1) * page_size
-    items = query.order_by(Job.id.desc()).offset(offset).limit(page_size).all()
+    items = query.offset(offset).limit(page_size).all()
     
     # 格式化返回
     job_list = []

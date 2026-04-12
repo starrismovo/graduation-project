@@ -515,6 +515,17 @@
             <span></span><span></span><span></span>
           </div>
         </div>
+
+        <!-- 回答解析中指示器 -->
+        <div v-if="isProcessing" class="analysis-indicator">
+          <div class="typing-avatar">
+            <img :src="aiInterviewerAvatar" />
+          </div>
+          <div class="analysis-bubble">
+            <div class="analysis-title">正在解析你的回答</div>
+            <div class="analysis-subtitle">{{ processingStatusText }}</div>
+          </div>
+        </div>
       </div>
 
       <!-- 智能输入区 -->
@@ -973,6 +984,11 @@ const dynamicPlaceholder = computed(() => {
   if (isProcessing.value) return '正在分析中...'
   if (currentStep.value < 3) return '请先完成前置步骤...'
   return `请详细描述你的想法和经验...`
+})
+
+const processingStatusText = computed(() => {
+  if (respondedCount.value <= 2) return '系统正在提取关键信息并评估作答质量，请稍候...'
+  return '系统正在更新评估轨迹并生成下一题，请稍候...'
 })
 
 const canSubmit = computed(() => {
@@ -3752,6 +3768,36 @@ onBeforeUnmount(() => {
 
 .typing-dots span:nth-child(3) {
   animation-delay: 0.4s;
+}
+
+.analysis-indicator {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  margin-top: 8px;
+  animation: message-slide-in 0.3s ease-out;
+}
+
+.analysis-bubble {
+  background: #fff7e6;
+  border: 1px solid #f3d19e;
+  border-left: 3px solid #e6a23c;
+  border-radius: 10px;
+  padding: 10px 14px;
+  max-width: 75%;
+}
+
+.analysis-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #8a5300;
+  margin-bottom: 2px;
+}
+
+.analysis-subtitle {
+  font-size: 12px;
+  color: #a86a10;
+  line-height: 1.5;
 }
 
 @keyframes typing-bounce {

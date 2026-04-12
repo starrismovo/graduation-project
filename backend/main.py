@@ -9,6 +9,8 @@ from models.candidate import Candidate
 from models.hr_agent import Scenario, InterviewResponse, TraitScore, ScenarioSummary
 from models.assessment import AssessmentRecord, CandidatePersonalityProfile, AssessmentMatchAnalysis, PersonalityTraitDescription
 from models.job_requirement import JobRequirementTag, JobSkillRequirement, JobPersonalityFramework, CandidateJobApplication
+from models.saved_job import SavedJob
+from models.hr_invitation import HRInvitation
 from routers.auth import router as auth_router
 from routers.job import router as job_router
 from routers.interview import router as interview_router
@@ -17,6 +19,8 @@ from routers.assessment import router as assessment_router
 from routers.user import router as user_router
 from routers.immersive_dialogue import router as immersive_dialogue_router
 from routers.job_requirements import router as job_requirements_router
+from routers.saved_job import router as saved_job_router
+from routers.hr_invitation import router as hr_invitation_router
 
 # 加载环境变量
 load_dotenv()
@@ -54,6 +58,8 @@ app.include_router(assessment_router)
 app.include_router(user_router)
 app.include_router(immersive_dialogue_router)
 app.include_router(job_requirements_router)
+app.include_router(saved_job_router)
+app.include_router(hr_invitation_router)
 
 @app.get("/")
 def read_root():

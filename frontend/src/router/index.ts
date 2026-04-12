@@ -32,27 +32,40 @@ const router = createRouter({
           meta: { title: '岗位浏览' }
         },
         {
+          path: 'jobs/:jobId',
+          name: 'JobDetail',
+          component: () => import('../views/JobDetailView.vue'),
+          meta: { title: '岗位详情' }
+        },
+        {
           path: 'immersive',
           redirect: '/home/interviews'
         },
         {
           path: 'interviews',
-          name: 'ImmersiveAssessment',
-          component: () => import('../views/assessment/ImmersiveRoleDialogue.vue'),
+          name: 'InterviewHub',
+          component: () => import('../views/assessment/MyInterviewsPage.vue'),
           meta: { 
-            mode: 'immersive',
             title: '我的面试'
           }
         },
         {
+          path: 'interviews/room',
+          name: 'ImmersiveAssessment',
+          component: () => import('../views/assessment/ImmersiveRoleDialogue.vue'),
+          meta: {
+            mode: 'immersive',
+            title: 'AI面试间'
+          }
+        },
+        {
           path: 'interviews/immersive',
-          redirect: '/home/interviews'
+          redirect: '/home/interviews/room'
         },
         {
           path: 'interviews/list',
           name: 'MyInterviews',
-          component: () => import('../views/assessment/MyInterviewsPage.vue'),
-          meta: { title: '我的面试' }
+          redirect: '/home/interviews'
         },
         {
           path: 'profile',
