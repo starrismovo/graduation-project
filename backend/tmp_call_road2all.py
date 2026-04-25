@@ -3,7 +3,7 @@ import json
 import ssl
 import urllib.request
 
-API_URL = os.getenv('ROAD2ALL_API_URL', 'https://api.road2all.com/v1/chat/completions')
+API_URL = os.getenv('ROAD2ALL_API_URL', 'https://api.siliconflow.cn/v1/chat/completions')
 API_KEY = os.getenv('ROAD2ALL_API_KEY')
 
 if not API_KEY:

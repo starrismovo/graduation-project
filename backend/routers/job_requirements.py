@@ -370,11 +370,11 @@ async def apply_for_job(
             if personality_fw:
                 # 计算人格匹配度
                 candidate_personality = {
-                    "openness": personality_profile.openness,
-                    "conscientiousness": personality_profile.conscientiousness,
-                    "extraversion": personality_profile.extraversion,
-                    "agreeableness": personality_profile.agreeableness,
-                    "neuroticism": personality_profile.neuroticism
+                    "openness": (personality_profile.trait_openness or 0) * 10,
+                    "conscientiousness": (personality_profile.trait_conscientiousness or 0) * 10,
+                    "extraversion": (personality_profile.trait_extroversion or 0) * 10,
+                    "agreeableness": (personality_profile.trait_agreeableness or 0) * 10,
+                    "neuroticism": (personality_profile.trait_neuroticism or 0) * 10,
                 }
                 
                 personality_match = matching_engine.calculate_personality_match(
@@ -474,9 +474,11 @@ async def calculate_job_match(
             JobPersonalityFramework.job_id == job_id
         ).first()
         
-        # 获取候选人简历信息（从 resume 字段）
+        # 获取候选人技能信息（User.skills）
         candidate = db.query(User).filter(User.id == candidate_id).first()
-        candidate_skills = candidate.resume.get("skills", []) if candidate.resume else []
+        candidate_skills = candidate.skills if isinstance(candidate.skills, list) else []
+        if not candidate_skills and isinstance(candidate.skills, str):
+            candidate_skills = [s.strip() for s in candidate.skills.split(",") if s.strip()]
         
         # 计算各项匹配度
         skill_match_score, matched_skills, missing_skills = matching_engine.calculate_skill_match(
@@ -486,11 +488,11 @@ async def calculate_job_match(
         
         # 计算人格匹配度
         candidate_personality = {
-            "openness": personality_profile.openness,
-            "conscientiousness": personality_profile.conscientiousness,
-            "extraversion": personality_profile.extraversion,
-            "agreeableness": personality_profile.agreeableness,
-            "neuroticism": personality_profile.neuroticism
+            "openness": (personality_profile.trait_openness or 0) * 10,
+            "conscientiousness": (personality_profile.trait_conscientiousness or 0) * 10,
+            "extraversion": (personality_profile.trait_extroversion or 0) * 10,
+            "agreeableness": (personality_profile.trait_agreeableness or 0) * 10,
+            "neuroticism": (personality_profile.trait_neuroticism or 0) * 10,
         }
         
         personality_match_score = 50  # 默认值

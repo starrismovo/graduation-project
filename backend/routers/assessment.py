@@ -16,6 +16,7 @@ from models.assessment import (
 )
 from models.hr_agent import TraitScore
 from models.job import Job
+from models.job_requirement import JobSkillRequirement, JobPersonalityFramework
 from models.user import User
 from schemas.assessment import (
     PortraitResponse,
@@ -42,24 +43,74 @@ from typing import List, Optional, Dict, Any
 from datetime import datetime
 import os
 import json
+import re
 import httpx
 import logging
+from services.personality_scoring import resolve_personality_scores
+from services.job_requirement_service import matching_engine
+from services.report_agent import report_agent
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/assessment", tags=["assessment"])
 
 
+def resolve_candidate_user(candidate_identifier: str, db: Session) -> User:
+    """Resolve candidate identifier into a concrete User record."""
+    raw = str(candidate_identifier or "").strip()
+    if not raw:
+        raise HTTPException(status_code=400, detail="candidate_id 不能为空")
+
+    candidate: Optional[User] = None
+
+    # 1) direct numeric id
+    if raw.isdigit():
+        candidate = db.query(User).filter(User.id == int(raw)).first()
+        if candidate:
+            return candidate
+
+    # 2) common string formats like user_2 / cand_001
+    m = re.match(r"^(?:user|candidate|cand)[_-]?(\d+)$", raw, flags=re.IGNORECASE)
+    if m:
+        candidate = db.query(User).filter(User.id == int(m.group(1))).first()
+        if candidate:
+            return candidate
+
+    # 3) username or email
+    candidate = db.query(User).filter(User.username == raw).first()
+    if candidate:
+        return candidate
+
+    if "@" in raw:
+        candidate = db.query(User).filter(User.email == raw).first()
+        if candidate:
+            return candidate
+
+    # 4) fallback: trailing digits in custom id
+    tail = re.search(r"(\d+)$", raw)
+    if tail:
+        candidate = db.query(User).filter(User.id == int(tail.group(1))).first()
+        if candidate:
+            return candidate
+
+    raise HTTPException(status_code=404, detail=f"候选人不存在: {raw}")
+
+
 # ============ Helper Functions ============
 
-def calculate_job_match_score(personality_profile: CandidatePersonalityProfile, job: Job) -> float:
+def calculate_job_match_score(personality_profile: CandidatePersonalityProfile, job: Job) -> Dict[str, float]:
     """
     计算候选人与岗位的匹配度
-    基于大五人格模型与岗位要求的对齐程度
+    返回 {"skill_match": 0-100, "personality_match": 0-100, "overall": 0-100}
+    - personality_match: 基于大五人格模型与岗位要求的对齐程度
+    - skill_match: 此接口无技能数据，默认 50
+    - overall: 0.4 * skill_match + 0.6 * personality_match
     """
+    default = {"skill_match": 50.0, "personality_match": 50.0, "overall": 50.0}
+
     if not personality_profile or not job.required_traits:
-        return 50.0  # 默认分数
-    
+        return default
+
     candidate_traits = {
         "外向性": personality_profile.trait_extroversion,
         "宜人性": personality_profile.trait_agreeableness,
@@ -67,34 +118,38 @@ def calculate_job_match_score(personality_profile: CandidatePersonalityProfile, 
         "神经质": personality_profile.trait_neuroticism,
         "开放性": personality_profile.trait_openness,
     }
-    
+
     required_traits = job.required_traits  # 期望是个 dict
-    
     if not isinstance(required_traits, dict):
-        return 50.0
-    
-    # 计算匹配度
+        return default
+
+    # personality_match：大五人格匹配（0-100）
     total_score = 0.0
     matched_count = 0
-    
     for trait_name, required_score in required_traits.items():
         if trait_name in candidate_traits and candidate_traits[trait_name] is not None:
             candidate_score = candidate_traits[trait_name]
-            # 差值越小，分数越高（0-10 scale）
-            # 完全匹配（差值为0）= 10分
-            # 最大差值（差值为10）= 0分
+            # 差值越小分数越高（0-10 scale → 完全匹配=10，最大差值=0）
             similarity = 10 - abs(candidate_score - required_score)
             total_score += similarity
             matched_count += 1
-    
+
     if matched_count == 0:
-        return 50.0
-    
-    # 转换为百分比
-    average_score = (total_score / matched_count)  # 0-10
-    match_score = average_score * 10  # 0-100
-    
-    return min(100, max(0, match_score))
+        personality_match = 50.0
+    else:
+        personality_match = min(100.0, max(0.0, (total_score / matched_count) * 10))
+
+    # skill_match：此接口仅有人格数据，置为中性值
+    skill_match = 50.0
+
+    # overall：人格权重较大（评估场景）
+    overall = round(min(100.0, max(0.0, 0.4 * skill_match + 0.6 * personality_match)), 1)
+
+    return {
+        "skill_match": round(skill_match, 1),
+        "personality_match": round(personality_match, 1),
+        "overall": overall,
+    }
 
 
 def aggregate_personality_profile(candidate_id: str, db: Session) -> Optional[CandidatePersonalityProfile]:
@@ -174,8 +229,9 @@ async def get_portrait(candidate_id: str, db: Session = Depends(get_db)):
     - **candidate_id**: 候选人ID
     - **返回**: 五大人格特质及评分
     """
+    candidate = resolve_candidate_user(candidate_id, db)
     profile = db.query(CandidatePersonalityProfile).filter_by(
-        candidate_id=candidate_id
+        candidate_id=candidate.id
     ).first()
     
     if not profile or not any([
@@ -208,8 +264,10 @@ async def get_history(
     - **offset**: 分页偏移量（默认0）
     - **返回**: 按时间倒序的评估历史
     """
+    candidate = resolve_candidate_user(candidate_id, db)
+
     records = db.query(AssessmentRecord).filter(
-        AssessmentRecord.candidate_id == candidate_id
+        AssessmentRecord.candidate_id == candidate.id
     ).order_by(
         desc(AssessmentRecord.created_at)
     ).offset(offset).limit(limit).all()
@@ -244,8 +302,9 @@ async def get_recommended_jobs(
     - **limit**: 返回的推荐岗位数（默认5）
     - **返回**: 按匹配度排序的岗位列表
     """
+    candidate = resolve_candidate_user(candidate_id, db)
     profile = db.query(CandidatePersonalityProfile).filter_by(
-        candidate_id=candidate_id
+        candidate_id=candidate.id
     ).first()
     
     # 获取所有岗位
@@ -277,8 +336,8 @@ async def get_recommended_jobs(
     # 计算匹配度并排序
     job_scores = []
     for job in jobs:
-        match_score = calculate_job_match_score(profile, job)
-        job_scores.append((job, match_score))
+        result = calculate_job_match_score(profile, job)
+        job_scores.append((job, result["overall"]))
     
     # 按匹配度降序排序
     job_scores.sort(key=lambda x: x[1], reverse=True)
@@ -378,6 +437,14 @@ async def get_report(record_id: int, db: Session = Depends(get_db)):
             gaps=match_analysis_record.gaps or []
         )
         recommendations = match_analysis_record.recommendations or []
+
+    model_version = None
+    if match_analysis_record and match_analysis_record.detailed_analysis:
+        try:
+            detail_obj = json.loads(match_analysis_record.detailed_analysis)
+            model_version = detail_obj.get("model_version")
+        except Exception:
+            model_version = None
     
     # 构建响应
     details = AssessmentDetails(
@@ -385,7 +452,8 @@ async def get_report(record_id: int, db: Session = Depends(get_db)):
         duration_minutes=record.duration_minutes,
         conversation_depth=record.conversation_depth,
         roles_participated=record.roles_participated,
-        overall_impression=record.overall_impression
+        overall_impression=record.overall_impression,
+        model_version=model_version
     )
     
     report = AssessmentReport(
@@ -483,11 +551,7 @@ async def save_assessment_result(
     try:
         logger.info(f"【save-result】保存评估结果: candidate_id={request.candidate_id}, job_id={request.job_id}")
         
-        # 确保 candidate_id 为整数
-        try:
-            candidate_id_int = int(request.candidate_id)
-        except (ValueError, TypeError):
-            raise HTTPException(status_code=400, detail=f"无效的 candidate_id: {request.candidate_id}")
+        candidate = resolve_candidate_user(request.candidate_id, db)
         
         # 1. 创建评估记录
         job = db.query(Job).filter_by(id=request.job_id).first()
@@ -495,7 +559,7 @@ async def save_assessment_result(
             raise HTTPException(status_code=404, detail="岗位不存在")
         
         record = AssessmentRecord(
-            candidate_id=candidate_id_int,
+            candidate_id=candidate.id,
             job_id=request.job_id,
             job_title=job.name,
             assessment_mode=request.assessment_mode,
@@ -510,21 +574,26 @@ async def save_assessment_result(
         
         # 2. 创建或更新候选人心理画像
         personality_profile = db.query(CandidatePersonalityProfile).filter_by(
-            candidate_id=candidate_id_int
+            candidate_id=candidate.id
         ).first()
         
         if not personality_profile:
             personality_profile = CandidatePersonalityProfile(
-                candidate_id=candidate_id_int
+                candidate_id=candidate.id
             )
             db.add(personality_profile)
         
-        # 更新五大人格评分
-        personality_profile.trait_extroversion = request.personality_scores.get("外向性", request.personality_scores.get("extraversion", 5))
-        personality_profile.trait_agreeableness = request.personality_scores.get("宜人性", request.personality_scores.get("agreeableness", 5))
-        personality_profile.trait_conscientiousness = request.personality_scores.get("尽责性", request.personality_scores.get("conscientiousness", 5))
-        personality_profile.trait_neuroticism = request.personality_scores.get("神经质", request.personality_scores.get("neuroticism", 5))
-        personality_profile.trait_openness = request.personality_scores.get("开放性", request.personality_scores.get("openness", 5))
+        # 后端统一计算/解析五大人格（带模型版本）
+        personality_scores, scoring_meta = resolve_personality_scores(
+            request.all_scores,
+            request.personality_scores,
+        )
+
+        personality_profile.trait_extroversion = personality_scores.get("外向性", 5)
+        personality_profile.trait_agreeableness = personality_scores.get("宜人性", 5)
+        personality_profile.trait_conscientiousness = personality_scores.get("尽责性", 5)
+        personality_profile.trait_neuroticism = personality_scores.get("神经质", 5)
+        personality_profile.trait_openness = personality_scores.get("开放性", 5)
         personality_profile.latest_assessment_id = record.id
         personality_profile.updated_at = datetime.now()
         
@@ -532,11 +601,53 @@ async def save_assessment_result(
         
         logger.info(f"【save-result】心理画像已保存: {personality_profile.trait_extroversion}, {personality_profile.trait_conscientiousness}, etc")
         
-        # 3. 计算岗位匹配度
-        match_score = calculate_job_match_score(personality_profile, job)
-        record.match_score = match_score
-        
-        logger.info(f"【save-result】匹配度已计算: {match_score}")
+        # 3. 计算岗位匹配度（skill/personality/overall 统一）
+        required_skills = db.query(JobSkillRequirement).filter(
+            JobSkillRequirement.job_id == request.job_id
+        ).all()
+        personality_fw = db.query(JobPersonalityFramework).filter(
+            JobPersonalityFramework.job_id == request.job_id
+        ).first()
+
+        candidate_skills: List[str] = []
+        if isinstance(candidate.skills, list):
+            candidate_skills = [str(s).strip() for s in candidate.skills if str(s).strip()]
+        elif isinstance(candidate.skills, str):
+            candidate_skills = [s.strip() for s in candidate.skills.split(",") if s.strip()]
+        elif request.candidate_info and isinstance(request.candidate_info.get("skills"), list):
+            candidate_skills = [str(s).strip() for s in request.candidate_info.get("skills", []) if str(s).strip()]
+
+        if required_skills and candidate_skills:
+            skill_match, matched_skills, missing_skills = matching_engine.calculate_skill_match(
+                candidate_skills,
+                required_skills,
+            )
+        else:
+            skill_match, matched_skills, missing_skills = 50.0, [], []
+
+        candidate_personality = {
+            "openness": (personality_profile.trait_openness or 0) * 10,
+            "conscientiousness": (personality_profile.trait_conscientiousness or 0) * 10,
+            "extraversion": (personality_profile.trait_extroversion or 0) * 10,
+            "agreeableness": (personality_profile.trait_agreeableness or 0) * 10,
+            "neuroticism": (personality_profile.trait_neuroticism or 0) * 10,
+        }
+        if personality_fw:
+            personality_match = matching_engine.calculate_personality_match(
+                candidate_personality,
+                personality_fw,
+            )
+        else:
+            # fallback 到现有岗位特质匹配，避免岗位尚未配置人格框架时退化
+            personality_match = calculate_job_match_score(personality_profile, job)["personality_match"]
+
+        overall_score = matching_engine.calculate_overall_match(skill_match, personality_match)
+        record.match_score = overall_score
+
+        logger.info(
+            f"【save-result】匹配度已计算: overall={overall_score}, "
+            f"skill={skill_match}, personality={personality_match}"
+        )
         
         # 4. 保存特质描述
         trait_names = ["外向性", "宜人性", "尽责性", "神经质", "开放性"]
@@ -549,8 +660,8 @@ async def save_assessment_result(
         }
         
         for trait_name in trait_names:
-            trait_score = request.personality_scores.get(trait_name, 5)
-            if trait_score:
+            trait_score = personality_scores.get(trait_name, 5)
+            if trait_score is not None:
                 trait_desc = PersonalityTraitDescription(
                     assessment_record_id=record.id,
                     trait_name=trait_name,
@@ -563,17 +674,27 @@ async def save_assessment_result(
         
         logger.info(f"【save-result】特质描述已保存")
         
-        # 5. 生成分析和建议
-        strengths = generate_default_analysis("strengths", personality_profile)
-        gaps = generate_default_analysis("gaps", personality_profile)
-        recommendations = generate_default_recommendations(personality_profile, job)
-        
+        # 5. 通过 ReportAgent 生成分析和建议
+        analysis_payload = report_agent.build_match_analysis(
+            profile=personality_profile,
+            job=job,
+            scoring_meta=scoring_meta,
+            match_breakdown={
+                "skill_match": skill_match,
+                "personality_match": personality_match,
+                "overall_score": overall_score,
+            },
+            matched_skills=matched_skills,
+            missing_skills=missing_skills,
+        )
+
         # 6. 保存匹配分析
         match_analysis = AssessmentMatchAnalysis(
             assessment_record_id=record.id,
-            strengths=strengths,
-            gaps=gaps,
-            recommendations=recommendations
+            strengths=analysis_payload["strengths"],
+            gaps=analysis_payload["gaps"],
+            recommendations=analysis_payload["recommendations"],
+            detailed_analysis=json.dumps(analysis_payload["detailed_analysis"], ensure_ascii=False),
         )
         db.add(match_analysis)
         
@@ -584,72 +705,24 @@ async def save_assessment_result(
         # 7. 提交事务
         db.commit()
         
-        logger.info(f"【save-result】评估结果保存完成! record_id={record.id}, match_score={match_score}")
+        logger.info(f"【save-result】评估结果保存完成! record_id={record.id}, match_score={overall_score}")
         
         return StandardResponse(
             code=200,
             message="评估结果已保存",
-            data={"record_id": record.id}
+            data={
+                "record_id": record.id,
+                "skill_match": skill_match,
+                "personality_match": personality_match,
+                "overall_score": overall_score,
+                "model_version": scoring_meta.get("model_version"),
+                "scoring_source": scoring_meta.get("source"),
+            }
         )
     except Exception as e:
         db.rollback()
         logger.error(f"【save-result】保存评估结果失败: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"保存失败: {str(e)}")
-
-
-# ============ Helper Functions for Analysis ============
-
-def generate_default_analysis(analysis_type: str, profile: CandidatePersonalityProfile) -> List[str]:
-    """生成默认的强项或改进空间分析"""
-    if analysis_type == "strengths":
-        analysis = []
-        if profile.trait_conscientiousness and profile.trait_conscientiousness >= 7:
-            analysis.append("责任心强，执行力强")
-        if profile.trait_openness and profile.trait_openness >= 7:
-            analysis.append("思维开放，学习能力强")
-        if profile.trait_extroversion and profile.trait_extroversion >= 7:
-            analysis.append("沟通能力强，团队协作意识强")
-        if profile.trait_agreeableness and profile.trait_agreeableness >= 7:
-            analysis.append("同理心强，合作意识强")
-        if not analysis:
-            analysis.append("表现均衡，基础素质扎实")
-        return analysis
-    else:  # gaps
-        analysis = []
-        if not profile.trait_conscientiousness or profile.trait_conscientiousness < 6:
-            analysis.append("需要提升执行力和自律性")
-        if not profile.trait_openness or profile.trait_openness < 6:
-            analysis.append("建议加强学习心态和创新意识")
-        if not profile.trait_extroversion or profile.trait_extroversion < 6:
-            analysis.append("可以加强沟通和表达能力")
-        if not profile.trait_neuroticism or profile.trait_neuroticism < 5:
-            analysis.append("需要加强压力管理和情绪控制")
-        if not analysis:
-            analysis.append("继续保持和完善各项能力")
-        return analysis
-
-
-def generate_default_recommendations(profile: CandidatePersonalityProfile, job: Job) -> List[str]:
-    """根据岗位生成专业建议"""
-    recommendations = []
-    
-    # 基础建议
-    recommendations.append("根据评估结果，建议职业发展方向明确")
-    recommendations.append("持续提升专业技能，增强岗位胜任力")
-    
-    # 根据岗位类别定制
-    if job.category and "engineer" in job.category.lower():
-        recommendations.append("建议参加技术领导力或架构设计培训")
-    elif job.category and "product" in job.category.lower():
-        recommendations.append("建议加强用户研究和数据分析能力")
-    elif job.category and "manager" in job.category.lower():
-        recommendations.append("建议参加团队领导力或项目管理培训")
-    else:
-        recommendations.append("建议参加相关领域的专业培训课程")
-    
-    recommendations.append("定期反思和改进，制定个人发展计划")
-    
-    return recommendations
 
 
 # ============ Admin APIs (用于 HR 后台管理) ============
@@ -804,7 +877,8 @@ async def call_llm_for_question(
     使用 LLM 生成下一个问题（基于角色和对话历史）
     """
     api_key = os.getenv("ROAD2ALL_API_KEY")
-    api_url = os.getenv("ROAD2ALL_API_URL", "https://api.road2all.com/v1/chat/completions")
+    api_base = os.getenv("ROAD2ALL_API_BASE", "https://api.siliconflow.cn/v1").rstrip("/")
+    api_url = os.getenv("ROAD2ALL_API_URL", f"{api_base}/chat/completions")
     model = os.getenv("ROAD2ALL_MODEL", "gpt4o")
     
     # 构建提示词
@@ -930,7 +1004,8 @@ async def call_llm_for_analysis(
     返回: {scores: {...}, sentiment: {...}, patterns: [...]}
     """
     api_key = os.getenv("ROAD2ALL_API_KEY")
-    api_url = os.getenv("ROAD2ALL_API_URL", "https://api.road2all.com/v1/chat/completions")
+    api_base = os.getenv("ROAD2ALL_API_BASE", "https://api.siliconflow.cn/v1").rstrip("/")
+    api_url = os.getenv("ROAD2ALL_API_URL", f"{api_base}/chat/completions")
     model = os.getenv("ROAD2ALL_MODEL", "gpt4o")
     
     analysis_prompts = {

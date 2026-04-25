@@ -117,12 +117,12 @@ function startNewAssessment() {
 
 function viewLatestReport() {
   if (latestReport.value) {
-    router.push(`/journey-report/${latestReport.value.job_id}`)
+    router.push(`/home/report/${latestReport.value.id}`)
   }
 }
 
 function viewRecord(record: any) {
-  router.push(`/journey-report/${record.job_id}`)
+  router.push(`/home/report/${record.id}`)
 }
 
 function goToJobDetail(jobId: number | string) {
@@ -204,7 +204,11 @@ watchEffect(() => {
               {{ portraitData.length }} 项特质
             </span>
           </div>
-          <p class="panel-desc">基于 AI 多轮对话深度评估的大五人格特质分析</p>
+          <p class="panel-desc">
+            🧠 整体心理特质（所有评估聚合）
+            <br/>
+            <small>具体岗位匹配度详见历史记录中的评估报告</small>
+          </p>
         </div>
 
         <!-- 空状态 -->

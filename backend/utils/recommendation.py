@@ -12,81 +12,81 @@ import math
 def calculate_job_match_score(
     candidate: Optional[User],
     job: Job
-) -> float:
+) -> Dict[str, float]:
     """
-    计算候选人与岗位的匹配分数（0-100）
-    
-    Args:
-        candidate: 候选人对象
-        job: 岗位对象
-    
-    Returns:
-        float: 匹配分数 (0-100)
+    计算候选人与岗位的匹配分数
+    返回 {"skill_match": 0-100, "personality_match": 0-100, "overall": 0-100}
+
+    - skill_match:       技能关键词匹配 + 工作年限（权重 50%）
+    - personality_match: 无人格数据时默认 50（权重 30%）
+    - overall:           skill_match×0.5 + personality_match×0.3 + 其他因素×0.2
     """
+    default = {"skill_match": 50.0, "personality_match": 50.0, "overall": 50.0}
     if not candidate or not job:
-        return 50.0  # 默认中等分数
-    
-    score = 0.0
-    max_score = 0.0
-    
-    # 1. 城市匹配 (权重: 15%)
-    max_score += 15
-    if hasattr(candidate, 'city') and candidate.city and job.city == candidate.city:
-        score += 15
-    elif hasattr(candidate, 'city') and candidate.city:
-        score += 7  # 不同城市但有意向
-    
-    # 2. 职位级别匹配 (权重: 20%)
-    max_score += 20
-    if hasattr(candidate, 'job_level') and candidate.job_level and job.category:
-        if candidate.job_level.lower() in job.category.lower():
-            score += 20
-        else:
-            score += 10
-    
-    # 3. 薪资期望匹配 (权重: 25%)
-    max_score += 25
-    if hasattr(candidate, 'salary_expectation') and candidate.salary_expectation:
-        candidate_salary = candidate.salary_expectation
-        job_min = job.salary_min or 0
-        job_max = job.salary_max or 999
-        
-        if job_min <= candidate_salary <= job_max:
-            score += 25  # 完美匹配
-        elif candidate_salary < job_min:
-            gap_ratio = (job_min - candidate_salary) / job_min
-            score += max(0, 25 - gap_ratio * 25)
-        else:
-            gap_ratio = (candidate_salary - job_max) / job_max
-            score += max(0, 25 - gap_ratio * 15)  # 超薪资不扣那么多分
-    
-    # 4. 技能匹配 (权重: 20%)
-    max_score += 20
-    if hasattr(candidate, 'skills') and candidate.skills and job.required_traits:
+        return default
+
+    # ── 1. skill_match：技能匹配 60% + 工作经验 40% ─────────────────────────
+    skill_score = 0.0
+    skill_max = 100.0
+
+    # 技能关键词匹配（占 skill 总分 60%）
+    if hasattr(candidate, "skills") and candidate.skills and job.required_traits:
         try:
-            candidate_skills = set(s.strip().lower() for s in candidate.skills.split(',') if s.strip())
-            required_skills = set(s.strip().lower() for s in job.required_traits.split(',') if s.strip())
-            
+            if isinstance(job.required_traits, dict):
+                required_skills = {k.strip().lower() for k in job.required_traits.keys()}
+            else:
+                required_skills = {s.strip().lower() for s in str(job.required_traits).split(",") if s.strip()}
+            candidate_skills = {s.strip().lower() for s in candidate.skills.split(",") if s.strip()}
             if required_skills:
-                matched = len(candidate_skills & required_skills)
-                match_ratio = matched / len(required_skills)
-                score += 20 * match_ratio
-        except:
-            score += 10  # 默认部分匹配
-    
-    # 5. 工作经验 (权重: 20%)
-    max_score += 20
-    if hasattr(candidate, 'work_experience') and candidate.work_experience:
-        exp_years = min(candidate.work_experience, 15)  # 15年上限
-        score += (exp_years / 15) * 20
-    
-    # 归一化到 0-100
-    if max_score > 0:
-        normalized_score = (score / max_score) * 100
-    else:
-        normalized_score = 50.0
-    
-    return min(100.0, max(0.0, normalized_score))
+                match_ratio = len(candidate_skills & required_skills) / len(required_skills)
+                skill_score += 60 * match_ratio
+        except Exception:
+            skill_score += 30  # 解析失败时部分分
+
+    # 工作经验（占 skill 总分 40%）
+    if hasattr(candidate, "work_experience") and candidate.work_experience:
+        exp_years = min(float(candidate.work_experience), 15)
+        skill_score += (exp_years / 15) * 40
+
+    skill_match = min(100.0, max(0.0, skill_score))
+
+    # ── 2. personality_match：此函数无人格画像，置为中性 ──────────────────────
+    personality_match = 50.0
+
+    # ── 3. 其他因素（城市 50% + 薪资 50%）────────────────────────────────────
+    other_score = 0.0
+    other_max = 100.0
+
+    # 城市匹配
+    if hasattr(candidate, "city") and candidate.city:
+        other_score += 50 if job.city == candidate.city else 20
+
+    # 薪资期望匹配
+    if hasattr(candidate, "salary_expectation") and candidate.salary_expectation:
+        c_sal = float(candidate.salary_expectation)
+        j_min = float(job.salary_min or 0)
+        j_max = float(job.salary_max or 999)
+        if j_min <= c_sal <= j_max:
+            other_score += 50
+        elif c_sal < j_min:
+            gap = (j_min - c_sal) / max(j_min, 1)
+            other_score += max(0, 50 - gap * 50)
+        else:
+            gap = (c_sal - j_max) / max(j_max, 1)
+            other_score += max(0, 50 - gap * 30)
+
+    other_factor = min(100.0, max(0.0, other_score))
+
+    # ── 4. overall ────────────────────────────────────────────────────────────
+    overall = min(100.0, max(0.0,
+        0.5 * skill_match + 0.3 * personality_match + 0.2 * other_factor
+    ))
+
+    return {
+        "skill_match": round(skill_match, 1),
+        "personality_match": round(personality_match, 1),
+        "overall": round(overall, 1),
+    }
 
 
 def calculate_recommendation_index(
@@ -131,7 +131,7 @@ def get_job_display_data(job: Job, candidate: Optional[User] = None) -> Dict[str
     Returns:
         dict: 包含所有展示信息的字典
     """
-    match_score = calculate_job_match_score(candidate, job) if candidate else 50.0
+    match_score = calculate_job_match_score(candidate, job)["overall"] if candidate else 50.0
     
     return {
         "id": job.id,

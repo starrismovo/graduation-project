@@ -1843,14 +1843,14 @@ function completeInterview() {
   emit('complete', completionData)
 }
 
-/** 从面试评分推算五大人格特质分数 */
-function mapScoresToBigFive(scores: Record<string, number>): Record<string, number> {
+/** 本地降级时仅使用已有大五分；缺失时返回中性值 */
+function getFallbackBigFive(scores: Record<string, number>): Record<string, number> {
   return {
-    '外向性': Math.min(10, ((scores['表达能力'] || 5) * 0.5 + (scores['团队合作'] || 5) * 0.5)),
-    '宜人性': Math.min(10, ((scores['团队合作'] || 5) * 0.6 + (scores['表达能力'] || 5) * 0.4)),
-    '尽责性': Math.min(10, ((scores['专业能力'] || 5) * 0.5 + (scores['逻辑思维'] || 5) * 0.5)),
-    '神经质': Math.min(10, 10 - ((scores['逻辑思维'] || 5) * 0.4 + (scores['表达能力'] || 5) * 0.3 + (scores['专业能力'] || 5) * 0.3)),
-    '开放性': Math.min(10, ((scores['创新思维'] || 5) * 0.5 + (scores['学习能力'] || 5) * 0.5)),
+    '外向性': scores['外向性'] ?? 5,
+    '宜人性': scores['宜人性'] ?? 5,
+    '尽责性': scores['尽责性'] ?? 5,
+    '神经质': scores['神经质'] ?? 5,
+    '开放性': scores['开放性'] ?? 5,
   }
 }
 
@@ -1860,11 +1860,11 @@ async function generateReport(cid: number | null, overallScore: number, completi
   
   try {
     const jobId = selectedJobId.value || props.initialContext?.job_id || null
-    const personalityScores = mapScoresToBigFive(latestScores.value)
+    const fallbackBigFive = getFallbackBigFive(latestScores.value)
 
     if (!jobId) {
       reportData.value = {
-        ...buildLocalReport(personalityScores, overallScore),
+        ...buildLocalReport(fallbackBigFive, overallScore),
         report_mode: 'resume',
         report_title: '简历综合评估报告',
       }
@@ -1892,7 +1892,6 @@ async function generateReport(cid: number | null, overallScore: number, completi
       job_id: jobId,
       assessment_mode: 'immersive',
       all_scores: latestScores.value,
-      personality_scores: personalityScores,
       candidate_info: completionData.candidateInfo,
     })
     
@@ -1907,11 +1906,11 @@ async function generateReport(cid: number | null, overallScore: number, completi
         console.log('[Report] 报告已生成:', reportRes.data)
       } else {
         // 后端报告获取失败，使用本地数据
-        reportData.value = buildLocalReport(personalityScores, overallScore)
+        reportData.value = buildLocalReport(fallbackBigFive, overallScore)
       }
     } else {
       console.warn('[Report] save-result 失败:', saveRes)
-      reportData.value = buildLocalReport(mapScoresToBigFive(latestScores.value), overallScore)
+      reportData.value = buildLocalReport(getFallbackBigFive(latestScores.value), overallScore)
     }
     
     // 3. 同步评估进度状态
@@ -1931,7 +1930,7 @@ async function generateReport(cid: number | null, overallScore: number, completi
     }
   } catch (e) {
     console.error('[Report] 报告生成失败:', e)
-    reportData.value = buildLocalReport(mapScoresToBigFive(latestScores.value), overallScore)
+    reportData.value = buildLocalReport(getFallbackBigFive(latestScores.value), overallScore)
   } finally {
     reportLoading.value = false
   }

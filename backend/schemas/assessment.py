@@ -3,7 +3,7 @@
 用于前后端数据传输和验证
 """
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import List, Optional, Dict, Any
 from datetime import datetime
 from enum import Enum
@@ -88,6 +88,7 @@ class AssessmentDetails(BaseModel):
     conversation_depth: Optional[float] = None
     roles_participated: Optional[List[str]] = None
     overall_impression: Optional[str] = None
+    model_version: Optional[str] = None
 
 
 class AssessmentReport(BaseModel):
@@ -223,8 +224,8 @@ class SaveAssessmentResultRequest(BaseModel):
     candidate_id: str
     job_id: int
     assessment_mode: str = "immersive"  # immersive or standard
-    all_scores: Dict[str, float] = {}
-    personality_scores: Dict[str, float] = {}
+    all_scores: Dict[str, float] = Field(default_factory=dict)
+    personality_scores: Optional[Dict[str, float]] = None
     situational_scores: Optional[Dict[str, float]] = None
     candidate_info: Optional[Dict[str, Any]] = None
     

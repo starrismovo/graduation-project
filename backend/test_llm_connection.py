@@ -16,7 +16,7 @@ async def test_llm_connection():
     
     api_key = os.getenv("ROAD2ALL_API_KEY")
     model = os.getenv("ROAD2ALL_MODEL", "gpt-4o")
-    api_base = os.getenv("ROAD2ALL_API_BASE", "https://api.road2all.com/v1")
+    api_base = os.getenv("ROAD2ALL_API_BASE", "https://api.siliconflow.cn/v1")
     
     print(f"🔍 LLM 连接配置信息")
     print(f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")

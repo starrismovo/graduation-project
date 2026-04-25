@@ -45,7 +45,7 @@ class LLMClient:
         self.provider = provider or self._get_configured_provider()
         self.api_key = os.getenv("ROAD2ALL_API_KEY") or os.getenv("OPENAI_API_KEY")
         self.model = os.getenv("ROAD2ALL_MODEL", "gpt-4o")
-        self.api_base = os.getenv("ROAD2ALL_API_BASE", "https://api.road2all.tech/v1")
+        self.api_base = os.getenv("ROAD2ALL_API_BASE", "https://api.siliconflow.cn/v1")
         self.timeout = float(os.getenv("LLM_TIMEOUT", "60"))
         self.max_retries = int(os.getenv("LLM_MAX_RETRIES", "2"))
         self.retry_backoff = float(os.getenv("LLM_RETRY_BACKOFF", "0.6"))
