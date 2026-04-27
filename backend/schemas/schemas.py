@@ -57,13 +57,15 @@ class JobResponse(BaseModel):
     city: str
     salary_min: float
     salary_max: float
-    required_traits: Dict[str, Any]
+    required_traits: Dict[str, Any] = {}
     creator_id: Optional[int] = None
 
     @field_validator('required_traits', mode='before')
     @classmethod
     def parse_required_traits(cls, v):
         """将字符串化的JSON转换为字典"""
+        if v is None:
+            return {}
         if isinstance(v, str):
             try:
                 return json.loads(v)

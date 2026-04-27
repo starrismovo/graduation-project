@@ -75,6 +75,14 @@ class TraitScore(Base):
     score = Column(Float, nullable=False)  # 评分 0-10
     reasoning = Column(Text, nullable=True)  # 评分理由
     
+    # ===== 基础人格与场景人格 =====
+    basic_traits = Column(JSON, nullable=True)  # 基础人格评分 (Big Five)
+    # 格式: {"外向性": 6.0, "宜人性": 7.0, "尽责性": 8.0, "开放性": 7.0, "情绪稳定性": 6.0}
+    
+    scenario_traits = Column(JSON, nullable=True)  # 场景人格评分（针对特定岗位）
+    # 格式: {"外向性": 6.5, "宜人性": 7.5, "尽责性": 8.0, "开放性": 6.5, "情绪稳定性": 6.5}
+    # 计算公式：场景人格 = 基础人格 + 调适偏移 (基于岗位需求与候选人基础人格的匹配度)
+    
     # ===== 时间戳 =====
     created_at = Column(DateTime, default=datetime.utcnow)
 

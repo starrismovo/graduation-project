@@ -23,6 +23,10 @@ const updateActiveMenu = () => {
     activeMenu.value = 'interviews'
   } else if (path.startsWith('/home/job-manage')) {
     activeMenu.value = 'jobs-manage'
+  } else if (path.startsWith('/home/candidates')) {
+    activeMenu.value = 'candidates'
+  } else if (path.startsWith('/home/analytics')) {
+    activeMenu.value = 'reports-manage'
   } else if (path.startsWith('/home/reports') || path.startsWith('/home/report')) {
     activeMenu.value = 'reports'
   } else if (path.startsWith('/home/psychology')) {
@@ -100,10 +104,10 @@ const handleMenuSelect = (index: string) => {
       router.push('/home/job-manage')
       break
     case 'candidates':
-      ElMessage.info('候选人管理功能开发中')
+      router.push('/home/candidates')
       break
     case 'reports-manage':
-      ElMessage.info('数据分析功能开发中')
+      router.push('/home/analytics')
       break
   }
 }
@@ -158,7 +162,7 @@ const handleUserMenuCommand = (command: string) => {
       <div class="header-container">
         <!-- 左侧Logo -->
         <div class="header-left">
-          <div class="app-logo" @click="activeMenu = 'home'">
+          <div class="app-logo" @click="handleMenuSelect('home')">
             <svg class="logo-icon" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg">
               <defs>
                 <linearGradient id="logoGrad" x1="0%" y1="0%" x2="100%" y2="100%">

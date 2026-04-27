@@ -1,16 +1,16 @@
-<template>
+﻿<template>
   <div class="report-container" v-loading="loading">
-    <!-- 顶部返回栏 -->
     <div class="report-header">
       <el-button type="text" @click="goBack">
-        <el-icon><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z" fill="currentColor"/></svg></el-icon>
+        <el-icon>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7" /><path d="M8 12h12" /></svg>
+        </el-icon>
         返回
       </el-button>
       <h2>评估报告详情</h2>
       <div></div>
     </div>
 
-    <!-- 报告内容 -->
     <div v-if="reportData" class="report-content">
       <div class="report-layout">
         <aside class="report-sidenav">
@@ -24,334 +24,180 @@
           >
             <svg class="sidenav-icon" viewBox="0 0 24 24" aria-hidden="true">
               <path v-if="item.key === 'overview'" d="M4 5h7v6H4zM13 5h7v4h-7zM13 11h7v8h-7zM4 13h7v6H4z" />
-              <path v-else-if="item.key === 'details'" d="M4 6h16M4 12h16M4 18h10" />
-              <path v-else-if="item.key === 'details'" d="M17 17l2 2 3-3" />
-              <path v-else-if="item.key === 'capability'" d="M4 17l5-5 3 3 7-8" />
-              <path v-else-if="item.key === 'capability'" d="M17 7h2v2" />
-              <path v-else-if="item.key === 'psychology'" d="M12 3a7 7 0 0 0-7 7c0 2.7 1.5 4.5 3.2 5.7.8.6 1.3 1.4 1.3 2.3V19h4v-1c0-.9.5-1.7 1.3-2.3C17.5 14.5 19 12.7 19 10a7 7 0 0 0-7-7z" />
-              <path v-else-if="item.key === 'psychology'" d="M10 22h4" />
-              <path v-else-if="item.key === 'suggestions'" d="M9 18h6M10 21h4" />
-              <path v-else-if="item.key === 'suggestions'" d="M12 3a6 6 0 0 0-4 10.5c.8.7 1.3 1.7 1.3 2.8V18h5.4v-1.7c0-1.1.5-2.1 1.3-2.8A6 6 0 0 0 12 3z" />
-              <path v-else d="M7 4h10l3 3v13H4V4z" />
-              <path v-if="item.key === 'history'" d="M14 4v4h4M8 12h8M8 16h6" />
+              <path v-else-if="item.key === 'psychology'" d="M8.5 14.5c0-1.7 1.4-3 3-3h1c1.7 0 3 1.3 3 3v1.5H8.5z" />
+              <path v-else-if="item.key === 'psychology'" d="M10 9.5a2 2 0 1 0 0-4 2 2 0 0 0 0 4zM16 10.5a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3z" />
+              <path v-else-if="item.key === 'capability'" d="M6 16h3v-8H6zM10.5 20h3v-12h-3zM15 13h3v7h-3z" />
+              <path v-else-if="item.key === 'details'" d="M6 5v14M10 9v10M14 7v12M18 11v8" />
+              <path v-else-if="item.key === 'suggestions'" d="M8 4h8v2h3v14H5V6h3z" />
+              <path v-else-if="item.key === 'suggestions'" d="M9 10h6M9 14h6" />
+              <path v-else d="M12 5a7 7 0 1 0 7 7" />
             </svg>
             <span>{{ item.label }}</span>
           </button>
         </aside>
 
         <div class="report-main">
-          <!-- 顶部概览：基本信息 + 匹配度拆解 -->
           <el-row id="section-overview" :gutter="24" class="overview-section">
             <el-col :xs="24" :md="12">
-              <!-- 基本信息 -->
               <el-card class="report-card" shadow="hover">
-            <template #header>
-              <div class="card-title">📋 评估基本信息</div>
-            </template>
-            <el-form label-width="100px" :model="reportData">
-              <el-form-item label="评估岗位">
-                <span class="info-value">{{ reportData.job_title }}</span>
-              </el-form-item>
-              <el-form-item label="评估时间">
-                <span class="info-value">{{ formatTime(reportData.created_at) }}</span>
-              </el-form-item>
-              <el-form-item label="评估模式">
-                <el-tag>{{ reportData.assessment_mode || '多角色对话' }}</el-tag>
-              </el-form-item>
-              <el-form-item label="评估阶段数">
-                <span class="info-value">{{ reportData.assessement_details?.roles_participated?.length || 3 }} 个角色</span>
-              </el-form-item>
-            </el-form>
+                <template #header>
+                  <div class="card-title">评估基本信息</div>
+                </template>
+                <el-form label-width="100px" :model="reportData">
+                  <el-form-item label="评估岗位"><span class="info-value">{{ reportData.job_title || '-' }}</span></el-form-item>
+                  <el-form-item label="评估时间"><span class="info-value">{{ formatTime(reportData.created_at) }}</span></el-form-item>
+                  <el-form-item label="评估模式"><el-tag>{{ reportData.assessment_mode || '多角色对话' }}</el-tag></el-form-item>
+                  <el-form-item label="评估阶段数"><span class="info-value">{{ roleCount }} 个角色</span></el-form-item>
+                </el-form>
               </el-card>
             </el-col>
 
             <el-col :xs="24" :md="12">
-              <!-- 匹配度快速视图 -->
               <el-card class="report-card match-quick-view" shadow="hover">
-            <template #header>
-              <div class="card-title">⚡ 匹配度概览</div>
-            </template>
-            <div class="quick-match">
-              <div class="main-score">
-                <div class="score-circle-small">
-                  <svg viewBox="0 0 100 100" class="ring-svg-small">
-                    <circle cx="50" cy="50" r="40" fill="none" stroke="#e4e7ed" stroke-width="6"/>
-                    <circle cx="50" cy="50" r="40" fill="none" :stroke="getScoreColor(reportData.match_score)" stroke-width="6" stroke-linecap="round" :stroke-dasharray="ringDasharray" transform="rotate(-90 50 50)" class="ring-progress" />
-                  </svg>
-                  <div class="score-text">
-                    <span class="main-num">{{ reportData.match_score }}%</span>
+                <template #header>
+                  <div class="card-title">匹配度概览</div>
+                </template>
+                <div class="quick-match">
+                  <div class="main-score">
+                    <div class="score-circle-small">
+                      <svg viewBox="0 0 100 100" class="ring-svg-small">
+                        <circle cx="50" cy="50" r="40" fill="none" stroke="#e4e7ed" stroke-width="6" />
+                        <circle
+                          cx="50"
+                          cy="50"
+                          r="40"
+                          fill="none"
+                          :stroke="getScoreColor(reportData.match_score || 0)"
+                          stroke-width="6"
+                          stroke-linecap="round"
+                          :stroke-dasharray="ringDasharray"
+                          transform="rotate(-90 50 50)"
+                          class="ring-progress"
+                        />
+                      </svg>
+                      <div class="score-text"><span class="main-num">{{ reportData.match_score || 0 }}%</span></div>
+                    </div>
+                    <div class="match-level">
+                      <p class="level-label">{{ getMatchLevel(reportData.match_score || 0) }}</p>
+                      <p class="level-desc">与岗位契合程度</p>
+                    </div>
+                  </div>
+                  <div class="dimensions-mini">
+                    <div class="mini-item"><span class="mini-label">性格匹配</span><span class="mini-value">{{ personalityMatchScore }}%</span></div>
+                    <div class="mini-item"><span class="mini-label">技能匹配</span><span class="mini-value">{{ skillMatchScore }}%</span></div>
+                    <div class="mini-item"><span class="mini-label">背景匹配</span><span class="mini-value">{{ educationMatchScore }}%</span></div>
                   </div>
                 </div>
-                <div class="match-level">
-                  <p class="level-label">{{ getMatchLevel(reportData.match_score) }}</p>
-                  <p class="level-desc">与岗位契合程度</p>
-                </div>
-              </div>
-              <div class="dimensions-mini">
-                <div class="mini-item">
-                  <span class="mini-label">性格匹配</span>
-                  <span class="mini-value">{{ personalityMatchScore }}%</span>
-                </div>
-                <div class="mini-item">
-                  <span class="mini-label">技能匹配</span>
-                  <span class="mini-value">{{ skillMatchScore }}%</span>
-                </div>
-                <div class="mini-item">
-                  <span class="mini-label">背景匹配</span>
-                  <span class="mini-value">{{ educationMatchScore }}%</span>
-                </div>
-              </div>
-            </div>
               </el-card>
             </el-col>
           </el-row>
 
-          <!-- 核心内容：规则网格布局 -->
           <div class="content-grid">
-            <!-- 第一行：重点信息 -->
-            <el-row :gutter="24" class="content-row">
-              <el-col :xs="24" :sm="24" :md="8" class="content-col">
-                <el-card id="section-psychology" class="report-card" shadow="hover">
-            <template #header>
-              <div class="card-title">
-                <el-icon><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 6v6l4 2" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></el-icon>
-                🧠 心理特质
-              </div>
-            </template>
-
-            <div class="portrait-display">
-              <RadarChart 
-                :data="reportData.personality_trait || reportData.portrait || []"
-                :height="280"
-              />
-            </div>
-
-            <div class="traits-summary" v-if="reportData.personality_trait && reportData.personality_trait.length">
-              <h4>特质评分：</h4>
-              <div class="traits-list-compact">
-                <div 
-                  v-for="trait in reportData.personality_trait" 
-                  :key="trait.name"
-                  class="trait-item-compact"
-                >
-                  <span class="trait-name">{{ trait.name }}</span>
-                  <el-progress 
-                    :percentage="trait.score * 10"
-                    :color="getTraitColor(trait.score)"
-                    :text-inside="false"
-                    :stroke-width="3"
-                    style="flex: 1; margin: 0 8px;"
-                  />
-                  <span class="trait-score">{{ trait.score }}/10</span>
-                </div>
-              </div>
-            </div>
-          </el-card>
-              </el-col>
-
-              <el-col :xs="24" :sm="24" :md="8" class="content-col">
-                <el-card id="section-details" class="report-card" shadow="hover">
-            <template #header>
-              <div class="card-title">
-                <el-icon><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V5h14v14zm-5-7h3v2h-3v3h-2v-3h-3v-2h3V8h2v3z" fill="currentColor"/></svg></el-icon>
-                🎯 我的特质 vs 岗位需求
-              </div>
-            </template>
-            <div class="requirement-comparison">
-              <el-table :data="traitComparison" stripe size="small">
-                <el-table-column prop="name" label="特质维度" width="100" />
-                <el-table-column label="我的评分" width="110" align="center">
-                  <template #default="{ row }">
-                    <div class="score-cell">
-                      <el-progress :percentage="row.myScore * 10" :color="getTraitColor(row.myScore)" :text-inside="true" :stroke-width="3" />
-                      <span class="score-value">{{ row.myScore }}/10</span>
-                    </div>
+            <!-- 心理特质与能力亮点 -->
+            <el-row :gutter="24" class="hero-row">
+              <el-col :xs="24" :md="14" class="content-col">
+                <el-card id="section-psychology" class="report-card report-card-main" shadow="hover">
+                  <template #header>
+                    <div class="card-title">心理特质</div>
                   </template>
-                </el-table-column>
-                <el-table-column label="岗位需求" width="100" align="center">
-                  <template #default="{ row }">
-                    <span class="requirement-range">{{ row.requiredMin }}-{{ row.requiredMax }}</span>
-                  </template>
-                </el-table-column>
-                <el-table-column label="匹配" width="80" align="center">
-                  <template #default="{ row }">
-                    <el-tag :type="row.matched ? 'success' : 'warning'" :effect="'light'">
-                      {{ row.matched ? '✅ 满足' : '⚠️ 缺陷' }}
-                    </el-tag>
-                  </template>
-                </el-table-column>
-                <el-table-column label="分析" min-width="180" show-overflow-tooltip>
-                  <template #default="{ row }">
-                    <span class="analysis-text">{{ row.analysis }}</span>
-                  </template>
-                </el-table-column>
-              </el-table>
-            </div>
-          </el-card>
-              </el-col>
-
-              <el-col :xs="24" :sm="24" :md="8" class="content-col">
-                <el-card id="section-suggestions" class="report-card" shadow="hover">
-            <template #header>
-              <div class="card-title">💡 建议</div>
-            </template>
-            <div class="recommendations-list">
-              <div
-                v-for="(rec, idx) in Array.isArray(reportData.recommendations) ? reportData.recommendations : []"
-                :key="idx"
-                class="rec-item"
-              >
-                <span class="rec-num">{{ idx + 1 }}</span>
-                <span class="rec-text">{{ rec }}</span>
-              </div>
-              <div v-if="!reportData.recommendations || !Array.isArray(reportData.recommendations) || !reportData.recommendations.length" class="rec-empty">
-                暂无个性化建议，建议完成更多面试评估以生成精确建议。
-              </div>
-            </div>
-          </el-card>
-              </el-col>
-            </el-row>
-
-            <!-- 第二行：能力拆解 -->
-            <el-row :gutter="24" class="content-row">
-              <el-col :xs="24" :sm="24" :md="8" class="content-col">
-                <el-card class="report-card" shadow="hover" v-if="reportData.conversation_summary">
-            <template #header>
-              <div class="card-title">
-                <el-icon><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M11.99 5c-3.31 0-6 2.69-6 6s2.69 6 6 6 6-2.69 6-6-2.69-6-6-6zm6.93 6c0 .19-.02.37-.05.54h1.54c.05-.17.07-.35.07-.54 0-.19-.02-.37-.07-.54h-1.54c.03.17.05.35.05.54zm1.98-1.38c-.19-.32-.44-.62-.74-.86.29.44.46.94.51 1.39h1.6c-.22-.38-.51-.71-.87-.97.01.15.01.30 0 .44zm-7.91-2.02c.27.36.48.77.62 1.22h2.46c.65 0 1.24.28 1.65.73-.41-.35-.94-.55-1.51-.55h-2.22zm0 6.04h2.22c.57 0 1.1-.2 1.51-.55-.41.45-1 .73-1.65.73H7.7c.14.45.35.86.62 1.22zm10.91-3.02c-.05.45-.22.95-.51 1.39.3-.24.55-.54.74-.86.14-.25.24-.52.31-.81-.06.09-.12.17-.18.25-.27.36-.62.66-1.04.88.37-.26.66-.59.88-.97h-1.6c-.05.44-.22.94-.51 1.38.3-.24.55-.54.74-.86l.15-.17z" fill="currentColor"/></svg></el-icon>
-                💬 对话亮点
-              </div>
-            </template>
-            <div class="dialogue-highlights">
-              <el-collapse>
-                <el-collapse-item title="HR破冰" name="1">
-                  <div class="phase-info-compact">
-                    <p class="phase-text-compact">{{ getPhaseHighlight('hr') }}</p>
+                  <div class="portrait-display">
+                    <RadarChart :data="personalityTraits" :height="240" />
                   </div>
-                </el-collapse-item>
-                <el-collapse-item title="技术深度" name="2">
-                  <div class="phase-info-compact">
-                    <p class="phase-text-compact">{{ getPhaseHighlight('tech') }}</p>
-                  </div>
-                </el-collapse-item>
-                <el-collapse-item title="产品思维" name="3">
-                  <div class="phase-info-compact">
-                    <p class="phase-text-compact">{{ getPhaseHighlight('product') }}</p>
-                  </div>
-                </el-collapse-item>
-              </el-collapse>
-            </div>
-          </el-card>
+                </el-card>
               </el-col>
 
-              <el-col :xs="24" :sm="24" :md="8" class="content-col">
+              <el-col :xs="24" :md="10" class="content-col side-stack">
                 <el-card id="section-capability" class="report-card" shadow="hover">
-            <template #header>
-              <div class="card-title">
-                <el-icon><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z" fill="currentColor"/></svg></el-icon>
-                📊 匹配度拆解
-              </div>
-            </template>
-            <div class="match-breakdown">
-              <div class="overall-score-display">
-                <div class="score-ring">
-                  <svg viewBox="0 0 120 120" class="ring-svg">
-                    <circle cx="60" cy="60" r="50" fill="none" stroke="#e4e7ed" stroke-width="8"/>
-                    <circle cx="60" cy="60" r="50" fill="none" :stroke="getScoreColor(reportData.match_score)" stroke-width="8" stroke-linecap="round" :stroke-dasharray="ringDasharray" transform="rotate(-90 60 60)" class="ring-progress" />
-                  </svg>
-                  <div class="score-content">
-                    <span class="score-number">{{ reportData.match_score || 0 }}%</span>
-                    <span class="score-label">综合匹配度</span>
-                  </div>
-                </div>
-              </div>
-              <div class="dimension-scores">
-                <div class="score-item">
-                  <div class="item-header">
-                    <span class="item-name">性格特质匹配</span>
-                    <span class="item-value">{{ personalityMatchScore }}%</span>
-                  </div>
-                  <el-progress :percentage="personalityMatchScore" color="#67c23a" :text-inside="false" :stroke-width="6" />
-                  <span class="item-weight">权重 40% → 贡献 {{ (personalityMatchScore * 0.4).toFixed(1) }}%</span>
-                </div>
-                <div class="score-item">
-                  <div class="item-header">
-                    <span class="item-name">技能匹配度</span>
-                    <span class="item-value">{{ skillMatchScore }}%</span>
-                  </div>
-                  <el-progress :percentage="skillMatchScore" color="#409eff" :text-inside="false" :stroke-width="6" />
-                  <span class="item-weight">权重 45% → 贡献 {{ (skillMatchScore * 0.45).toFixed(1) }}%</span>
-                </div>
-                <div class="score-item">
-                  <div class="item-header">
-                    <span class="item-name">教育背景</span>
-                    <span class="item-value">{{ educationMatchScore }}%</span>
-                  </div>
-                  <el-progress :percentage="educationMatchScore" color="#e6a23c" :text-inside="false" :stroke-width="6" />
-                  <span class="item-weight">权重 15% → 贡献 {{ (educationMatchScore * 0.15).toFixed(1) }}%</span>
-                </div>
-              </div>
-              <div class="formula-display">
-                <p class="formula-title">计算公式</p>
-                <p class="formula-equation">{{ personalityMatchScore }}% × 40% + {{ skillMatchScore }}% × 45% + {{ educationMatchScore }}% × 15% = <strong>{{ reportData.match_score }}%</strong></p>
-              </div>
-            </div>
-          </el-card>
-              </el-col>
+                  <template #header>
+                    <div class="card-title">能力亮点</div>
+                  </template>
+                  <p class="summary-text">{{ reportData.conversation_summary || '综合表现稳定，建议持续强化可迁移能力。' }}</p>
+                </el-card>
 
-              <el-col :xs="24" :sm="24" :md="8" class="content-col">
-                <el-card class="report-card" shadow="hover">
-            <template #header>
-              <div class="card-title">📋 下一步</div>
-            </template>
-            <div class="action-steps">
-              <div class="step">
-                <div class="step-number">1</div>
-                <div class="step-content">
-                  <h4>分享报告</h4>
-                  <p>将此报告分享给HR或目标企业</p>
-                </div>
-              </div>
-              <div class="step">
-                <div class="step-number">2</div>
-                <div class="step-content">
-                  <h4>多岗位评估</h4>
-                  <p>尝试其他岗位的评估，发现更多可能</p>
-                </div>
-              </div>
-              <div class="step">
-                <div class="step-number">3</div>
-                <div class="step-content">
-                  <h4>持续发展</h4>
-                  <p>根据建议，聚焦改进空间的特质</p>
-                </div>
-              </div>
-            </div>
-
-            <div class="action-buttons">
-              <el-button type="primary" @click="downloadReport">
-                <el-icon><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2z" fill="currentColor"/></svg></el-icon>
-                下载报告
-              </el-button>
-              <el-button @click="goHome">
-                <el-icon><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z" fill="currentColor"/></svg></el-icon>
-                返回首页
-              </el-button>
-            </div>
-          </el-card>
+                <el-card id="section-suggestions" class="report-card" shadow="hover">
+                  <template #header>
+                    <div class="card-title">建议</div>
+                  </template>
+                  <div class="recommendations-list">
+                    <div v-for="(item, index) in recommendations" :key="index" class="rec-item">
+                      <div class="rec-num">{{ index + 1 }}</div>
+                      <div class="rec-content">{{ item }}</div>
+                    </div>
+                  </div>
+                </el-card>
               </el-col>
             </el-row>
 
-            <!-- 第三行：历史记录 -->
-            <el-row :gutter="24" class="history-row">
-              <el-col :xs="24">
-                <el-card id="section-history" class="report-card" shadow="hover">
-            <template #header>
-              <div class="card-title">🗂 历史报告</div>
-            </template>
-            <p class="history-tip">查看你过去的评估记录，追踪能力变化趋势。</p>
-            <el-button class="history-btn" @click="goHome">前往历史报告列表</el-button>
-          </el-card>
+            <!-- 岗位需求对比 -->
+            <el-row :gutter="24" class="content-row">
+              <el-col :xs="24" class="content-col">
+                <el-card id="section-details" class="report-card" shadow="hover">
+                  <template #header>
+                    <div class="card-title">我的特质 vs 岗位需求</div>
+                  </template>
+                  <el-table :data="traitComparison" size="small" border>
+                    <el-table-column prop="name" label="特质维度" min-width="100" />
+                    <el-table-column label="我的分数" min-width="100">
+                      <template #default="scope">{{ scope.row.myScore }}/10</template>
+                    </el-table-column>
+                    <el-table-column label="岗位需求" min-width="100">
+                      <template #default="scope">{{ scope.row.requiredMin }}-{{ scope.row.requiredMax }}</template>
+                    </el-table-column>
+                    <el-table-column label="匹配" min-width="80">
+                      <template #default="scope">
+                        <el-tag :type="scope.row.matched ? 'success' : 'warning'" size="small">{{ scope.row.matched ? '✓' : '△' }}</el-tag>
+                      </template>
+                    </el-table-column>
+                    <el-table-column label="分析" min-width="140">
+                      <template #default="scope">{{ scope.row.analysis }}</template>
+                    </el-table-column>
+                  </el-table>
+                </el-card>
+              </el-col>
+            </el-row>
+
+            <!-- 关键因素与下一步 -->
+            <el-row :gutter="24" class="content-row history-row">
+              <el-col :xs="24" :md="12" class="content-col">
+                <el-card class="report-card" shadow="hover">
+                  <template #header>
+                    <div class="card-title">岗位匹配的关键因素</div>
+                  </template>
+                  <div class="key-factors-list">
+                    <div v-for="factor in keyFactors" :key="factor.name" class="factor-item">
+                      <div class="factor-header">
+                        <span class="factor-name">{{ factor.name }}</span>
+                        <span class="factor-level" :style="{ color: factor.color }">{{ factor.level }}</span>
+                      </div>
+                      <div class="factor-progress">
+                        <div class="progress-bar-container">
+                          <div class="progress-bar" :style="{ width: factor.score * 10 + '%', backgroundColor: factor.color }"></div>
+                        </div>
+                        <span class="progress-text">{{ factor.score.toFixed(1) }}/10</span>
+                      </div>
+                    </div>
+                  </div>
+                </el-card>
+              </el-col>
+
+              <el-col :xs="24" :md="12" class="content-col">
+                <el-card class="report-card" shadow="hover">
+                  <template #header>
+                    <div class="card-title">下一步</div>
+                  </template>
+                  <p style="color: #475569; margin: 0; line-height: 1.8;">
+                    根据评估结果，建议你：<br>
+                    1. 关注心理特质评分低于岗位需求的维度<br>
+                    2. 有针对性地参加培训课程<br>
+                    3. 定期复测以追踪进展
+                  </p>
+
+                  <div class="action-buttons">
+                    <el-button type="primary" @click="downloadReport">下载报告</el-button>
+                    <el-button @click="goHome">返回首页</el-button>
+                    <el-button type="text" @click="goReportList">查看历史报告</el-button>
+                  </div>
+                </el-card>
               </el-col>
             </el-row>
           </div>
@@ -359,154 +205,111 @@
       </div>
     </div>
 
-    <!-- 加载失败 -->
     <div v-else-if="!loading" class="error-state">
-      <EmptyState
-        title="报告加载失败"
-        text="无法找到对应的评估报告，请返回重试"
-      />
+      <EmptyState title="报告加载失败" text="无法找到对应的评估报告，请返回重试" />
       <el-button type="primary" @click="goBack">返回</el-button>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from 'vue'
-import { useRouter, useRoute } from 'vue-router'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import RadarChart from '@/components/RadarChart.vue'
 import EmptyState from '@/components/EmptyState.vue'
 import { fetchReportDetail } from '@/utils/request'
 
-const router = useRouter()
+type Trait = { name: string; score: number }
+
+interface ReportData {
+  job_title?: string
+  created_at?: string
+  assessment_mode?: string
+  match_score?: number
+  conversation_summary?: string
+  personality_trait?: Trait[]
+  portrait?: Trait[]
+  recommendations?: string[]
+  assessement_details?: {
+    roles_participated?: string[]
+  }
+}
+
+interface TraitComparisonItem {
+  name: string
+  myScore: number
+  requiredMin: number
+  requiredMax: number
+  matched: boolean
+  analysis: string
+}
+
+interface KeyFactor {
+  name: string
+  score: number
+  level: string
+  color: string
+}
+
 const route = useRoute()
+const router = useRouter()
 
 const loading = ref(false)
-const reportData = ref<any>(null)
-const personalityMatchScore = ref(78)
-const skillMatchScore = ref(85)
-const educationMatchScore = ref(90)
-const traitComparison = ref<any[]>([])
-const ringDasharray = ref('157 314')
-const activeSection = ref('overview')
+const reportData = ref<ReportData | null>(null)
+const traitComparison = ref<TraitComparisonItem[]>([])
+const personalityMatchScore = ref(0)
+const skillMatchScore = ref(76)
+const educationMatchScore = ref(82)
+const ringDasharray = ref('0 314')
+const keyFactors = ref<KeyFactor[]>([])
+
 const sectionMenu = [
   { key: 'overview', label: '报告概览' },
-  { key: 'details', label: '匹配详情' },
-  { key: 'capability', label: '能力分析' },
-  { key: 'psychology', label: '心理解读' },
-  { key: 'suggestions', label: '建议中心' },
-  { key: 'history', label: '历史报告' }
+  { key: 'psychology', label: '心理特质' },
+  { key: 'capability', label: '能力亮点' },
+  { key: 'details', label: '特质对比' },
+  { key: 'suggestions', label: '建议' }
 ]
 
-function scrollToSection(key: string) {
-  activeSection.value = key
-  const target = document.getElementById(`section-${key}`)
-  if (target) {
-    target.scrollIntoView({ behavior: 'smooth', block: 'start' })
+const activeSection = ref('overview')
+const scrollContainer = ref<HTMLElement | Window>(window)
+
+const personalityTraits = computed<Trait[]>(() => reportData.value?.personality_trait || reportData.value?.portrait || [])
+
+const roleCount = computed(() => reportData.value?.assessement_details?.roles_participated?.length || 3)
+
+const recommendations = computed(() => {
+  if (reportData.value?.recommendations?.length) {
+    return reportData.value.recommendations
   }
+  return [
+    '继续强化高匹配维度，形成稳定优势。',
+    '围绕差距维度制定4周训练计划。',
+    '每两周复盘一次面试表现，持续校准方向。'
+  ]
+})
+
+const phaseHighlight = computed(() => getPhaseHighlight('hr'))
+
+function goBack() {
+  router.back()
 }
 
-function updateActiveSectionByScroll() {
-  const offsets = sectionMenu
-    .map((item) => {
-      const el = document.getElementById(`section-${item.key}`)
-      if (!el) return null
-      return { key: item.key, top: el.getBoundingClientRect().top }
-    })
-    .filter(Boolean) as Array<{ key: string; top: number }>
-
-  const current = offsets
-    .filter((item) => item.top <= 130)
-    .sort((a, b) => b.top - a.top)[0]
-
-  if (current && current.key !== activeSection.value) {
-    activeSection.value = current.key
-  }
+function goHome() {
+  router.push('/home')
 }
 
-function generateTraitComparison() {
-  if (!reportData.value?.personality_trait) return
-  
-  const traits = reportData.value.personality_trait
-  const jobRequirements: Record<string, {min: number, max: number, weight: number}> = {
-    '外向性': { min: 5, max: 9, weight: 0.2 },
-    '宜人性': { min: 6, max: 10, weight: 0.25 },
-    '尽责性': { min: 7, max: 10, weight: 0.3 },
-    '神经质': { min: 0, max: 5, weight: 0.15 },
-    '开放性': { min: 6, max: 10, weight: 0.1 }
-  }
-  
-  const comparison = traits.map((trait: any) => {
-    const req = jobRequirements[trait.name] || { min: 4, max: 8, weight: 0.2 }
-    const matched = trait.score >= req.min && trait.score <= req.max
-    const gap = matched ? 0 : (trait.score < req.min ? req.min - trait.score : trait.score - req.max)
-    
-    const analysisMap: Record<string, string> = {
-      '外向性': matched ? '社交活力与人际互动良好' : '可提升人际互动主动性',
-      '宜人性': matched ? '团队合作与协调能力强' : '可增强团队沟通与协作',
-      '尽责性': matched ? '计划性强、执行力高' : '可提升组织与自律能力',
-      '神经质': matched ? '情绪稳定，压力管理能力强' : '可增强情绪调节能力',
-      '开放性': matched ? '思维开放，接受新想法' : '可提升创新思维与学习能力'
-    }
-    
-    return {
-      name: trait.name,
-      myScore: trait.score,
-      requiredMin: req.min,
-      requiredMax: req.max,
-      matched,
-      gap,
-      analysis: analysisMap[trait.name] || '表现符合岗位需求'
-    }
-  })
-  
-  traitComparison.value = comparison
-  
-  // 计算匹配度权重
-  const matchedCount = comparison.filter((c: any) => c.matched).length
-  const personalityScore = Math.round((matchedCount / comparison.length) * 100)
-  personalityMatchScore.value = personalityScore
-  
-  // 更新环形进度
-  const circumference = 2 * Math.PI * 50
-  const filled = (reportData.value.match_score / 100) * circumference
-  ringDasharray.value = `${filled} ${circumference - filled}`
+function goReportList() {
+  router.push('/home/reports')
 }
 
-function getPhaseHighlight(phase: string): string {
-  const summary = reportData.value?.conversation_summary || ''
-  const phases: Record<string, string> = {
-    'hr': '在与HR的交流中，展现出良好的沟通能力和岗位理解。',
-    'tech': '技术深度探讨中，展示了扎实的专业基础和问题解决能力。',
-    'product': '产品思维对话中，表现出良好的用户视角和创新意识。'
-  }
-  return phases[phase] || summary.substring(0, 100) + '...'
+function downloadReport() {
+  ElMessage.success('报告下载功能开发中')
 }
 
-function getPhaseInsight(phase: string): string {
-  const insights: Record<string, string> = {
-    'hr': '表现出高度的自我认知和职业规划意识，与岗位契合度高。',
-    'tech': '系统化思维强，技能掌握全面，完全满足岗位的技术要求。',
-    'product': '思维敏捷，能够多角度思考问题，展现出良好的综合素质。'
-  }
-  return insights[phase]
-}
-
-async function loadReport() {
-  loading.value = true
-  try {
-    const recordId = route.params.recordId
-    reportData.value = await fetchReportDetail(recordId)
-    generateTraitComparison()
-  } catch (error) {
-    console.error('加载报告失败:', error)
-    ElMessage.error('加载报告失败，请刷新重试')
-  } finally {
-    loading.value = false
-  }
-}
-
-function formatTime(dateString: string): string {
+function formatTime(dateString?: string): string {
+  if (!dateString) return '-'
   try {
     const date = new Date(dateString)
     return date.toLocaleString('zh-CN', {
@@ -536,114 +339,186 @@ function getTraitColor(score: number): string {
 }
 
 function getMatchLevel(score: number): string {
-  if (score >= 80) return '高度匹配'
-  if (score >= 60) return '中等匹配'
-  return '需要提升'
+  if (score >= 85) return '高度匹配'
+  if (score >= 70) return '良好匹配'
+  if (score >= 55) return '中等匹配'
+  return '待提升'
 }
 
-function downloadReport() {
-  ElMessage.info('报告下载功能开发中')
-  // 未来可实现 PDF 导出功能
+function getPhaseHighlight(_phase: string): string {
+  return reportData.value?.conversation_summary || '在模拟面试中展现了较强的表达与理解能力，整体节奏稳定。'
 }
 
-function goBack() {
-  router.back()
+function getFactorLevel(score: number): { level: string; color: string } {
+  if (score >= 8) return { level: '优秀', color: '#67c23a' }
+  if (score >= 6.5) return { level: '良好', color: '#409eff' }
+  if (score >= 5) return { level: '中等', color: '#e6a23c' }
+  return { level: '待提升', color: '#f56c6c' }
 }
 
-function goHome() {
-  router.push('/home')
+function generateTraitComparison() {
+  const traits = personalityTraits.value
+  if (!traits.length) {
+    traitComparison.value = []
+    personalityMatchScore.value = 0
+    keyFactors.value = []
+    return
+  }
+
+  const jobRequirements: Record<string, { min: number; max: number }> = {
+    外向性: { min: 6, max: 9 },
+    宜人性: { min: 6, max: 9 },
+    尽责性: { min: 7, max: 10 },
+    神经质: { min: 0, max: 5 },
+    开放性: { min: 6, max: 10 }
+  }
+
+  traitComparison.value = traits.map((trait) => {
+    const req = jobRequirements[trait.name] || { min: 5, max: 8 }
+    const score = Number(trait.score || 0)
+    const matched = score >= req.min && score <= req.max
+    const analysis = matched ? '该维度符合岗位心理画像要求。' : '该维度与岗位区间存在差距，建议专项训练。'
+
+    return {
+      name: trait.name,
+      myScore: Number(score.toFixed(1)),
+      requiredMin: req.min,
+      requiredMax: req.max,
+      matched,
+      analysis
+    }
+  })
+
+  const matchedCount = traitComparison.value.filter((item) => item.matched).length
+  personalityMatchScore.value = Math.round((matchedCount / traitComparison.value.length) * 100)
+
+  const circumference = 2 * Math.PI * 40
+  const filled = ((reportData.value?.match_score || 0) / 100) * circumference
+  ringDasharray.value = `${filled} ${circumference - filled}`
+
+  // 计算三大关键因素（基于人格特质）
+  const expressiveness = (traitComparison.value.find((t) => t.name === '外向性')?.myScore || 5) + 0.5
+  const execution = (traitComparison.value.find((t) => t.name === '尽责性')?.myScore || 5) + 0.3
+  const learning = (traitComparison.value.find((t) => t.name === '开放性')?.myScore || 5) + 0.2
+
+  keyFactors.value = [
+    {
+      name: '表达能力',
+      score: Math.min(10, Math.max(0, expressiveness)),
+      ...getFactorLevel(expressiveness)
+    },
+    {
+      name: '执行力',
+      score: Math.min(10, Math.max(0, execution)),
+      ...getFactorLevel(execution)
+    },
+    {
+      name: '学习能力',
+      score: Math.min(10, Math.max(0, learning)),
+      ...getFactorLevel(learning)
+    }
+  ]
 }
 
-onMounted(() => {
-  loadReport()
-  window.addEventListener('scroll', updateActiveSectionByScroll, { passive: true })
+async function loadReport() {
+  loading.value = true
+  try {
+    const recordId = route.params.recordId as string
+    reportData.value = await fetchReportDetail(recordId)
+    generateTraitComparison()
+  } catch (error) {
+    console.error('加载报告失败:', error)
+    ElMessage.error('加载报告失败，请刷新重试')
+  } finally {
+    loading.value = false
+  }
+}
+
+function scrollToSection(key: string) {
+  const el = document.getElementById(`section-${key}`)
+  if (!el) return
+
+  const container = scrollContainer.value
+  const targetOffset = 90
+
+  if (container === window) {
+    const top = el.getBoundingClientRect().top + window.scrollY - targetOffset
+    window.scrollTo({ top, behavior: 'smooth' })
+  } else {
+    const containerEl = container as HTMLElement
+    const containerRect = containerEl.getBoundingClientRect()
+    const elementRect = el.getBoundingClientRect()
+    const top = containerEl.scrollTop + (elementRect.top - containerRect.top) - targetOffset
+    containerEl.scrollTo({ top, behavior: 'smooth' })
+  }
+
+  activeSection.value = key
+}
+
+function updateActiveSectionByScroll() {
+  const keys = sectionMenu.map((item) => item.key)
+  const offset = 130
+  const container = scrollContainer.value
+  const containerTop = container === window ? 0 : (container as HTMLElement).getBoundingClientRect().top
+
+  for (let i = keys.length - 1; i >= 0; i -= 1) {
+    const el = document.getElementById(`section-${keys[i]}`)
+    if (el && el.getBoundingClientRect().top - containerTop <= offset) {
+      activeSection.value = keys[i]
+      return
+    }
+  }
+
+  activeSection.value = 'overview'
+}
+
+onMounted(async () => {
+  await loadReport()
+  await nextTick()
+  scrollContainer.value = (document.querySelector('.app-main') as HTMLElement) || window
+  scrollContainer.value.addEventListener('scroll', updateActiveSectionByScroll as EventListener, { passive: true })
+  updateActiveSectionByScroll()
 })
 
-onUnmounted(() => {
-  window.removeEventListener('scroll', updateActiveSectionByScroll)
+onBeforeUnmount(() => {
+  scrollContainer.value.removeEventListener('scroll', updateActiveSectionByScroll as EventListener)
 })
 </script>
 
 <style scoped>
 .report-container {
+  max-width: 1400px;
+  margin: 0 auto;
   padding: 24px;
-  background: linear-gradient(135deg, #f9fafc 0%, #e8eef5 100%);
+  background: #f5f7fa;
   min-height: 100vh;
 }
 
 .report-header {
   display: flex;
-  justify-content: space-between;
   align-items: center;
-  margin-bottom: 24px;
-  padding: 12px 0;
+  justify-content: space-between;
+  margin-bottom: 20px;
 }
 
 .report-header h2 {
   margin: 0;
+  color: #1f2937;
   font-size: 24px;
-  font-weight: 600;
-  color: #2c3e50;
-}
-
-.report-content {
-  animation: fadeIn 0.3s ease-in;
-}
-
-.report-layout {
-  display: grid;
-  grid-template-columns: 180px minmax(0, 1fr);
-  gap: 20px;
-  align-items: start;
-}
-
-.report-sidenav {
-  position: sticky;
-  top: 84px;
-  background: #ffffff;
-  border: 1px solid #e8edf5;
-  border-radius: 12px;
-  box-shadow: 0 2px 10px rgba(15, 23, 42, 0.06);
-  padding: 12px;
-}
-
-.sidenav-title {
-  padding: 8px 10px;
-  font-size: 13px;
   font-weight: 700;
-  color: #6b7280;
 }
 
-.sidenav-item {
-  width: 100%;
-  border: none;
-  background: transparent;
-  display: flex;
+.report-header :deep(.el-button) {
+  display: inline-flex;
   align-items: center;
-  gap: 8px;
-  padding: 10px;
-  border-radius: 8px;
-  color: #4b5563;
-  font-size: 14px;
-  cursor: pointer;
-  transition: all 0.2s ease;
+  gap: 6px;
+  color: #334155;
 }
 
-.sidenav-item:hover {
-  background: #f4f7ff;
-  color: #2563eb;
-}
-
-.sidenav-item.active {
-  background: #eaf2ff;
-  color: #1d4ed8;
-  font-weight: 600;
-}
-
-.sidenav-icon {
+.report-header :deep(.el-button svg),
+.card-title :deep(svg) {
   width: 18px;
   height: 18px;
-  flex-shrink: 0;
   fill: none;
   stroke: currentColor;
   stroke-width: 1.8;
@@ -651,8 +526,83 @@ onUnmounted(() => {
   stroke-linejoin: round;
 }
 
+.report-content {
+  margin-top: 12px;
+}
+
+.report-layout {
+  display: grid;
+  grid-template-columns: 196px minmax(0, 1fr);
+  gap: 24px;
+  align-items: start;
+}
+
+.report-sidenav {
+  position: sticky;
+  top: 90px;
+  background: linear-gradient(180deg, #ffffff 0%, #fbfcff 100%);
+  border: 1px solid #ebeff7;
+  border-radius: 14px;
+  padding: 14px 12px;
+  box-shadow: 0 8px 28px rgba(29, 45, 94, 0.06);
+}
+
+.sidenav-title {
+  font-size: 12px;
+  color: #a0aec0;
+  letter-spacing: 0.6px;
+  margin-bottom: 8px;
+  padding: 0 10px;
+}
+
+.sidenav-item {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 12px;
+  border-radius: 12px;
+  color: #5f6e86;
+  font-size: 15px;
+  font-weight: 600;
+  margin-bottom: 6px;
+  cursor: pointer;
+  transition: all 0.22s ease;
+}
+
+.sidenav-item:hover {
+  background: #f5f7fc;
+  color: #4d5f86;
+}
+
+.sidenav-item.active {
+  background: #eef2ff;
+  color: #5c72f2;
+  font-weight: 600;
+  box-shadow: inset 0 0 0 1px #e3e9ff;
+}
+
+.sidenav-icon {
+  width: 20px;
+  height: 20px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.9;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  flex-shrink: 0;
+  opacity: 0.95;
+}
+
 .report-main {
   min-width: 0;
+}
+
+.overview-section {
+  margin-bottom: 24px;
 }
 
 .content-grid {
@@ -661,49 +611,37 @@ onUnmounted(() => {
   gap: 24px;
 }
 
-.content-row {
+.hero-row,
+.content-row,
+.history-row {
   margin-bottom: 0;
 }
 
-.content-row .content-col {
+.side-stack {
   display: flex;
-}
-
-.content-row .report-card {
-  width: 100%;
-  height: 100%;
-  margin-bottom: 0;
-}
-
-.history-row .report-card {
-  margin-bottom: 0;
-}
-
-@keyframes fadeIn {
-  from {
-    opacity: 0;
-    transform: translateY(10px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+  flex-direction: column;
+  gap: 24px;
 }
 
 .report-card {
-  margin-bottom: 24px;
+  margin-bottom: 0;
   border: 1px solid #e8edf5;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
   background: #fff;
-  border-radius: 8px;
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  border-radius: 10px;
+  transition: all 0.25s ease;
   overflow: hidden;
 }
 
 .report-card:hover {
-  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.12);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.1);
   border-color: #d0dce6;
   transform: translateY(-2px);
+}
+
+.report-card-main {
+  border-color: #d7e4fb;
+  box-shadow: 0 6px 20px rgba(30, 64, 175, 0.12);
 }
 
 .card-title {
@@ -712,12 +650,7 @@ onUnmounted(() => {
   gap: 8px;
   font-size: 16px;
   font-weight: 600;
-  color: #2c3e50;
-}
-
-.card-title :deep(.el-icon) {
-  font-size: 18px;
-  color: #409eff;
+  color: #1f2937;
 }
 
 .report-card :deep(.el-card__header) {
@@ -730,17 +663,91 @@ onUnmounted(() => {
   padding: 20px;
 }
 
+.info-value {
+  color: #334155;
+  font-weight: 500;
+}
+
+.quick-match {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.main-score {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.score-circle-small {
+  position: relative;
+  width: 108px;
+  height: 108px;
+}
+
+.ring-svg-small {
+  width: 100%;
+  height: 100%;
+}
+
+.score-text {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.main-num {
+  font-size: 24px;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.level-label {
+  margin: 0;
+  font-size: 16px;
+  color: #0f172a;
+  font-weight: 600;
+}
+
+.level-desc {
+  margin: 6px 0 0;
+  color: #64748b;
+  font-size: 13px;
+}
+
+.dimensions-mini {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.mini-item {
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 10px;
+  background: #f8fafc;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.mini-label {
+  color: #64748b;
+  font-size: 12px;
+}
+
+.mini-value {
+  color: #1e40af;
+  font-size: 16px;
+  font-weight: 700;
+}
+
 .portrait-display :deep(.echarts-container) {
   width: 100%;
-  height: 280px;
-  margin-bottom: 16px;
-}
-
-.report-card :deep(.el-form-item) {
-  margin-bottom: 12px;
-}
-
-.report-card :deep(.el-form-item:last-child) {
+  height: 240px;
   margin-bottom: 0;
 }
 
@@ -750,12 +757,107 @@ onUnmounted(() => {
   margin-top: 16px;
 }
 
+.match-breakdown {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.breakdown-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px;
+  background: #f5f7fc;
+  border-radius: 8px;
+}
+
+.breakdown-label {
+  color: #475569;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.breakdown-value {
+  color: #5c72f2;
+  font-size: 20px;
+  font-weight: 700;
+}
+
+.key-factors-list {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.factor-item {
+  padding: 14px;
+  background: linear-gradient(135deg, #f8fafc 0%, #f1f5fe 100%);
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  transition: all 0.3s ease;
+}
+
+.factor-item:hover {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+  border-color: #cbd5e1;
+}
+
+.factor-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.factor-name {
+  color: #2c3e50;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.factor-level {
+  font-size: 13px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 4px;
+  background: rgba(99, 179, 237, 0.1);
+}
+
+.factor-progress {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.progress-bar-container {
+  flex: 1;
+  height: 6px;
+  background: #e2e8f0;
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.progress-bar {
+  height: 100%;
+  border-radius: 3px;
+  transition: width 0.4s ease;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.progress-text {
+  color: #64748b;
+  font-size: 13px;
+  font-weight: 600;
+  min-width: 45px;
+  text-align: right;
+}
+
 .traits-summary h4 {
-  margin: 0 0 12px 0;
+  margin: 0 0 12px;
   color: #2c3e50;
   font-size: 13px;
   font-weight: 600;
-  letter-spacing: 0.3px;
 }
 
 .traits-list-compact {
@@ -771,7 +873,6 @@ onUnmounted(() => {
 }
 
 .trait-name {
-  flex-shrink: 0;
   min-width: 70px;
   font-size: 12px;
   color: #2c3e50;
@@ -779,60 +880,39 @@ onUnmounted(() => {
 }
 
 .trait-score {
-  flex-shrink: 0;
-  min-width: 50px;
+  min-width: 56px;
   text-align: right;
   font-size: 12px;
   font-weight: 600;
   color: #409eff;
 }
 
-.summary-text {
-  line-height: 1.8;
-  color: #606266;
+.summary-text,
+.phase-text-compact,
+.analysis-section p,
+.history-tip {
+  color: #475569;
+  line-height: 1.7;
   margin: 0;
 }
 
 .phase-info-compact {
-  padding: 10px 0 2px;
-}
-
-.phase-text-compact {
-  margin: 0;
-  font-size: 13px;
-  line-height: 1.7;
-  color: #4b5563;
+  margin-bottom: 12px;
 }
 
 .analysis-content {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 12px;
 }
 
 .analysis-section h4 {
-  margin: 0 0 12px 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 0 0 8px;
   font-size: 14px;
-  color: #2c3e50;
-  font-weight: 600;
-}
-
-.analysis-section ul {
-  margin: 0;
-  padding-left: 20px;
-  list-style: disc;
-}
-
-.analysis-section li {
-  margin-bottom: 8px;
-  color: #606266;
-  line-height: 1.6;
-}
-
-.analysis-section p {
-  margin: 0;
-  color: #606266;
-  line-height: 1.6;
+  color: #1f2937;
 }
 
 .recommendations-list {
@@ -845,632 +925,132 @@ onUnmounted(() => {
   display: flex;
   gap: 12px;
   padding: 12px 14px;
-  background: #f9fafc;
+  background: #f8fafc;
   border: 1px solid #e8edf5;
-  border-left: 3px solid #409eff;
-  border-radius: 6px;
-  transition: all 0.3s;
-}
-
-.rec-item:hover {
-  background: #f0f5ff;
-  border-left-color: #66b1ff;
-  box-shadow: 0 2px 8px rgba(64, 158, 255, 0.12);
+  border-left: 3px solid #3b82f6;
+  border-radius: 8px;
 }
 
 .rec-num {
   flex-shrink: 0;
+  width: 24px;
+  height: 24px;
+  border-radius: 999px;
+  background: #dbeafe;
+  color: #1d4ed8;
+  font-size: 13px;
+  font-weight: 700;
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 24px;
-  height: 24px;
-  background: #409eff;
-  color: #fff;
-  border-radius: 50%;
-  font-size: 12px;
-  font-weight: 600;
 }
 
-.rec-text {
-  flex: 1;
-  color: #606266;
-  line-height: 1.5;
-  font-size: 13px;
+.rec-content {
+  color: #334155;
+  line-height: 1.65;
 }
 
-.rec-empty {
-  padding: 14px;
-  border-radius: 8px;
-  border: 1px dashed #cbd5e1;
-  color: #64748b;
-  font-size: 13px;
-  line-height: 1.7;
-  background: #f8fafc;
-}
-
-.action-steps {
+.next-steps {
   display: flex;
   flex-direction: column;
-  gap: 14px;
-  margin-bottom: 20px;
-  padding-bottom: 16px;
-  border-bottom: 1px solid #e8edf5;
+  gap: 12px;
 }
 
 .step {
   display: flex;
-  gap: 14px;
-  padding: 12px 0;
-  transition: all 0.3s;
-}
-
-.step:hover {
-  padding-left: 4px;
-  padding-right: -4px;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 10px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  background: #f9fafb;
 }
 
 .step-number {
-  flex-shrink: 0;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: #eaf2ff;
+  color: #1d4ed8;
+  font-weight: 700;
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 32px;
-  height: 32px;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  color: #fff;
-  border-radius: 50%;
-  font-weight: 600;
-  font-size: 14px;
-  box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);
+  font-size: 13px;
 }
 
 .step-content h4 {
-  margin: 2px 0 4px 0;
-  font-size: 13px;
-  color: #2c3e50;
-  font-weight: 600;
+  margin: 0;
+  color: #1f2937;
+  font-size: 14px;
 }
 
 .step-content p {
-  margin: 0;
-  font-size: 12px;
-  color: #909399;
-  line-height: 1.5;
+  margin: 4px 0 0;
+  color: #64748b;
+  font-size: 13px;
 }
 
 .action-buttons {
+  margin-top: 16px;
   display: flex;
-  gap: 12px;
-  flex-direction: column;
-}
-
-.action-buttons :deep(.el-button) {
-  width: 100%;
-  height: 40px;
-  font-weight: 500;
-  border-radius: 6px;
-  transition: all 0.3s;
-}
-
-.action-buttons :deep(.el-button--primary) {
-  background: linear-gradient(135deg, #409eff 0%, #66b1ff 100%);
-  border: none;
-}
-
-.action-buttons :deep(.el-button--primary:hover) {
-  box-shadow: 0 4px 12px rgba(64, 158, 255, 0.4);
-  transform: translateY(-2px);
-}
-
-.action-buttons :deep(.el-button:not(.el-button--primary)) {
-  border: 1px solid #e8edf5;
-  color: #2c3e50;
-}
-
-.action-buttons :deep(.el-button:not(.el-button--primary):hover) {
-  border-color: #409eff;
-  color: #409eff;
-  background: #f5f7fa;
-}
-
-.history-tip {
-  margin: 0 0 14px;
-  font-size: 13px;
-  color: #6b7280;
-  line-height: 1.7;
+  gap: 10px;
 }
 
 .history-btn {
-  width: 100%;
-  border-radius: 8px;
+  margin-top: 14px;
 }
 
 .error-state {
-  text-align: center;
-  padding: 40px 20px;
-}
-
-/* ==================== 概览区域 ==================== */
-.overview-section {
-  margin-bottom: 28px;
-}
-
-.overview-section .report-card {
-  background: linear-gradient(135deg, #ffffff 0%, #f9fafc 100%);
-  border: 1px solid #e8edf5;
-}
-
-.quick-match {
   display: flex;
   flex-direction: column;
-  gap: 20px;
-}
-
-.quick-match .main-score {
-  display: flex;
   align-items: center;
-  gap: 24px;
-}
-
-.quick-match .match-level {
-  flex: 1;
-}
-
-.score-circle-small {
-  position: relative;
-  width: 100px;
-  height: 100px;
-  flex-shrink: 0;
-}
-
-.ring-svg-small {
-  width: 100%;
-  height: 100%;
-}
-
-.score-text {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  text-align: center;
-  line-height: 1;
-}
-
-.main-num {
-  display: block;
-  font-size: 32px;
-  font-weight: 700;
-  color: #2c3e50;
-}
-
-.level-label {
-  margin: 4px 0 0 0;
-  font-size: 14px;
-  font-weight: 600;
-  color: #2c3e50;
-}
-
-.level-desc {
-  margin: 4px 0 0 0;
-  font-size: 12px;
-  color: #909399;
-}
-
-.dimensions-mini {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 16px;
-  padding-top: 16px;
-  border-top: 1px solid #e8edf5;
-}
-
-.mini-item {
-  text-align: center;
-  padding: 8px;
-  transition: all 0.3s;
-}
-
-.mini-item:hover {
-  background: #f9fafc;
-  border-radius: 6px;
-  padding: 10px;
-}
-
-.mini-item .mini-label {
-  display: block;
-  font-size: 12px;
-  color: #909399;
-  margin-bottom: 6px;
-  font-weight: 500;
-}
-
-.mini-item .mini-value {
-  display: block;
-  font-size: 18px;
-  font-weight: 700;
-  color: #409eff;
-  letter-spacing: 0.5px;
-}
-
-/* ==================== 岗位需求对比 ==================== */
-.requirement-comparison {
-  overflow-x: auto;
-}
-
-.requirement-comparison :deep(.el-table) {
-  font-size: 13px;
-}
-
-.requirement-comparison :deep(.el-table__header-wrapper) {
-  background: #f9fafc;
-}
-
-.requirement-comparison :deep(.el-table__header th) {
-  background: #f9fafc !important;
-  border-color: #e8edf5;
-  font-weight: 600;
-  color: #2c3e50;
-}
-
-.requirement-comparison :deep(.el-table__row) {
-  transition: background-color 0.2s;
-}
-
-.requirement-comparison :deep(.el-table__row:hover > td) {
-  background: #f5f7fa !important;
-}
-
-.requirement-comparison :deep(.el-table__body-wrapper) {
-  border: 1px solid #e8edf5;
-  border-top: none;
-  border-radius: 0 0 6px 6px;
-}
-
-.score-cell {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  align-items: center;
-}
-
-.score-cell :deep(.el-progress) {
-  width: 100%;
-}
-
-.score-value {
-  font-size: 12px;
-  font-weight: 600;
-  color: #2c3e50;
-}
-
-.requirement-range {
-  font-size: 13px;
-  font-weight: 500;
-  color: #606266;
-}
-
-.analysis-text {
-  font-size: 12px;
-  color: #909399;
-  line-height: 1.5;
-}
-
-/* ==================== 匹配度拆解 ==================== */
-.match-breakdown {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-
-.overall-score-display {
-  display: flex;
   justify-content: center;
-  margin-bottom: 0;
-  padding-bottom: 16px;
-  border-bottom: 1px solid #e8edf5;
-}
-
-.score-ring {
-  position: relative;
-  width: 180px;
-  height: 180px;
-}
-
-.ring-svg {
-  width: 100%;
-  height: 100%;
-}
-
-.ring-progress {
-  transition: stroke-dasharray 0.8s cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-.score-content {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  text-align: center;
-  line-height: 1;
-}
-
-.score-number {
-  display: block;
-  font-size: 36px;
-  font-weight: 700;
-  color: #2c3e50;
-}
-
-.score-label {
-  display: block;
-  font-size: 12px;
-  color: #909399;
-  margin-top: 6px;
-}
-
-.dimension-scores {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-  padding: 16px 0;
-  border-bottom: 1px solid #e8edf5;
-}
-
-.score-item {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.item-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
-.item-name {
-  font-size: 13px;
-  font-weight: 600;
-  color: #2c3e50;
-}
-
-.item-value {
-  font-size: 14px;
-  font-weight: 700;
-  color: #409eff;
-}
-
-.score-item :deep(.el-progress) {
-  flex: 1;
-  margin: 6px 0;
-}
-
-.item-weight {
-  font-size: 11px;
-  color: #909399;
-  line-height: 1.5;
-}
-
-.formula-display {
-  padding: 14px 16px;
-  background: linear-gradient(135deg, #f5f7fa 0%, #eff3f8 100%);
-  border: 1px solid #e8edf5;
-  border-radius: 6px;
-  text-align: center;
-  margin-top: 4px;
-}
-
-.formula-title {
-  margin: 0 0 8px 0;
-  font-size: 12px;
-  font-weight: 600;
-  color: #2c3e50;
-  letter-spacing: 0.3px;
-}
-
-.formula-equation {
-  margin: 0;
-  font-size: 12px;
-  color: #606266;
-  font-family: 'Courier New', monospace;
-  line-height: 1.8;
-  word-break: break-all;
-}
-
-.formula-equation strong {
-  font-size: 14px;
-  color: #409eff;
-  font-weight: 700;
-}
-
-/* ==================== 对话亮点 ==================== */
-.dialogue-highlights {
-  overflow: hidden;
-}
-
-.dialogue-highlights :deep(.el-collapse) {
-  border: none;
-  background: transparent;
-}
-
-.dialogue-highlights :deep(.el-collapse-item) {
-  border: none;
-  margin-bottom: 8px;
-}
-
-.dialogue-highlights :deep(.el-collapse-item__header) {
-  background: #f5f7fa;
-  border: 1px solid #e8edf5;
-  border-radius: 6px;
-  font-weight: 500;
-  font-size: 13px;
-  height: 44px;
-  padding: 0 16px;
-  color: #2c3e50;
-  transition: all 0.3s;
-}
-
-.dialogue-highlights :deep(.el-collapse-item__header:hover) {
-  background: #eff3f8;
-  border-color: #d0dce6;
-}
-
-.dialogue-highlights :deep(.el-collapse-item__content) {
-  padding: 0;
-}
-
-.dialogue-highlights :deep(.is-active) .el-collapse-item__header {
-  background: #e6f2ff;
-  border-color: #409eff;
-  color: #409eff;
-}
-
-.phase-info {
-  padding: 16px 0;
-}
-
-.phase-text {
-  margin: 0 0 12px 0;
-  color: #606266;
-  line-height: 1.8;
-  font-size: 13px;
-}
-
-.insight-box {
-  padding: 12px 14px;
-  background: #e6f7ff;
-  border-left: 4px solid #409eff;
-  border-radius: 4px;
-}
-
-.insight-box strong {
-  color: #409eff;
-  font-size: 12px;
-}
-
-.insight-box p {
-  margin: 6px 0 0 0;
-  color: #606266;
-  font-size: 12px;
-  line-height: 1.6;
+  gap: 16px;
+  min-height: 300px;
 }
 
 @media (max-width: 1200px) {
-  .report-container {
-    padding: 16px;
-  }
-
   .report-layout {
     grid-template-columns: 1fr;
   }
 
   .report-sidenav {
     position: static;
-    display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 6px;
+    margin-bottom: 8px;
   }
 
-  .sidenav-title {
-    grid-column: 1 / -1;
-  }
-
-  .report-header {
-    flex-direction: column;
-    gap: 12px;
-    align-items: flex-start;
-  }
-
-  .dimensions-mini {
-    gap: 12px;
-  }
-
-  .content-grid {
+  .content-grid,
+  .side-stack {
     gap: 20px;
-  }
-}
-
-@media (max-width: 992px) {
-  .quick-match .main-score {
-    gap: 16px;
-  }
-
-  .score-circle-small {
-    width: 80px;
-    height: 80px;
-  }
-
-  .main-num {
-    font-size: 24px;
-  }
-
-  .dimensions-mini {
-    grid-template-columns: repeat(3, 1fr);
   }
 }
 
 @media (max-width: 768px) {
   .report-container {
-    padding: 12px;
+    padding: 14px;
   }
 
   .report-header h2 {
-    font-size: 18px;
-  }
-
-  .report-sidenav {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    padding: 10px;
-  }
-
-  .sidenav-item {
-    font-size: 13px;
-    padding: 8px;
-  }
-
-  .overview-section {
-    margin-bottom: 20px;
-  }
-
-  .quick-match .main-score {
-    flex-direction: column;
-    align-items: center;
-    gap: 12px;
-  }
-
-  .match-level {
-    text-align: center;
+    font-size: 20px;
   }
 
   .dimensions-mini {
-    gap: 12px;
-    grid-template-columns: repeat(3, 1fr);
+    grid-template-columns: 1fr;
   }
 
-  .content-col {
-    width: 100% !important;
+  .main-score {
+    flex-direction: column;
+    align-items: flex-start;
   }
 
-  .content-grid {
+  .action-buttons {
+    flex-direction: column;
+  }
+
+  .content-grid,
+  .side-stack {
     gap: 16px;
-  }
-
-  .traits-list {
-    gap: 8px;
-  }
-
-  .action-steps {
-    gap: 12px;
-  }
-
-  .requirement-comparison :deep(.el-table) {
-    font-size: 12px;
-  }
-
-  .requirement-comparison :deep(.el-table__cell) {
-    padding: 8px;
   }
 }
 </style>

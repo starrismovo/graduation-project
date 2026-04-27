@@ -37,6 +37,7 @@ class AssessmentRecord(Base):
     trait_descriptions = relationship("PersonalityTraitDescription", back_populates="assessment", cascade="all, delete-orphan")
     conversation_turns = relationship("ConversationTurn", cascade="all, delete-orphan")
     conversation_analysis = relationship("ConversationAnalysis", uselist=False, cascade="all, delete-orphan")
+    evaluation_result = relationship("EvaluationResult", uselist=False, cascade="all, delete-orphan")  # 新增：评估结果
     
     job_title = Column(String(255), nullable=False)
     
@@ -152,3 +153,79 @@ class PersonalityTraitDescription(Base):
     
     # ===== 时间戳 =====
     created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class EvaluationResult(Base):
+    """评估结果表 - 集中存储评估会话的最终结果（论文第3.5.1节设计）"""
+    __tablename__ = "evaluation_results"
+
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    result_id = Column(String(50), unique=True, nullable=False, index=True)  # UUID，方便跟踪
+    
+    # ===== 外键关系 =====
+    assessment_record_id = Column(Integer, ForeignKey("assessment_records.id", ondelete="CASCADE"), nullable=False, index=True)
+    candidate_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    job_id = Column(Integer, ForeignKey("jobs.id", ondelete="CASCADE"), nullable=False, index=True)
+    
+    # ===== 关系 =====
+    assessment_record = relationship("AssessmentRecord", foreign_keys=[assessment_record_id])
+    candidate = relationship("User", foreign_keys=[candidate_id])
+    job = relationship("Job", foreign_keys=[job_id])
+    
+    # ===== 综合匹配度 =====
+    match_score = Column(Float, nullable=False)  # 综合匹配度 (0-100)
+    
+    # ===== 能力评分（JSON格式：各维度评分） =====
+    ability_scores = Column(JSON, nullable=True)
+    # 格式: {"表达能力": 8, "技术深度": 7.5, "团队协作": 8, ...}
+    
+    # ===== 人格对比（基础人格 vs 场景人格 vs 岗位需求） =====
+    trait_comparison = Column(JSON, nullable=True)
+    # 格式: {
+    #   "外向性": {
+    #     "basic_trait": 6.0,      # 候选人基础人格
+    #     "scenario_trait": 6.5,   # 岗位情景下的场景人格
+    #     "job_requirement": 7.0,  # 岗位需求
+    #     "match_degree": 4        # 星级匹配度 (1-5)
+    #   },
+    #   ...
+    # }
+    
+    # ===== Agent 评分融合信息 =====
+    agent_scores = Column(JSON, nullable=True)
+    # 格式: {
+    #   "technical_score": 7.5,      # 技术Agent评分
+    #   "hr_score": 8.0,            # HR Agent评分
+    #   "hiring_manager_score": 7.0, # 用人主管Agent评分
+    #   "weights": {
+    #     "technical_weight": 0.5,
+    #     "hr_weight": 0.3,
+    #     "hiring_manager_weight": 0.2
+    #   }
+    # }
+    
+    # ===== 优势与改进空间 =====
+    strengths = Column(Text, nullable=True)         # 优势分析（自然语言）
+    gaps = Column(Text, nullable=True)              # 改进空间（自然语言）
+    recommendations = Column(Text, nullable=True)  # 个性化建议（自然语言）
+    
+    # ===== 完整报告 =====
+    report_content = Column(JSON, nullable=True)   # 完整评估报告内容
+    
+    # ===== 时间戳 =====
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+    def to_dict(self):
+        """转换为前端需要的格式"""
+        return {
+            "result_id": self.result_id,
+            "match_score": self.match_score,
+            "ability_scores": self.ability_scores,
+            "trait_comparison": self.trait_comparison,
+            "agent_scores": self.agent_scores,
+            "strengths": self.strengths,
+            "gaps": self.gaps,
+            "recommendations": self.recommendations,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+        }

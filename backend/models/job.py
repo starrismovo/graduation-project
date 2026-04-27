@@ -16,6 +16,25 @@ class Job(Base):
     
     required_traits = Column(JSON, nullable=False)  # 大五人格预期值
     
+    # 新增：岗位人格需求（对应论文第4.4节岗位模板设计）
+    personality_requirements = Column(JSON, nullable=True)
+    # 格式: {
+    #   "extroversion": 7.0,        # 外向性期望值 (1-10)
+    #   "agreeableness": 8.0,       # 宜人性期望值
+    #   "conscientiousness": 8.0,   # 尽责性期望值
+    #   "openness": 6.0,            # 开放性期望值
+    #   "emotional_stability": 7.0  # 情绪稳定性期望值
+    # }
+    
+    # 新增：工作环境特征（影响场景人格的因素）
+    work_environment = Column(JSON, nullable=True)
+    # 格式: {
+    #   "pace": "fast",             # 工作节奏：fast/medium/slow
+    #   "autonomy": "high",         # 自主度：high/medium/low
+    #   "collaboration": "high",    # 协作需求：high/medium/low
+    #   "innovation_focus": "medium" # 创新关注度：high/medium/low
+    # }
+    
     # 外键：谁创建的这个岗位（HR）
     creator_id = Column(Integer, ForeignKey("users.id"))
     creator = relationship("User", back_populates="jobs")

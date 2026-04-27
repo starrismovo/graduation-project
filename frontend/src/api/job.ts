@@ -100,3 +100,40 @@ export const getJobDetail = (jobId: number) => {
 export const searchJobs = (query: string) => {
   return request.get('/jobs/search', { params: { q: query } })
 }
+
+/**
+ * HR专用岗位列表（含投递数/匹配度/待处理统计）
+ */
+export const getHRJobList = (params?: { skip?: number; limit?: number; search?: string }) => {
+  return request.get('/jobs/hr/list', { params })
+}
+
+/**
+ * HR 按岗位获取候选人推荐
+ */
+export const getHRRecommendedCandidates = (jobId: number, params?: { limit?: number }) => {
+  return request.get(`/jobs/hr/${jobId}/recommended-candidates`, { params })
+}
+
+/**
+ * 编辑岗位
+ */
+export const updateJob = (jobId: number, data: {
+  name: string
+  description: string
+  company: string
+  category: string
+  city: string
+  salary_min: number
+  salary_max: number
+  required_traits?: Record<string, any>
+}) => {
+  return request.put(`/jobs/${jobId}`, { ...data, required_traits: data.required_traits || {} })
+}
+
+/**
+ * 删除岗位
+ */
+export const deleteJob = (jobId: number) => {
+  return request.delete(`/jobs/${jobId}`)
+}

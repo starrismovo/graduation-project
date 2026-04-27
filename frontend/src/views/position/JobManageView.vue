@@ -36,11 +36,8 @@
         <div class="stat-content">
           <div class="stat-label">开放岗位</div>
           <div class="stat-value">{{ stats.openJobs }}</div>
-          <div class="stat-trend positive">
-            <svg class="trend-icon" viewBox="0 0 20 20" fill="currentColor">
-              <path fill-rule="evenodd" d="M12 7a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0V8.414l-4.293 4.293a1 1 0 01-1.414 0L8 10.414l-4.293 4.293a1 1 0 01-1.414-1.414l5-5a1 1 0 011.414 0L11 10.586 14.586 7H12z" clip-rule="evenodd" />
-            </svg>
-            <span>较上周 +{{ stats.openJobsChange }}</span>
+          <div class="stat-meta">
+            <span>我发布的岗位</span>
           </div>
         </div>
       </div>
@@ -55,11 +52,8 @@
         <div class="stat-content">
           <div class="stat-label">总投递数</div>
           <div class="stat-value">{{ stats.totalApplications }}</div>
-          <div class="stat-trend positive">
-            <svg class="trend-icon" viewBox="0 0 20 20" fill="currentColor">
-              <path fill-rule="evenodd" d="M12 7a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0V8.414l-4.293 4.293a1 1 0 01-1.414 0L8 10.414l-4.293 4.293a1 1 0 01-1.414-1.414l5-5a1 1 0 011.414 0L11 10.586 14.586 7H12z" clip-rule="evenodd" />
-            </svg>
-            <span>较上周 +{{ stats.applicationsChange }}%</span>
+          <div class="stat-meta">
+            <span>面试总场次</span>
           </div>
         </div>
       </div>
@@ -74,11 +68,8 @@
         <div class="stat-content">
           <div class="stat-label">平均匹配度</div>
           <div class="stat-value">{{ stats.avgMatchRate }}%</div>
-          <div class="stat-trend positive">
-            <svg class="trend-icon" viewBox="0 0 20 20" fill="currentColor">
-              <path fill-rule="evenodd" d="M12 7a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0V8.414l-4.293 4.293a1 1 0 01-1.414 0L8 10.414l-4.293 4.293a1 1 0 01-1.414-1.414l5-5a1 1 0 011.414 0L11 10.586 14.586 7H12z" clip-rule="evenodd" />
-            </svg>
-            <span>较上周 +{{ stats.matchRateChange }}%</span>
+          <div class="stat-meta">
+            <span>已完成评估均值</span>
           </div>
         </div>
       </div>
@@ -124,7 +115,7 @@
         </div>
       </div>
 
-      <div class="jobs-table">
+      <div class="jobs-table" v-loading="loading">
         <div class="table-header">
           <div class="col-job">岗位信息</div>
           <div class="col-status">状态</div>
@@ -143,13 +134,13 @@
           >
             <div class="col-job">
               <div class="job-info">
-                <div class="job-title">{{ job.title }}</div>
+                <div class="job-title">{{ job.name }}</div>
                 <div class="job-meta">
-                  <span class="job-department">{{ job.department }}</span>
+                  <span class="job-department">{{ job.category }}</span>
                   <span class="job-separator">·</span>
-                  <span class="job-location">{{ job.location }}</span>
+                  <span class="job-location">{{ job.city }}</span>
                   <span class="job-separator">·</span>
-                  <span class="job-date">发布于 {{ job.publishedDate }}</span>
+                  <span class="job-date">{{ job.salary_min }}k - {{ job.salary_max }}k</span>
                 </div>
               </div>
             </div>
@@ -174,20 +165,20 @@
                 <div class="match-bar">
                   <div 
                     class="match-fill" 
-                    :style="{ width: job.avgMatchRate + '%' }"
-                    :class="getMatchClass(job.avgMatchRate)"
+                    :style="{ width: job.avg_match_rate + '%' }"
+                    :class="getMatchClass(job.avg_match_rate)"
                   ></div>
                 </div>
-                <span class="match-percentage">{{ job.avgMatchRate }}%</span>
+                <span class="match-percentage">{{ job.avg_match_rate }}%</span>
               </div>
             </div>
 
             <div class="col-reports">
-              <div class="reports-count" :class="{ highlight: job.pendingReports > 0 }">
+              <div class="reports-count" :class="{ highlight: job.pending_reports > 0 }">
                 <svg class="reports-icon" viewBox="0 0 20 20" fill="currentColor">
                   <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd" />
                 </svg>
-                <span>{{ job.pendingReports }}</span>
+                <span>{{ job.pending_reports }}</span>
               </div>
             </div>
 
@@ -213,156 +204,211 @@
         </div>
       </div>
     </div>
+
+    <!-- 编辑岗位弹窗 -->
+    <el-dialog v-model="showEditDialog" title="编辑岗位" width="500px" @close="showEditDialog = false">
+      <el-form :model="editForm" label-width="90px">
+        <el-form-item label="岗位名称" required>
+          <el-input v-model="editForm.name" placeholder="请输入岗位名称" />
+        </el-form-item>
+        <el-form-item label="岗位描述">
+          <el-input v-model="editForm.description" type="textarea" rows="3" placeholder="岗位描述" />
+        </el-form-item>
+        <el-form-item label="所属公司">
+          <el-input v-model="editForm.company" placeholder="公司名称" />
+        </el-form-item>
+        <el-form-item label="岗位类别">
+          <el-select v-model="editForm.category" placeholder="请选择">
+            <el-option label="技术" value="技术" />
+            <el-option label="产品" value="产品" />
+            <el-option label="设计" value="设计" />
+            <el-option label="运营" value="运营" />
+            <el-option label="销售" value="销售" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="工作城市">
+          <el-select v-model="editForm.city" placeholder="请选择">
+            <el-option label="北京" value="北京" />
+            <el-option label="上海" value="上海" />
+            <el-option label="深圳" value="深圳" />
+            <el-option label="杭州" value="杭州" />
+            <el-option label="南京" value="南京" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="薪资范围(k)">
+          <el-input-number v-model.number="editForm.salary_min" :min="0" placeholder="最低" />
+          <span style="margin: 0 8px">-</span>
+          <el-input-number v-model.number="editForm.salary_max" :min="0" placeholder="最高" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="showEditDialog = false">取消</el-button>
+        <el-button type="primary" :loading="editLoading" @click="submitEdit">保存</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ref, computed, onMounted } from 'vue'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { useRouter } from 'vue-router'
+import { getHRJobList, deleteJob, updateJob } from '@/api/job'
 
 const router = useRouter()
 
-function handleEditJob(job) {
-  router.push(`/views/position/${job.id}/edit`)
-}
-// 统计数据
+// ==================== 数据状态 ====================
+const loading = ref(false)
+const jobs = ref<any[]>([])
+const totalJobs = ref(0)
+const currentPage = ref(1)
+const pageSize = ref(20)
+
 const stats = ref({
-  openJobs: 24,
-  openJobsChange: 3,
-  totalApplications: 1248,
-  applicationsChange: 12,
-  avgMatchRate: 78,
-  matchRateChange: 5,
-  pendingReports: 18
+  openJobs: 0,
+  totalApplications: 0,
+  avgMatchRate: 0,
+  pendingReports: 0,
 })
 
-// 搜索和排序
+// ==================== 搜索与排序 ====================
 const searchQuery = ref('')
 const sortBy = ref('latest')
 
-// 岗位数据
-const jobs = ref([
-  {
-    id: 1,
-    title: '高级前端工程师',
-    department: '技术部',
-    location: '北京',
-    publishedDate: '2024-01-15',
-    status: 'active',
-    applications: 142,
-    avgMatchRate: 85,
-    pendingReports: 5
-  },
-  {
-    id: 2,
-    title: 'AI 算法工程师',
-    department: '研发中心',
-    location: '上海',
-    publishedDate: '2024-01-18',
-    status: 'active',
-    applications: 98,
-    avgMatchRate: 82,
-    pendingReports: 3
-  },
-  {
-    id: 3,
-    title: '产品经理',
-    department: '产品部',
-    location: '深圳',
-    publishedDate: '2024-01-20',
-    status: 'active',
-    applications: 156,
-    avgMatchRate: 76,
-    pendingReports: 8
-  },
-  {
-    id: 4,
-    title: 'Java 后端工程师',
-    department: '技术部',
-    location: '杭州',
-    publishedDate: '2024-01-12',
-    status: 'active',
-    applications: 187,
-    avgMatchRate: 79,
-    pendingReports: 2
-  },
-  {
-    id: 5,
-    title: 'UI/UX 设计师',
-    department: '设计部',
-    location: '北京',
-    publishedDate: '2024-01-22',
-    status: 'paused',
-    applications: 65,
-    avgMatchRate: 71,
-    pendingReports: 0
-  }
-])
-
-// 筛选后的岗位列表
 const filteredJobs = computed(() => {
-  let result = jobs.value
-
-  // 搜索过滤
+  let result = [...jobs.value]
   if (searchQuery.value) {
-    result = result.filter(job => 
-      job.title.toLowerCase().includes(searchQuery.value.toLowerCase())
+    result = result.filter(job =>
+      job.name.toLowerCase().includes(searchQuery.value.toLowerCase())
     )
   }
-
-  // 排序
   if (sortBy.value === 'applications') {
-    result = [...result].sort((a, b) => b.applications - a.applications)
+    result.sort((a, b) => b.applications - a.applications)
   } else if (sortBy.value === 'match') {
-    result = [...result].sort((a, b) => b.avgMatchRate - a.avgMatchRate)
+    result.sort((a, b) => b.avg_match_rate - a.avg_match_rate)
   }
-
   return result
 })
 
-// 获取状态文本
-const getStatusText = (status: string) => {
-  const statusMap: Record<string, string> = {
-    active: '招聘中',
-    paused: '已暂停',
-    closed: '已关闭'
+// ==================== 数据加载 ====================
+const loadJobs = async () => {
+  loading.value = true
+  try {
+    const res = await getHRJobList({
+      skip: (currentPage.value - 1) * pageSize.value,
+      limit: pageSize.value,
+    })
+    const data = res.data
+    jobs.value = data.items || []
+    totalJobs.value = data.total || 0
+    const s = data.summary || {}
+    stats.value = {
+      openJobs: s.open_jobs ?? jobs.value.length,
+      totalApplications: s.total_applications ?? 0,
+      avgMatchRate: s.avg_match_rate ?? 0,
+      pendingReports: s.pending_reports ?? 0,
+    }
+  } catch (e: any) {
+    ElMessage.error('加载岗位数据失败：' + (e.response?.data?.detail || e.message))
+  } finally {
+    loading.value = false
   }
-  return statusMap[status] || status
 }
 
-// 获取匹配度样式类
+onMounted(loadJobs)
+
+// ==================== 操作事件 ====================
+const handleRefresh = () => loadJobs()
+
+const handleCreateJob = () => {
+  router.push('/home/job-manage')
+  ElMessage.info('请在右上角"一键创建岗位"中新建')
+}
+
+const handleJobClick = (job: any) => {
+  router.push(`/views/position/${job.id}/edit`)
+}
+
+const handleViewReports = (job: any) => {
+  router.push(`/home/job-manage`)
+  ElMessage.info(`筛选 "${job.name}" 的候选人`)
+}
+
+const handleEditJob = (job: any) => {
+  editForm.value = {
+    id: job.id,
+    name: job.name,
+    company: job.company,
+    category: job.category,
+    city: job.city,
+    salary_min: job.salary_min,
+    salary_max: job.salary_max,
+    description: job.description,
+  }
+  showEditDialog.value = true
+}
+
+const handleDeleteJob = async (job: any) => {
+  try {
+    await ElMessageBox.confirm(
+      `确定删除岗位"${job.name}"？此操作不可恢复。`,
+      '删除确认',
+      { confirmButtonText: '删除', cancelButtonText: '取消', type: 'warning' }
+    )
+    await deleteJob(job.id)
+    ElMessage.success('岗位已删除')
+    await loadJobs()
+  } catch (e: any) {
+    if (e === 'cancel' || e?.toString() === 'cancel') return
+    ElMessage.error('删除失败：' + (e.response?.data?.detail || e.message || '未知错误'))
+  }
+}
+
+// ==================== 编辑弹窗 ====================
+const showEditDialog = ref(false)
+const editLoading = ref(false)
+const editForm = ref<any>({})
+
+const submitEdit = async () => {
+  if (!editForm.value.name?.trim()) {
+    ElMessage.warning('岗位名称不能为空')
+    return
+  }
+  editLoading.value = true
+  try {
+    await updateJob(editForm.value.id, {
+      name: editForm.value.name,
+      description: editForm.value.description,
+      company: editForm.value.company,
+      category: editForm.value.category,
+      city: editForm.value.city,
+      salary_min: Number(editForm.value.salary_min) || 0,
+      salary_max: Number(editForm.value.salary_max) || 0,
+    })
+    ElMessage.success('岗位信息已更新')
+    showEditDialog.value = false
+    await loadJobs()
+  } catch (e: any) {
+    ElMessage.error('保存失败：' + (e.response?.data?.detail || e.message))
+  } finally {
+    editLoading.value = false
+  }
+}
+
+// ==================== 工具方法 ====================
+const getStatusText = (status: string) => {
+  const map: Record<string, string> = { active: '招聘中', paused: '已暂停', closed: '已关闭' }
+  return map[status] || status
+}
+
 const getMatchClass = (rate: number) => {
   if (rate >= 80) return 'high'
   if (rate >= 60) return 'medium'
   return 'low'
 }
-
-// 事件处理
-const handleRefresh = () => {
-  ElMessage.success('数据已刷新')
-}
-
-const handleCreateJob = () => {
-  ElMessage.info('创建岗位功能开发中')
-}
-
-const handleJobClick = (job: any) => {
-  console.log('查看岗位详情:', job)
-}
-
-const handleViewReports = (job: any) => {
-  ElMessage.info(`查看 ${job.title} 的报告`)
-}
-
-// const handleEditJob = (job: any) => {
-//   ElMessage.info(`编辑岗位: ${job.title}`)
-// }
-
-const handleDeleteJob = (job: any) => {
-  ElMessage.warning(`删除岗位: ${job.title}`)
-}
 </script>
+
+
 
 <style scoped>
 .job-management-dashboard {

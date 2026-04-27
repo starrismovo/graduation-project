@@ -9,25 +9,32 @@
     <el-card class="profile-card" shadow="never">
       <!-- 头像上传区 -->
       <div class="avatar-section">
-  <div class="avatar-left">
-    <el-avatar :size="120" :src="userForm.avatar || defaultAvatar" class="user-avatar"/>
-  </div>
+        <div class="avatar-left">
+          <el-avatar :size="120" :src="userForm.avatar || defaultAvatar" class="user-avatar"/>
+        </div>
 
-  <div class="avatar-actions">
-    <el-upload
-      action="#"
-      :show-file-list="false"
-      :before-upload="beforeAvatarUpload"
-      :http-request="handleAvatarUpload"
-      accept="image/*"
-    >
-      <el-button type="primary" size="small">更换头像</el-button>
-    </el-upload>
-
-    <p class="avatar-tip">支持 JPG、PNG，建议尺寸 120×120</p>
-  </div>
-</div>
-
+        <div class="avatar-actions">
+          <div class="avatar-top">
+            <el-upload
+              action="#"
+              :show-file-list="false"
+              :before-upload="beforeAvatarUpload"
+              :http-request="handleAvatarUpload"
+              accept="image/*"
+            >
+              <el-button type="primary" size="small">更换头像</el-button>
+            </el-upload>
+            <!-- HR 角色标识 -->
+            <el-tag v-if="isHR" type="warning" size="small" class="role-tag">
+              <el-icon style="margin-right:4px"><UserFilled /></el-icon>HR 招聘官
+            </el-tag>
+            <el-tag v-else type="success" size="small" class="role-tag">
+              <el-icon style="margin-right:4px"><User /></el-icon>求职候选人
+            </el-tag>
+          </div>
+          <p class="avatar-tip">支持 JPG、PNG，建议尺寸 120×120</p>
+        </div>
+      </div>
 
       <!-- 基本信息表单 -->
       <el-form :model="userForm" label-width="120px" ref="userFormRef" class="form-section">
@@ -36,37 +43,34 @@
         </el-form-item>
 
         <el-form-item label="显示昵称" prop="nickname">
-          <el-input v-model="userForm.nickname" placeholder="用于系统内展示" maxlength="20" />
-          <template #tip>
-            <span class="form-tip">HR在报告中看到的名字，可与真实姓名不同</span>
-          </template>
+          <el-input v-model="userForm.nickname" :placeholder="isHR ? '用于系统内展示' : '用于系统内展示'" maxlength="20" />
         </el-form-item>
 
         <el-form-item label="真实姓名" prop="realName">
-          <el-input v-model="userForm.realName" placeholder="用于正式投递（可选）" />
+          <el-input v-model="userForm.realName" :placeholder="isHR ? '您的真实姓名' : '用于正式投递（可选）'" />
         </el-form-item>
 
         <el-form-item label="邮箱" prop="email">
-          <el-input v-model="userForm.email" placeholder="用于登录和通知" />
+          <el-input v-model="userForm.email" :placeholder="isHR ? '工作邮箱' : '用于登录和通知'" />
         </el-form-item>
 
         <el-form-item label="电话" prop="phone">
-          <el-input v-model="userForm.phone" placeholder="用于HR联系（可选）" />
+          <el-input v-model="userForm.phone" :placeholder="isHR ? '工作联系电话' : '用于HR联系（可选）'" />
         </el-form-item>
 
-        <el-form-item label="自我介绍">
+        <el-form-item :label="isHR ? '个人简介' : '自我介绍'">
           <el-input
             type="textarea"
             v-model="userForm.bio"
             :rows="3"
-            placeholder="一句话介绍自己，例如：3年前端开发经验，热爱挑战"
+            :placeholder="isHR ? '介绍您的招聘方向或公司文化，例如：专注技术人才招募，倡导开放协作的团队文化' : '一句话介绍自己，例如：3年前端开发经验，热爱挑战'"
             maxlength="200"
             show-word-limit
           />
         </el-form-item>
 
-        <!-- 投递隐私设置 -->
-        <el-form-item label="投递隐私">
+        <!-- 仅候选人：投递隐私设置 -->
+        <el-form-item v-if="!isHR" label="投递隐私">
           <el-radio-group v-model="userForm.deliveryPrivacy">
             <el-radio :label="1">实名（姓名 + 联系方式）</el-radio>
             <el-radio :label="2">昵称（仅显示 {{ userForm.nickname || '昵称' }}）</el-radio>
@@ -77,8 +81,16 @@
           </div>
         </el-form-item>
 
+        <!-- 仅HR：角色说明 -->
+        <el-form-item v-if="isHR" label="账号角色">
+          <div class="hr-role-info">
+            <el-icon color="#e6a23c" :size="16"><Warning /></el-icon>
+            <span>您的账号具有 <strong>HR招聘官</strong> 权限，可发布岗位、邀请候选人并查看评估报告。</span>
+          </div>
+        </el-form-item>
+
         <el-form-item>
-          <el-button type="primary" @click="saveProfile">保存修改</el-button>
+          <el-button type="primary" @click="saveProfile" :loading="loading">保存修改</el-button>
           <el-button @click="goBack">取消</el-button>
         </el-form-item>
       </el-form>
@@ -94,15 +106,17 @@
 
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, computed } from 'vue'
 import { useUserStore } from '@/stores/user'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { UserFilled, User, Warning } from '@element-plus/icons-vue'
 import request from '@/utils/request'
 
 // 路由 & Store
 const userStore = useUserStore()
 const router = useRouter()
+const isHR = computed(() => userStore.isHR)
 
 // 表单数据
 const userFormRef = ref(null)
@@ -333,6 +347,17 @@ onMounted(() => {
   gap: 10px;
 }
 
+.avatar-top {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.role-tag {
+  font-size: 12px;
+  padding: 0 8px;
+}
+
 .avatar-left {
   display: flex;
   align-items: center;
@@ -455,6 +480,24 @@ onMounted(() => {
 :deep(.el-radio.is-checked .el-radio__inner) {
   border-color: #409eff;
   background-color: #409eff;
+}
+
+/* HR角色信息提示 */
+.hr-role-info {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 10px 14px;
+  background: #fdf6ec;
+  border: 1px solid #f5dab1;
+  border-radius: 6px;
+  color: #606266;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.hr-role-info strong {
+  color: #e6a23c;
 }
 
 /* 标签 */

@@ -4,9 +4,9 @@ import { ElMessage } from 'element-plus'
 import router from '@/router'
 
 const request = axios.create({
-  baseURL: 'http://127.0.0.1:8000',  // 后端地址
-  timeout: 30000,  // 增加到30秒
-  withCredentials: false  // 禁用跨域 cookie
+  baseURL: '',  // 空字符串：让请求走 Vite 代理，避免 CORS
+  timeout: 30000,
+  withCredentials: false
 })
 
 // 请求拦截器：自动添加 token
@@ -132,12 +132,14 @@ export const deleteInterview = (interviewId: number) => {
   return request.delete(`/interviews/${interviewId}`)
 }
 
-// 获取岗位列表（支持筛选）
+// 获取岗位列表（支持筛选与分页）
 export const getJobs = (params?: {
   category?: string
   city?: string
   salary_min?: number
   salary_max?: number
+  skip?: number
+  limit?: number
 }) => {
   return request.get('/jobs/', { params })
 }

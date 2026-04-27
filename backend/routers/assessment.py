@@ -46,9 +46,21 @@ import json
 import re
 import httpx
 import logging
-from services.personality_scoring import resolve_personality_scores
+from services.personality_scoring import (
+    resolve_personality_scores,
+    calculate_scenario_traits,
+    get_trait_comparison,
+)
+from services.agent_scoring_fusion import (
+    fuse_agent_scores,
+    get_agent_weights,
+    validate_agent_scores,
+    generate_fusion_report,
+)
 from services.job_requirement_service import matching_engine
 from services.report_agent import report_agent
+from models.assessment import EvaluationResult
+import uuid
 
 logger = logging.getLogger(__name__)
 
@@ -649,6 +661,87 @@ async def save_assessment_result(
             f"skill={skill_match}, personality={personality_match}"
         )
         
+        # ===== 新增：计算场景人格（论文第4.3.3节） =====
+        scenario_traits = None
+        trait_comparison = None
+        
+        # 如果岗位有人格需求配置，则计算场景人格
+        if job.personality_requirements:
+            try:
+                scenario_traits, adjustments = calculate_scenario_traits(
+                    basic_traits=personality_scores,
+                    job_personality_requirements=job.personality_requirements
+                )
+                # 生成特质对比报告
+                trait_comparison = get_trait_comparison(
+                    basic_traits=personality_scores,
+                    scenario_traits=scenario_traits,
+                    job_requirements=job.personality_requirements
+                )
+                logger.info(f"【save-result】场景人格已计算: {scenario_traits}")
+            except Exception as e:
+                logger.warning(f"【save-result】场景人格计算失败: {str(e)}")
+                scenario_traits = None
+                trait_comparison = None
+        
+        # ===== 新增：融合Agent评分（论文第4.1.3节） =====
+        agent_scores_dict = {}
+        fusion_details = None
+        fused_score = None
+        
+        # 如果请求中包含Agent评分数据，则进行融合
+        if hasattr(request, 'agent_scores') and request.agent_scores:
+            try:
+                # 验证Agent评分
+                is_valid, warnings = validate_agent_scores(request.agent_scores)
+                if not is_valid:
+                    logger.warning(f"【save-result】Agent评分验证警告: {warnings}")
+                
+                # 获取岗位类别，用于权重配置
+                job_category = job.category if hasattr(job, 'category') else None
+                
+                # 融合Agent评分
+                fused_score, fusion_details = fuse_agent_scores(
+                    agent_scores=request.agent_scores,
+                    job_category=job_category
+                )
+                
+                agent_scores_dict = request.agent_scores
+                logger.info(f"【save-result】Agent评分已融合: fused_score={fused_score:.1f}")
+            except Exception as e:
+                logger.warning(f"【save-result】Agent评分融合失败: {str(e)}")
+                fusion_details = None
+                fused_score = None
+        
+        # 如果有Agent融合评分，可以将其作为参考
+        if fused_score is not None:
+            # 可以选择使用融合评分或与现有评分结合
+            logger.info(f"【save-result】使用Agent融合评分作为参考: {fused_score:.1f}")
+        
+        # ===== 新增：创建EvaluationResult（论文第3.5.1节） =====
+        evaluation_result = None
+        try:
+            evaluation_result = EvaluationResult(
+                result_id=str(uuid.uuid4()),
+                assessment_record_id=record.id,
+                candidate_id=candidate.id,
+                job_id=request.job_id,
+                match_score=overall_score,
+                ability_scores=request.all_scores,  # 能力维度评分
+                trait_comparison=trait_comparison,   # 特质对比（基础/场景/需求）
+                agent_scores=fusion_details,         # Agent评分及权重信息
+                strengths=None,  # 稍后填充
+                gaps=None,       # 稍后填充
+                recommendations=None,  # 稍后填充
+                created_at=datetime.now(),
+            )
+            db.add(evaluation_result)
+            db.flush()
+            logger.info(f"【save-result】EvaluationResult已创建: result_id={evaluation_result.result_id}")
+        except Exception as e:
+            logger.warning(f"【save-result】EvaluationResult创建失败: {str(e)}")
+            evaluation_result = None
+        
         # 4. 保存特质描述
         trait_names = ["外向性", "宜人性", "尽责性", "神经质", "开放性"]
         trait_descriptions = {
@@ -702,6 +795,49 @@ async def save_assessment_result(
         
         logger.info(f"【save-result】分析与建议已生成")
         
+        # ===== 新增：更新EvaluationResult的分析内容 =====
+        if evaluation_result:
+            try:
+                # 转换strengths、gaps、recommendations为JSON格式
+                if isinstance(analysis_payload.get("strengths"), list):
+                    strengths_text = "\n".join(analysis_payload["strengths"])
+                else:
+                    strengths_text = str(analysis_payload.get("strengths", ""))
+                
+                if isinstance(analysis_payload.get("gaps"), list):
+                    gaps_text = "\n".join(analysis_payload["gaps"])
+                else:
+                    gaps_text = str(analysis_payload.get("gaps", ""))
+                
+                if isinstance(analysis_payload.get("recommendations"), list):
+                    recommendations_text = "\n".join(analysis_payload["recommendations"])
+                else:
+                    recommendations_text = str(analysis_payload.get("recommendations", ""))
+                
+                evaluation_result.strengths = strengths_text
+                evaluation_result.gaps = gaps_text
+                evaluation_result.recommendations = recommendations_text
+                
+                # 生成完整报告内容
+                report_content = {
+                    "basic_traits": personality_scores,
+                    "scenario_traits": scenario_traits,
+                    "trait_comparison": trait_comparison,
+                    "ability_scores": request.all_scores,
+                    "skill_match": skill_match,
+                    "personality_match": personality_match,
+                    "overall_score": overall_score,
+                    "agent_fusion": fusion_details,
+                    "analysis": analysis_payload,
+                    "generated_at": datetime.now().isoformat(),
+                }
+                evaluation_result.report_content = report_content
+                evaluation_result.updated_at = datetime.now()
+                
+                logger.info(f"【save-result】EvaluationResult已更新: result_id={evaluation_result.result_id}")
+            except Exception as e:
+                logger.warning(f"【save-result】EvaluationResult更新失败: {str(e)}")
+        
         # 7. 提交事务
         db.commit()
         
@@ -712,11 +848,18 @@ async def save_assessment_result(
             message="评估结果已保存",
             data={
                 "record_id": record.id,
+                "evaluation_result_id": evaluation_result.result_id if evaluation_result else None,
                 "skill_match": skill_match,
                 "personality_match": personality_match,
                 "overall_score": overall_score,
                 "model_version": scoring_meta.get("model_version"),
                 "scoring_source": scoring_meta.get("source"),
+                "basic_traits": personality_scores,
+                "scenario_traits": scenario_traits,
+                "trait_comparison": trait_comparison,
+                "agent_scores": agent_scores_dict if agent_scores_dict else None,
+                "fused_score": fused_score,
+                "fusion_details": fusion_details,
             }
         )
     except Exception as e:
@@ -862,6 +1005,100 @@ async def delete_assessment_record(record_id: int, db: Session = Depends(get_db)
         code=200,
         message="success"
     )
+
+
+# ============ EvaluationResult API（论文第3.5.1节） ============
+
+@router.get("/evaluation-result/{result_id}", response_model=StandardResponse)
+async def get_evaluation_result(
+    result_id: str,
+    db: Session = Depends(get_db)
+):
+    """
+    查询评估结果（集中存储的完整评估数据）
+    
+    返回包含：
+    - 基础人格 + 场景人格 + 岗位需求对比
+    - Agent评分及融合权重
+    - 完整的能力评分和分析建议
+    """
+    try:
+        result = db.query(EvaluationResult).filter_by(result_id=result_id).first()
+        if not result:
+            raise HTTPException(status_code=404, detail="评估结果不存在")
+        
+        return StandardResponse(
+            code=200,
+            message="评估结果查询成功",
+            data=result.to_dict()
+        )
+    except Exception as e:
+        logger.error(f"【get-evaluation-result】查询失败: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"查询失败: {str(e)}")
+
+
+@router.get("/evaluation-result/by-assessment/{assessment_record_id}", response_model=StandardResponse)
+async def get_evaluation_result_by_assessment(
+    assessment_record_id: int,
+    db: Session = Depends(get_db)
+):
+    """
+    通过评估记录ID查询对应的EvaluationResult
+    """
+    try:
+        result = db.query(EvaluationResult).filter_by(
+            assessment_record_id=assessment_record_id
+        ).first()
+        
+        if not result:
+            raise HTTPException(status_code=404, detail="未找到对应的评估结果")
+        
+        return StandardResponse(
+            code=200,
+            message="评估结果查询成功",
+            data=result.to_dict()
+        )
+    except Exception as e:
+        logger.error(f"【get-evaluation-result-by-assessment】查询失败: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"查询失败: {str(e)}")
+
+
+@router.get("/evaluation-results/by-candidate/{candidate_id}", response_model=StandardResponse)
+async def get_evaluation_results_by_candidate(
+    candidate_id: str,
+    limit: int = Query(10, ge=1, le=100),
+    offset: int = Query(0, ge=0),
+    db: Session = Depends(get_db)
+):
+    """
+    查询候选人的所有评估结果（分页）
+    """
+    try:
+        candidate = resolve_candidate_user(candidate_id, db)
+        
+        total = db.query(EvaluationResult).filter_by(
+            candidate_id=candidate.id
+        ).count()
+        
+        results = db.query(EvaluationResult).filter_by(
+            candidate_id=candidate.id
+        ).order_by(desc(EvaluationResult.created_at)).offset(offset).limit(limit).all()
+        
+        return StandardResponse(
+            code=200,
+            message="评估结果列表查询成功",
+            data={
+                "total": total,
+                "limit": limit,
+                "offset": offset,
+                "items": [r.to_dict() for r in results]
+            }
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"【get-evaluation-results-by-candidate】查询失败: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"查询失败: {str(e)}")
 
 
 # ==================== 沉浸式对话 API ====================

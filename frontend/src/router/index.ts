@@ -79,6 +79,18 @@ const router = createRouter({
           meta: { requiresHR: true }
         },
         {
+          path: 'candidates',
+          name: 'CandidateManage',
+          component: () => import('../views/hr/CandidateManageView.vue'),
+          meta: { requiresHR: true, title: '候选人管理' }
+        },
+        {
+          path: 'analytics',
+          name: 'Analytics',
+          component: () => import('../views/hr/AnalyticsView.vue'),
+          meta: { requiresHR: true, title: '数据分析' }
+        },
+        {
           path: 'reports',
           name: 'ReportList',
           component: () => import('../views/assessment/ReportListPage.vue')

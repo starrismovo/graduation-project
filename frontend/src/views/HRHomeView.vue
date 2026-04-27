@@ -1,17 +1,17 @@
 <script setup lang="ts">
-import { useUserStore } from '../stores/user'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { ref, onMounted, computed } from 'vue'
-import { getJobs } from '../utils/request'
-import { createJob } from '../api/job'
+import { createJob, deleteJob, getHRJobList } from '../api/job'
 import { Delete, Edit, View, Plus, ArrowRight, User, Document } from '@element-plus/icons-vue'
 
-const userStore = useUserStore()
 const router = useRouter()
 
 const jobsList = ref<any[]>([])
 const loading = ref(true)
+const jobsTotal = ref(0)
+const jobsPage = ref(1)
+const jobsPageSize = ref(20)
 
 const showCreateDialog = ref(false)
 // ✅ 修正1：所有表单字段初始化为空字符串（原错误：'"''"'）
@@ -33,48 +33,68 @@ const stats = ref({
   pendingReports: 0
 })
 
-function hashToNumber(input: string, mod: number) {
-  let total = 0
-  for (let i = 0; i < input.length; i++) {
-    total += input.charCodeAt(i)
-  }
-  return total % mod
-}
+const featuredJobs = computed(() => {
+  return [...jobsList.value]
+    .sort((a, b) => {
+      const pendingDiff = (b.pendingReports || 0) - (a.pendingReports || 0)
+      if (pendingDiff !== 0) return pendingDiff
+      return (b.submissions || 0) - (a.submissions || 0)
+    })
+    .slice(0, 4)
+})
 
-function normalizeJob(job: any) {
-  const idSeed = String(job.id ?? job.name ?? Math.random())
-  const submissions = job.submissions ?? (hashToNumber(idSeed, 36) + 8)
-  const avgMatch = job.avgMatch ?? (60 + hashToNumber(idSeed + 'match', 36))
-  const pendingReports = job.pendingReports ?? hashToNumber(idSeed + 'pending', 8)
-  const status = job.status ?? (submissions > 0 ? 'open' : 'draft')
-  const createdAt = job.created_at ?? new Date().toISOString()
-  const updatedAt = job.updated_at ?? createdAt
+const priorityJobs = computed(() => {
+  return [...jobsList.value]
+    .filter(job => (job.pendingReports || 0) > 0)
+    .sort((a, b) => {
+      const pendingDiff = (b.pendingReports || 0) - (a.pendingReports || 0)
+      if (pendingDiff !== 0) return pendingDiff
+      return (b.submissions || 0) - (a.submissions || 0)
+    })
+    .slice(0, 4)
+})
 
-  return {
-    ...job,
-    submissions,
-    avgMatch,
-    pendingReports,
-    status,
-    created_at: createdAt,
-    updated_at: updatedAt
-  }
-}
+const recentJobs = computed(() => {
+  return [...jobsList.value]
+    .sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())
+    .slice(0, 3)
+})
+
+const topApplicationJob = computed(() => {
+  return [...jobsList.value].sort((a, b) => (b.submissions || 0) - (a.submissions || 0))[0] || null
+})
+
+const topMatchJob = computed(() => {
+  return [...jobsList.value].sort((a, b) => (b.avgMatch || 0) - (a.avgMatch || 0))[0] || null
+})
 
 const loadJobs = async () => {
   try {
     loading.value = true
-    const response = await getJobs({})
-    const rawList = response.data || []
-    jobsList.value = rawList.map(normalizeJob)
+    const response = await getHRJobList({
+      skip: (jobsPage.value - 1) * jobsPageSize.value,
+      limit: jobsPageSize.value
+    })
+    const payload = response.data || {}
+    const items = payload.items || []
+    const summary = payload.summary || {}
 
-    stats.value.totalJobs = jobsList.value.length
-    stats.value.openJobs = jobsList.value.filter(job => job.status === 'open').length
-    stats.value.totalSubmissions = jobsList.value.reduce((sum, job) => sum + (job.submissions || 0), 0)
-    stats.value.avgMatchScore = jobsList.value.length
-      ? Math.round(jobsList.value.reduce((sum, job) => sum + (job.avgMatch || 0), 0) / jobsList.value.length)
-      : 0
-    stats.value.pendingReports = jobsList.value.reduce((sum, job) => sum + (job.pendingReports || 0), 0)
+    jobsList.value = items.map((job: any) => ({
+      ...job,
+      submissions: job.applications ?? 0,
+      avgMatch: job.avg_match_rate ?? 0,
+      pendingReports: job.pending_reports ?? 0,
+      status: job.status === 'active' ? 'open' : (job.status || 'draft'),
+      created_at: job.created_at ?? new Date().toISOString(),
+      updated_at: job.updated_at ?? job.created_at ?? new Date().toISOString()
+    }))
+
+    jobsTotal.value = payload.total || items.length
+    stats.value.totalJobs = jobsTotal.value
+    stats.value.openJobs = summary.open_jobs ?? jobsList.value.length
+    stats.value.totalSubmissions = summary.total_applications ?? 0
+    stats.value.avgMatchScore = Math.round(summary.avg_match_rate ?? 0)
+    stats.value.pendingReports = summary.pending_reports ?? 0
   } catch (error) {
     console.error('加载岗位列表失败:', error)
     ElMessage.error('加载岗位列表失败，请稍后重试')
@@ -139,23 +159,24 @@ const handleEditJob = (job: any) => {
   ElMessage.info(`编辑岗位: ${job.name}（功能开发中）`)
 }
 
-const handleDeleteJob = (job: any) => {
-  ElMessageBox.confirm(
-    `确定要删除岗位 "${job.name}" 吗？`,
-    '删除确认', // ✅ 修正6：标题字符串修正
-    {
-      confirmButtonText: '确定',
-      cancelButtonText: '取消',
-      type: 'warning'
-    }
-  )
-    .then(() => {
-      ElMessage.success('岗位删除成功（功能开发中）')
-      // 实际项目中应调用删除API并刷新列表
-    })
-    .catch(() => {
-      ElMessage.info('已取消删除')
-    })
+const handleDeleteJob = async (job: any) => {
+  try {
+    await ElMessageBox.confirm(
+      `确定要删除岗位 "${job.name}" 吗？`,
+      '删除确认',
+      {
+        confirmButtonText: '确定',
+        cancelButtonText: '取消',
+        type: 'warning'
+      }
+    )
+    await deleteJob(job.id)
+    ElMessage.success('岗位已删除')
+    await loadJobs()
+  } catch (e: any) {
+    if (e === 'cancel' || e?.toString() === 'cancel') return
+    ElMessage.error('删除失败：' + (e.response?.data?.detail || e.message || '未知错误'))
+  }
 }
 
 const handleViewReport = (job: any) => {
@@ -167,8 +188,23 @@ const handleCreateShortcut = () => {
   showCreateDialog.value = true
 }
 
+const handleOpenJobManage = () => {
+  router.push('/home/job-manage')
+}
+
 const handleJumpReportQueue = () => {
   activeTab.value = 'candidates'
+}
+
+const handleJobsPageChange = (page: number) => {
+  jobsPage.value = page
+  loadJobs()
+}
+
+const handleJobsPageSizeChange = (size: number) => {
+  jobsPageSize.value = size
+  jobsPage.value = 1
+  loadJobs()
 }
 
 // ==================== 候选人管理 ====================
@@ -303,72 +339,96 @@ onMounted(() => {
         <div class="dashboard-layout">
           <div class="dashboard-main">
             <div class="section-header">
-              <h3>岗位列表</h3>
-              <span class="section-hint">可排序查看投递、匹配度和待处理量</span>
+              <div>
+                <h3>重点岗位看板</h3>
+                <span class="section-hint">首页聚焦优先处理项，完整明细请前往岗位管理页</span>
+              </div>
+              <el-button type="primary" plain @click="handleOpenJobManage">进入岗位管理</el-button>
             </div>
 
-            <el-table
-              :data="jobsList"
-              stripe
-              style="width: 100%"
-              :loading="loading"
-              empty-text="暂无岗位"
-            >
-              <el-table-column prop="name" label="岗位名称" min-width="160" sortable />
-              <el-table-column prop="company" label="公司" min-width="140" />
-              <el-table-column prop="city" label="城市" min-width="120" />
-              <el-table-column label="投递量" min-width="120" sortable="custom">
-                <template #default="{ row }">
-                  <el-tag type="info">{{ row.submissions }}</el-tag>
-                </template>
-              </el-table-column>
-              <el-table-column label="平均匹配度" min-width="140" sortable="custom">
-                <template #default="{ row }">
-                  <el-progress :percentage="row.avgMatch" :stroke-width="8" color="#409eff" />
-                </template>
-              </el-table-column>
-              <el-table-column label="待处理" min-width="120" sortable="custom">
-                <template #default="{ row }">
-                  <el-tag :type="row.pendingReports > 0 ? 'warning' : 'success'">
-                    {{ row.pendingReports }}
-                  </el-tag>
-                </template>
-              </el-table-column>
-              <el-table-column prop="updated_at" label="最近更新" min-width="160" sortable>
-                <template #default="{ row }">
-                  {{ new Date(row.updated_at).toLocaleDateString('zh-CN') }}
-                </template>
-              </el-table-column>
-              <el-table-column label="操作" min-width="200" fixed="right">
-                <template #default="{ row }">
-                  <el-button link type="primary" :icon="View" @click="handleViewReport(row)">报告</el-button>
-                  <el-button link type="warning" :icon="Edit" @click="handleEditJob(row)">编辑</el-button>
-                  <el-button link type="danger" :icon="Delete" @click="handleDeleteJob(row)">删除</el-button>
-                </template>
-              </el-table-column>
-            </el-table>
+            <div class="job-spotlight-grid" v-loading="loading">
+              <template v-if="featuredJobs.length > 0">
+                <article v-for="job in featuredJobs" :key="job.id" class="spotlight-card">
+                  <div class="spotlight-header">
+                    <div>
+                      <h4>{{ job.name }}</h4>
+                      <p>{{ job.company || '未填写公司' }} · {{ job.city || '未填写城市' }}</p>
+                    </div>
+                    <span class="status-pill" :class="job.status">{{ getStatusText(job.status) }}</span>
+                  </div>
+
+                  <div class="spotlight-metrics">
+                    <div class="spotlight-metric">
+                      <span>投递</span>
+                      <strong>{{ job.submissions }}</strong>
+                    </div>
+                    <div class="spotlight-metric">
+                      <span>待处理</span>
+                      <strong :class="{ warning: job.pendingReports > 0 }">{{ job.pendingReports }}</strong>
+                    </div>
+                    <div class="spotlight-metric">
+                      <span>更新</span>
+                      <strong>{{ new Date(job.updated_at).toLocaleDateString('zh-CN') }}</strong>
+                    </div>
+                  </div>
+
+                  <div class="match-summary">
+                    <div class="match-summary-top">
+                      <span>平均匹配度</span>
+                      <span>{{ job.avgMatch }}%</span>
+                    </div>
+                    <el-progress :percentage="job.avgMatch" :stroke-width="8" :show-text="false" color="#1d4ed8" />
+                  </div>
+
+                  <div class="spotlight-actions">
+                    <el-button link type="primary" :icon="View" @click="handleViewReport(job)">查看报告</el-button>
+                    <el-button link type="warning" :icon="Edit" @click="handleOpenJobManage">管理岗位</el-button>
+                  </div>
+                </article>
+              </template>
+
+              <div v-else class="empty-state large-empty">暂无岗位</div>
+            </div>
           </div>
 
           <div class="dashboard-side">
             <div class="side-card">
-              <h4>岗位概况</h4>
-              <div class="overview-item">
-                <span>活跃岗位</span>
-                <strong>{{ stats.openJobs }}</strong>
+              <h4>待处理优先队列</h4>
+              <div v-if="priorityJobs.length === 0" class="empty-state">当前没有需要优先处理的岗位</div>
+              <button
+                v-for="job in priorityJobs"
+                :key="job.id"
+                class="priority-item"
+                @click="handleViewReport(job)"
+              >
+                <div>
+                  <div class="priority-name">{{ job.name }}</div>
+                  <div class="priority-meta">{{ job.pendingReports }} 份待处理 · {{ job.submissions }} 份投递</div>
+                </div>
+                <span class="priority-badge">{{ job.pendingReports }}</span>
+              </button>
+            </div>
+
+            <div class="side-card">
+              <h4>招聘洞察</h4>
+              <div class="insight-item">
+                <span>投递最热</span>
+                <strong>{{ topApplicationJob?.name || '暂无数据' }}</strong>
               </div>
-              <div class="overview-item">
-                <span>待处理报告</span>
-                <strong>{{ stats.pendingReports }}</strong>
+              <div class="insight-item">
+                <span>匹配最佳</span>
+                <strong>{{ topMatchJob?.name || '暂无数据' }}</strong>
               </div>
-              <div class="overview-item">
-                <span>平均匹配度</span>
-                <strong>{{ stats.avgMatchScore }}%</strong>
+              <div class="insight-item">
+                <span>待处理集中</span>
+                <strong>{{ priorityJobs[0]?.name || '暂无积压' }}</strong>
               </div>
             </div>
 
             <div class="side-card">
               <h4>快捷入口</h4>
               <el-button class="action-btn" type="primary" plain block @click="activeTab = 'candidates'">查看所有候选人报告</el-button>
+              <el-button class="action-btn" type="warning" plain block @click="handleOpenJobManage">进入岗位管理页</el-button>
               <el-button class="action-btn" type="success" plain block>人才池管理</el-button>
               <el-button class="action-btn" type="info" plain block>数据分析中心</el-button>
             </div>
@@ -376,9 +436,9 @@ onMounted(() => {
             <div class="side-card">
               <h4>最新岗位</h4>
               <div v-if="jobsList.length === 0" class="empty-state">暂无岗位</div>
-              <div v-for="job in jobsList.slice(0, 3)" :key="job.id" class="recent-item">
+              <div v-for="job in recentJobs" :key="job.id" class="recent-item">
                 <div class="recent-title">{{ job.name }}</div>
-                <div class="recent-meta">{{ new Date(job.created_at).toLocaleDateString('zh-CN') }}</div>
+                <div class="recent-meta">{{ new Date(job.updated_at).toLocaleDateString('zh-CN') }}</div>
               </div>
             </div>
           </div>
@@ -638,8 +698,9 @@ onMounted(() => {
 .section-header {
   display: flex;
   justify-content: space-between;
-  align-items: center;
-  margin-bottom: 12px;
+  align-items: flex-start;
+  gap: 16px;
+  margin-bottom: 16px;
 }
 
 .section-header h3 {
@@ -651,6 +712,102 @@ onMounted(() => {
 .section-hint {
   color: #9ca3af;
   font-size: 12px;
+}
+
+.job-spotlight-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 16px;
+}
+
+.spotlight-card {
+  border: 1px solid #e5eefc;
+  border-radius: 14px;
+  padding: 18px;
+  background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.spotlight-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.spotlight-header h4 {
+  margin: 0;
+  font-size: 16px;
+  color: #111827;
+}
+
+.spotlight-header p {
+  margin: 6px 0 0;
+  font-size: 12px;
+  color: #6b7280;
+}
+
+.status-pill {
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  color: #1d4ed8;
+  background: #dbeafe;
+  white-space: nowrap;
+}
+
+.status-pill.draft {
+  color: #92400e;
+  background: #fef3c7;
+}
+
+.spotlight-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.spotlight-metric {
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: #eff6ff;
+}
+
+.spotlight-metric span {
+  display: block;
+  font-size: 12px;
+  color: #6b7280;
+  margin-bottom: 6px;
+}
+
+.spotlight-metric strong {
+  font-size: 16px;
+  color: #111827;
+}
+
+.spotlight-metric strong.warning {
+  color: #d97706;
+}
+
+.match-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.match-summary-top {
+  display: flex;
+  justify-content: space-between;
+  font-size: 13px;
+  color: #374151;
+}
+
+.spotlight-actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
 }
 
 .dashboard-side {
@@ -680,6 +837,63 @@ onMounted(() => {
   padding: 6px 0;
 }
 
+.priority-item {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 0;
+  border: none;
+  background: transparent;
+  border-bottom: 1px solid #f3f4f6;
+  cursor: pointer;
+  text-align: left;
+}
+
+.priority-item:last-child {
+  border-bottom: none;
+}
+
+.priority-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: #111827;
+}
+
+.priority-meta {
+  margin-top: 4px;
+  font-size: 12px;
+  color: #9ca3af;
+}
+
+.priority-badge {
+  min-width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  background: #fff7ed;
+  color: #c2410c;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.insight-item {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 0;
+  font-size: 13px;
+  color: #6b7280;
+}
+
+.insight-item strong {
+  color: #111827;
+  text-align: right;
+}
+
 /* .action-btn {
   margin-bottom: 8px "'!important;
   font-size: 13px;
@@ -689,6 +903,11 @@ onMounted(() => {
   text-align: center;
   color: #9ca3af;
   font-size: 12px;
+}
+
+.large-empty {
+  grid-column: 1 / -1;
+  padding: 48px 0;
 }
 
 .recent-item {
@@ -728,6 +947,15 @@ onMounted(() => {
   }
 
   .kpi-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .section-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .spotlight-metrics {
     grid-template-columns: 1fr;
   }
 }
