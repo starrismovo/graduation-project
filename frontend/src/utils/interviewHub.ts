@@ -57,7 +57,7 @@ export async function readHubJobs(): Promise<InterviewHubJob[]> {
 
     cacheLoading.value = true
     const response = await apiGetSavedJobs(candidateId, 'latest')
-    const items = response.items || response.data?.items || []
+    const items = response.items || []
     
     savedJobsCache.value = items
     lastFetch.value = Date.now()

@@ -2,6 +2,12 @@
   "compilerOptions": {
     "noEmit": true,
     "baseUrl": ".",
+    "target": "ES2020",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "downlevelIteration": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
     "paths": {
       "@/*": ["src/*"]
     }

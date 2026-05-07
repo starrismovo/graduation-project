@@ -388,7 +388,7 @@ const fallbackRecommendedCandidates = computed(() => {
       }
     })
 
-  return [...uniqueMap.values()]
+  return Array.from(uniqueMap.values())
     .sort((a, b) => Number(b.match_score) - Number(a.match_score))
     .slice(0, 6)
 })

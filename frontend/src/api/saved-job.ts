@@ -53,7 +53,7 @@ export async function getSavedJobs(
  */
 export async function checkSavedJob(candidateId: number, jobId: number) {
   const res = await request.get(`/api/saved-jobs/${candidateId}/check/${jobId}`)
-  return res.data?.is_saved ?? res.is_saved ?? false
+  return res.data?.is_saved ?? false
 }
 
 /**

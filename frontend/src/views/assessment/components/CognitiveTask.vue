@@ -79,12 +79,12 @@
       
       <div class="metrics-grid">
         <div v-for="(value, key) in taskResults.metrics" :key="key" class="metric-card">
-          <div class="metric-label">{{ formatMetricLabel(key) }}</div>
-          <div class="metric-value">{{ formatMetricValue(key, value) }}</div>
+          <div class="metric-label">{{ formatMetricLabel(String(key)) }}</div>
+          <div class="metric-value">{{ formatMetricValue(String(key), value) }}</div>
           <div class="metric-bar">
             <el-progress 
-              :percentage="getMetricPercentage(key, value)" 
-              :color="getMetricColor(key, value)"
+              :percentage="getMetricPercentage(String(key), value)" 
+              :color="getMetricColor(String(key), value)"
               :show-text="false"
             />
           </div>
@@ -111,6 +111,16 @@ import NBackTask from '../cognitive/NBackTask.vue'
 import ReactionTimeTask from '../cognitive/ReactionTimeTask.vue'
 import LogicTask from '../cognitive/LogicTask.vue'
 
+interface TaskType {
+  id: string
+  label: string
+  description: string
+  icon: string
+  duration: number
+  difficulty: string
+  traits: string[]
+}
+
 const emit = defineEmits<{
   (e: 'next'): void
 }>()
@@ -120,7 +130,7 @@ const props = defineProps<{
 }>()
 
 // 任务类型定义
-const taskTypes = [
+const taskTypes: TaskType[] = [
   {
     id: 'n-back',
     label: 'N-Back 记忆任务',

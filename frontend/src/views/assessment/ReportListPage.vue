@@ -289,7 +289,11 @@ const viewReport = (report: any) => {
 }
 
 // 下载报告
-const downloadReport = (recordId: number) => {
+const downloadReport = (recordId: number | string | null) => {
+  if (recordId == null) {
+    ElMessage.warning('当前报告缺少记录ID，暂时无法导出')
+    return
+  }
   ElMessage.info('报告下载功能开发中，请在详细报告页面导出')
 }
 
