@@ -1,14 +1,13 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, watchEffect } from 'vue'
+import { computed, onMounted, ref, watchEffect } from 'vue'
 import { useRouter } from 'vue-router'
+import { ElMessage } from 'element-plus'
 import { useUserStore } from '@/stores/user'
 import { useAssessmentStore } from '@/stores/assessment'
-import { ElMessage } from 'element-plus'
 import RadarChart from '@/components/RadarChart.vue'
 import EmptyState from '@/components/EmptyState.vue'
 import AssessmentHistory from '@/components/AssessmentHistory.vue'
 import JobCard from '@/components/JobCard.vue'
-import MiniVideoPlayer from '@/components/MiniVideoPlayer.vue'
 import { fetchPortrait, fetchHistory, fetchJobs } from '@/utils/request'
 
 const router = useRouter()
@@ -25,55 +24,55 @@ const isNewUser = computed(() => history.value.length === 0)
 const latestReport = computed(() => history.value[0] || null)
 
 const strengths = computed(() => {
-  if (!portraitData.value || !Array.isArray(portraitData.value)) return ''
+  if (!Array.isArray(portraitData.value)) return ''
   return portraitData.value
-    .filter((p: any) => p.score > 7)
-    .map((p: any) => p.name)
+    .filter((item: any) => item.score > 7)
+    .map((item: any) => item.name)
     .join('、')
 })
 
 const weaknesses = computed(() => {
-  if (!portraitData.value || !Array.isArray(portraitData.value)) return ''
+  if (!Array.isArray(portraitData.value)) return ''
   return portraitData.value
-    .filter((p: any) => p.score < 4)
-    .map((p: any) => p.name)
+    .filter((item: any) => item.score < 4)
+    .map((item: any) => item.name)
     .join('、')
 })
 
 const avgScore = computed(() => {
-  if (!portraitData.value || !Array.isArray(portraitData.value) || portraitData.value.length === 0) return '0.0'
-  const sum = portraitData.value.reduce((acc: number, p: any) => acc + (p.score || 0), 0)
+  if (!Array.isArray(portraitData.value) || portraitData.value.length === 0) return '0.0'
+  const sum = portraitData.value.reduce((acc: number, item: any) => acc + (item.score || 0), 0)
   return (sum / portraitData.value.length).toFixed(1)
 })
 
 const avgScoreColor = computed(() => {
-  const v = parseFloat(avgScore.value)
-  if (v >= 7) return '#10b981'
-  if (v >= 4) return '#6366f1'
+  const value = Number(avgScore.value)
+  if (value >= 7) return '#10b981'
+  if (value >= 4) return '#6366f1'
   return '#f59e0b'
 })
 
 const avgScoreDash = computed(() => {
-  const v = parseFloat(avgScore.value)
+  const value = Number(avgScore.value)
   const circumference = 2 * Math.PI * 34
-  const filled = (v / 10) * circumference
+  const filled = (value / 10) * circumference
   return `${filled} ${circumference - filled}`
 })
 
 const sortedTraits = computed(() => {
-  if (!portraitData.value || !Array.isArray(portraitData.value)) return []
+  if (!Array.isArray(portraitData.value)) return []
   return [...portraitData.value].sort((a: any, b: any) => b.score - a.score)
 })
 
 const heroStats = computed(() => [
   {
     label: 'TraitScores',
-    value: portraitData.value?.length ? `${portraitData.value.length} 项` : '--',
+    value: Array.isArray(portraitData.value) ? `${portraitData.value.length} 项` : '--',
     hint: '当前心理画像维度'
   },
   {
     label: 'AssessmentSession',
-    value: history.value.length ? `${history.value.length} 次` : '0 次',
+    value: `${history.value.length} 次`,
     hint: '累计评估会话'
   },
   {
@@ -88,8 +87,8 @@ const quickUpdates = computed(() => {
   if (items.length === 0) {
     return [
       {
-        title: '尚未生成 EvaluationResult',
-        content: '完成一次多Agent面试后，这里将展示最新评估结果与可解释性摘要。',
+        title: '评估报告已生成',
+        content: '完成一次多Agent评估后，这里会汇总最近的 EvaluationResult 与岗位推荐变化。',
         meta: '等待首次评估'
       }
     ]
@@ -97,9 +96,10 @@ const quickUpdates = computed(() => {
 
   return items.map((item: any, index: number) => ({
     title: item.job_title || `评估记录 ${index + 1}`,
-    content: item.match_score != null
-      ? `最近 Person-Job Matching 为 ${Math.round(item.match_score)}%，可进入报告中心查看详细解释。`
-      : '评估记录已生成，可进入报告中心查看详细内容。',
+    content:
+      item.match_score != null
+        ? `最近 Person-Job Matching 为 ${Math.round(item.match_score)}%，可进入报告中心查看详细解释。`
+        : '评估记录已生成，可进入报告中心查看详细内容。',
     meta: formatTime(item.created_at)
   }))
 })
@@ -111,7 +111,7 @@ const activityItems = computed(() => {
         title: '等待启动首个 AssessmentSession',
         action: '开始评估',
         time: '立即开始',
-        type: 'empty'
+        type: 'neutral'
       }
     ]
   }
@@ -161,10 +161,7 @@ async function loadData() {
   loading.value = true
   try {
     const candidateId = user.value?.id || userStore.userId
-    if (!candidateId) {
-      console.warn('未获取到候选人ID')
-      return
-    }
+    if (!candidateId) return
 
     const [portrait, historyData, jobs] = await Promise.all([
       fetchPortrait(candidateId).catch(() => null),
@@ -210,10 +207,9 @@ function goToReportCenter() {
 }
 
 onMounted(() => {
-  if (userStore.isHR) {
-    return
+  if (!userStore.isHR) {
+    loadData()
   }
-  loadData()
 })
 
 watchEffect(() => {
@@ -247,12 +243,7 @@ watchEffect(() => {
               </el-icon>
               开始新评估
             </el-button>
-            <el-button size="large" :disabled="!latestReport" @click="viewLatestReport">
-              查看最新报告
-            </el-button>
-            <el-button size="large" :loading="loading" @click="loadData">
-              刷新数据
-            </el-button>
+            <el-button size="large" :disabled="!latestReport" @click="viewLatestReport">查看最新报告</el-button>
           </div>
 
           <div class="hero-stats">
@@ -295,9 +286,7 @@ watchEffect(() => {
               <h3>我的心理画像</h3>
               <p>汇总展示当前 TraitScores，用于支持后续 Person-Job Matching 解释。</p>
             </div>
-            <span v-if="portraitData && portraitData.length > 0" class="section-badge">
-              {{ portraitData.length }} 项特质
-            </span>
+            <span v-if="portraitData && portraitData.length > 0" class="section-badge">{{ portraitData.length }} 项特质</span>
           </div>
 
           <EmptyState
@@ -363,29 +352,16 @@ watchEffect(() => {
                 >
                   <div class="trait-bar-header">
                     <span class="trait-name">{{ trait.name }}</span>
-                    <span class="trait-score" :style="{ color: getScoreColor(trait.score) }">
-                      {{ trait.score.toFixed(1) }}
-                    </span>
+                    <span class="trait-score" :style="{ color: getScoreColor(trait.score) }">{{ trait.score.toFixed(1) }}</span>
                   </div>
                   <div class="trait-bar-track">
                     <div
                       class="trait-bar-fill"
-                      :style="{
-                        width: `${trait.score / 10 * 100}%`,
-                        background: getBarGradient(trait.score)
-                      }"
+                      :style="{ width: `${trait.score / 10 * 100}%`, background: getBarGradient(trait.score) }"
                     ></div>
                   </div>
                 </div>
               </div>
-            </div>
-
-            <div class="portrait-block video-block">
-              <MiniVideoPlayer
-                videoUrl="/lv_0_20260407225241.mp4"
-                title="心理特质解读"
-                @click="goToPsychologyDetail"
-              />
             </div>
           </div>
         </article>
@@ -451,11 +427,7 @@ watchEffect(() => {
           </div>
 
           <div class="activity-list">
-            <div
-              v-for="(item, index) in activityItems"
-              :key="`${item.title}-${index}`"
-              class="activity-item"
-            >
+            <div v-for="(item, index) in activityItems" :key="`${item.title}-${index}`" class="activity-item">
               <span :class="['activity-dot', item.type]"></span>
               <div class="activity-copy">
                 <h4>{{ item.title }}</h4>
@@ -526,17 +498,38 @@ watchEffect(() => {
 }
 
 .hero-card {
-  min-height: 320px;
-  padding: 30px 32px;
+  position: relative;
+  min-height: 250px;
+  padding: 28px 30px;
   display: flex;
   align-items: stretch;
 }
 
+.hero-card::after {
+  content: '';
+  position: absolute;
+  top: 18px;
+  right: 20px;
+  width: 36%;
+  min-width: 220px;
+  height: calc(100% - 36px);
+  border-radius: 28px;
+  background:
+    radial-gradient(circle at 24% 50%, rgba(99, 102, 241, 0.2) 0 8px, transparent 9px),
+    radial-gradient(circle at 72% 24%, rgba(129, 140, 248, 0.2) 0 6px, transparent 7px),
+    radial-gradient(circle at 76% 74%, rgba(99, 102, 241, 0.14) 0 5px, transparent 6px),
+    linear-gradient(145deg, rgba(238, 242, 255, 0.95), rgba(247, 249, 255, 0.58));
+  pointer-events: none;
+}
+
 .hero-copy {
+  position: relative;
+  z-index: 1;
   width: 100%;
+  max-width: 64%;
   display: flex;
   flex-direction: column;
-  gap: 22px;
+  gap: 16px;
 }
 
 .hero-eyebrow {
@@ -554,18 +547,17 @@ watchEffect(() => {
 
 .hero-copy h2 {
   margin: 0;
-  font-size: 40px;
-  line-height: 1.15;
+  font-size: 30px;
+  line-height: 1.18;
   color: #172133;
   letter-spacing: -0.05em;
 }
 
 .hero-subtitle {
-  max-width: 760px;
   margin: 0;
   color: #6f7c93;
-  font-size: 15px;
-  line-height: 1.9;
+  font-size: 14px;
+  line-height: 1.8;
 }
 
 .hero-actions {
@@ -584,12 +576,12 @@ watchEffect(() => {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 14px;
-  margin-top: auto;
+  margin-top: 4px;
 }
 
 .hero-stat-card {
-  min-height: 108px;
-  padding: 18px;
+  min-height: 88px;
+  padding: 14px 16px;
   border-radius: 20px;
   background: linear-gradient(180deg, rgba(248, 250, 255, 0.95), rgba(242, 246, 255, 0.95));
   border: 1px solid rgba(230, 235, 255, 0.95);
@@ -606,7 +598,7 @@ watchEffect(() => {
 
 .hero-stat-value {
   color: #172133;
-  font-size: 28px;
+  font-size: 24px;
   font-weight: 700;
   line-height: 1;
 }
@@ -614,12 +606,18 @@ watchEffect(() => {
 .hero-stat-hint {
   color: #7a87a2;
   font-size: 12px;
-  line-height: 1.6;
+  line-height: 1.55;
 }
 
 .summary-card,
 .dashboard-card {
   padding: 24px;
+}
+
+.summary-card {
+  min-height: 250px;
+  display: flex;
+  flex-direction: column;
 }
 
 .section-head {
@@ -672,19 +670,21 @@ watchEffect(() => {
 
 .summary-list {
   display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 14px;
+  flex: 1;
 }
 
 .summary-item {
   display: grid;
-  grid-template-columns: 38px minmax(0, 1fr);
-  gap: 14px;
+  grid-template-columns: 1fr;
+  gap: 12px;
   align-items: start;
-  padding: 18px;
+  padding: 16px;
   border-radius: 20px;
   border: 1px solid rgba(234, 238, 251, 0.95);
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(247, 249, 255, 0.96));
-  min-height: 116px;
+  min-height: 150px;
 }
 
 .summary-index {
@@ -702,15 +702,15 @@ watchEffect(() => {
 
 .summary-content h4 {
   margin: 0 0 8px;
-  font-size: 15px;
+  font-size: 14px;
   color: #1f2937;
 }
 
 .summary-content p {
   margin: 0 0 10px;
   color: #6f7c93;
-  font-size: 13px;
-  line-height: 1.7;
+  font-size: 12px;
+  line-height: 1.75;
 }
 
 .summary-content span {
@@ -720,7 +720,7 @@ watchEffect(() => {
 
 .portrait-layout {
   display: grid;
-  grid-template-columns: minmax(280px, 0.95fr) minmax(320px, 1.1fr) minmax(280px, 0.95fr);
+  grid-template-columns: minmax(300px, 0.92fr) minmax(380px, 1.08fr);
   gap: 0;
   align-items: stretch;
 }
@@ -729,12 +729,8 @@ watchEffect(() => {
   min-width: 0;
 }
 
-.radar-block,
-.score-block {
-  border-right: 1px solid #edf2ff;
-}
-
 .radar-block {
+  border-right: 1px solid #edf2ff;
   padding: 8px 24px 8px 8px;
   display: flex;
   flex-direction: column;
@@ -750,15 +746,11 @@ watchEffect(() => {
 }
 
 .score-block {
-  padding: 8px 24px;
+  padding: 8px 0 8px 24px;
   display: flex;
   flex-direction: column;
   gap: 20px;
   min-height: 440px;
-}
-
-.video-block {
-  padding-left: 24px;
 }
 
 .score-overview {
@@ -1016,12 +1008,24 @@ watchEffect(() => {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
+  .summary-list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .job-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
 @media (max-width: 1100px) {
+  .hero-card::after {
+    display: none;
+  }
+
+  .hero-copy {
+    max-width: none;
+  }
+
   .portrait-layout {
     grid-template-columns: 1fr;
     gap: 20px;
@@ -1031,17 +1035,8 @@ watchEffect(() => {
   .score-block {
     border-right: none;
     border-bottom: 1px solid #edf2ff;
-  }
-
-  .radar-block,
-  .score-block,
-  .video-block {
     min-height: 0;
     padding: 0 0 20px;
-  }
-
-  .video-block {
-    padding: 0;
   }
 
   .side-column {
@@ -1065,6 +1060,7 @@ watchEffect(() => {
     font-size: 28px;
   }
 
+  .summary-list,
   .hero-stats,
   .job-grid {
     grid-template-columns: 1fr;
