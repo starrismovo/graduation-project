@@ -6,12 +6,22 @@
 import os
 from pathlib import Path
 
+BACKEND_DIR = Path(__file__).resolve().parent.parent
+OCR_CACHE_DIR = BACKEND_DIR / ".ocr_cache"
+PADDLEX_CACHE_DIR = OCR_CACHE_DIR / "paddlex"
+PADDLEOCR_HOME_DIR = OCR_CACHE_DIR / "paddleocr"
+PADDLEOCR_MODEL_DIR = PADDLEOCR_HOME_DIR / "models"
+
+for cache_dir in (PADDLEX_CACHE_DIR, PADDLEOCR_HOME_DIR, PADDLEOCR_MODEL_DIR):
+    cache_dir.mkdir(parents=True, exist_ok=True)
+
 os.environ['PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK'] = '1'
-os.environ['PADDLE_PDX_OFFLINE_MODE'] = 'True'
 os.environ['PADDLEOCR_USE_LAUNCH'] = '0'
-os.environ['PADDLE_OCR_LOCAL_MODEL_PATH'] = str(Path.home() / ".paddleocr" / "models")
-os.environ['PADDLE_REPO'] = ''
-os.environ['PADDLEOCR_HOME'] = str(Path.home() / ".paddleocr")
+os.environ['PADDLE_PDX_CACHE_HOME'] = str(PADDLEX_CACHE_DIR)
+os.environ['PADDLE_OCR_LOCAL_MODEL_PATH'] = str(PADDLEOCR_MODEL_DIR)
+os.environ['PADDLEOCR_HOME'] = str(PADDLEOCR_HOME_DIR)
+os.environ['PADDLE_PDX_ENABLE_MKLDNN_BYDEFAULT'] = 'False'
+os.environ['PADDLE_PDX_DISABLE_MKLDNN_MODEL_BL'] = 'True'
 
 from typing import Optional, List, Dict, Any, Literal
 import time
@@ -1117,10 +1127,62 @@ def _ocr_extract_text(content: bytes, file_ext: str) -> str:
     import logging
     from io import BytesIO
     logger = logging.getLogger(__name__)
+
+    def build_ocr_unavailable_message(reason: str) -> str:
+        return (
+            "【OCR功能暂时不可用】\n\n"
+            f"原因：{reason}\n\n"
+            "当前文件没有可直接提取的文本，系统需要 OCR 识别扫描件或图片内容。"
+            "请先手动补全表单信息，或上传可复制文本的 PDF、.docx、.txt 文件。"
+        )
+
+    def run_paddleocr(ocr, image) -> Any:
+        """兼容 PaddleOCR 2.x/3.x 的识别调用。"""
+        import numpy as np
+        from PIL import Image
+
+        if hasattr(image, "convert"):
+            image = image.convert("RGB")
+            max_side = 1200
+            width, height = image.size
+            longest = max(width, height)
+            if longest > max_side:
+                scale = max_side / longest
+                new_size = (max(1, int(width * scale)), max(1, int(height * scale)))
+                image = image.resize(new_size, Image.Resampling.LANCZOS)
+
+        image_input = np.array(image.convert("RGB")) if hasattr(image, "convert") else image
+        if hasattr(ocr, "predict"):
+            return ocr.predict(image_input)
+        return ocr.ocr(image_input)
+
+    def extract_paddleocr_text(result: Any) -> str:
+        """兼容解析 PaddleOCR 2.x 列表结构和 3.x OCRResult 字典结构。"""
+        if not result:
+            return ""
+
+        text_parts = []
+        for item in result:
+            if isinstance(item, dict):
+                text_parts.extend([str(text) for text in item.get("rec_texts", []) if text])
+                continue
+
+            if isinstance(item, list):
+                for line in item:
+                    try:
+                        if isinstance(line, (list, tuple)) and len(line) >= 2:
+                            rec = line[1]
+                            if isinstance(rec, (list, tuple)) and rec:
+                                text_parts.append(str(rec[0]))
+                    except Exception:
+                        continue
+
+        return "\n".join(text_parts).strip()
     
     # ⏱️ 超时保护
-    timeout_per_page = 30  # 每页最多 30 秒
-    total_timeout = 300    # 总超时 5 分钟
+    pdf_render_resolution = 120
+    timeout_per_page = 20  # 每页最多 20 秒
+    total_timeout = 90     # 总超时 90 秒
     start_time = time.time()
     
     try:
@@ -1153,30 +1215,33 @@ def _ocr_extract_text(content: bytes, file_ext: str) -> str:
                             try:
                                 # 每页超时控制
                                 page_start = time.time()
-                                im = page.to_image(resolution=300)
+                                logger.info(f"  正在渲染 PDF 页面，resolution={pdf_render_resolution}")
+                                im = page.to_image(resolution=pdf_render_resolution)
+                                render_time = time.time() - page_start
+                                logger.info(f"  页面渲染完成，耗时 {render_time:.1f} 秒")
                                 
-                                if time.time() - page_start > timeout_per_page:
+                                if render_time > timeout_per_page:
                                     logger.warning(f"⏱️ 第 {page_num + 1} 页转换超时 ({timeout_per_page}秒)")
                                     all_text.append("[超时: 页面过大]")
                                     continue
                                 
                                 pil_image = im.original
                                 
-                                logger.debug(f"  执行 OCR 识别...")
+                                logger.info("  开始执行 OCR 识别")
                                 ocr_start = time.time()
-                                result = ocr.ocr(pil_image, cls=False)
+                                result = run_paddleocr(ocr, pil_image)
                                 ocr_time = time.time() - ocr_start
+                                logger.info(f"  OCR 识别完成，耗时 {ocr_time:.1f} 秒")
                                 
+                                page_text = extract_paddleocr_text(result)
                                 if ocr_time > timeout_per_page:
-                                    logger.warning(f"⏱️ 第 {page_num + 1} 页 OCR 超时 ({ocr_time:.1f}秒)")
-                                    all_text.append("[超时: OCR 处理缓慢]")
-                                    continue
-                                
-                                page_text = ""
-                                if result and result[0]:
-                                    page_text = "\n".join([line[1][0] for line in result[0]])
-                                all_text.append(page_text)
-                                logger.info(f"  第 {page_num + 1} 页: {len(page_text)} 字")
+                                    logger.warning(f"⏱️ 第 {page_num + 1} 页 OCR 耗时较长 ({ocr_time:.1f}秒)，仍尝试使用已返回的识别结果")
+
+                                if page_text:
+                                    all_text.append(page_text)
+                                    logger.info(f"  第 {page_num + 1} 页: {len(page_text)} 字")
+                                else:
+                                    logger.warning(f"  第 {page_num + 1} 页未识别到有效文字")
                             except Exception as page_err:
                                 logger.warning(f"  第 {page_num + 1} 页识别失败: {page_err}")
                                 all_text.append("")
@@ -1198,8 +1263,8 @@ def _ocr_extract_text(content: bytes, file_ext: str) -> str:
                     image = Image.open(BytesIO(content))
                     
                     logger.debug(f"  执行 OCR 识别...")
-                    result = ocr.ocr(image, cls=False)
-                    text = "\n".join([line[1][0] for line in result[0]]) if result and result[0] else ""
+                    result = run_paddleocr(ocr, image)
+                    text = extract_paddleocr_text(result)
                     
                     if text.strip():
                         logger.info(f"✅ PaddleOCR 图片成功，长度: {len(text)}")
@@ -1232,7 +1297,7 @@ def _ocr_extract_text(content: bytes, file_ext: str) -> str:
                         for page_num, page in enumerate(pdf.pages):
                             logger.info(f"EasyOCR 识别第 {page_num + 1}/{len(pdf.pages)} 页...")
                             try:
-                                im = page.to_image(resolution=300)
+                                im = page.to_image(resolution=pdf_render_resolution)
                                 pil_image = im.original
                                 result = reader.readtext(pil_image, detail=0)
                                 page_text = '\n'.join(result) if result else ""
@@ -1269,7 +1334,12 @@ def _ocr_extract_text(content: bytes, file_ext: str) -> str:
             
             # 方案 3: 回退处理
             logger.warning("所有 OCR 方案都失败，返回回退消息")
-            return "【⚠️ OCR功能暂时不可用】\n\n目前无法自动识别您上传的文件。这可能是因为：\n• PaddleOCR 版本不兼容\n• EasyOCR 未安装\n• 模型初始化失败\n\n您有以下选择：\n1️⃣ 继续手动填写表单中的信息\n2️⃣ 尝试上传纯文本(.txt)或Word文档(.docx)\n3️⃣ 运行修复: python fix_paddleocr_issue.py\n4️⃣ 安装 EasyOCR: pip install easyocr\n\n✨ 系统仍然可以正常使用，只需手动补全信息即可"
+            reason = str(paddle_err)
+            if isinstance(paddle_err, PermissionError):
+                reason = f"PaddleOCR 模型文件权限不足：{paddle_err}"
+            elif "No module named 'easyocr'" in reason:
+                reason = "PaddleOCR 不可用，且未安装 EasyOCR 备选识别库"
+            return build_ocr_unavailable_message(reason)
     
     except Exception as e:
         logger.error(f"OCR 处理异常: {type(e).__name__}: {e}", exc_info=True)
@@ -1330,7 +1400,7 @@ def _extract_resume_text(content: bytes, file_ext: str) -> str:
                         return f"【OCR识别】{ocr_text}"
                     else:
                         logger.warning("OCR 识别也失败")
-                        return "【PDF文档已上传但无可识别内容】"
+                        return ocr_text or "【PDF文档已上传但无可识别内容】"
             except ImportError as e:
                 logger.warning(f"pdfplumber 库未安装: {e}")
                 return "【PDF文件已上传】系统暂无法提取内容，请确保安装: pip install pdfplumber"
@@ -1346,7 +1416,7 @@ def _extract_resume_text(content: bytes, file_ext: str) -> str:
                 return f"【OCR识别】{ocr_text}"
             else:
                 logger.warning("图片 OCR 识别失败")
-                return "【图片文件已上传但无可识别内容】"
+                return ocr_text or "【图片文件已上传但无可识别内容】"
         
         elif file_ext == '.doc':
             logger.info("检测到旧版Word文件")

@@ -42,6 +42,10 @@ class JobRecommendation(BaseModel):
     id: int
     title: str
     description: str
+    company: Optional[str] = None
+    city: Optional[str] = None
+    category: Optional[str] = None
+    salary: Optional[str] = None
     department: str
     level: str
     match_score: float

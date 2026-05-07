@@ -66,6 +66,212 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/assessment", tags=["assessment"])
 
+TRAIT_KEY_ALIASES = {
+    "外向性": "extraversion",
+    "extraversion": "extraversion",
+    "extroversion": "extraversion",
+    "宜人性": "agreeableness",
+    "agreeableness": "agreeableness",
+    "尽责性": "conscientiousness",
+    "conscientiousness": "conscientiousness",
+    "神经质": "neuroticism",
+    "neuroticism": "neuroticism",
+    "开放性": "openness",
+    "openness": "openness",
+    "情绪稳定性": "neuroticism",
+    "emotional_stability": "neuroticism",
+}
+
+POSITIVE_TRAITS = {"extraversion", "agreeableness", "conscientiousness", "openness"}
+LOWER_IS_BETTER_TRAITS = {"neuroticism"}
+
+INSIGHT_CREATIVE_KEYWORDS = [
+    "用户",
+    "研究",
+    "内容",
+    "文案",
+    "编辑",
+    "策划",
+    "新媒体",
+    "体验",
+    "UX",
+    "UI",
+    "设计",
+    "需求",
+    "运营",
+]
+
+HARD_TECH_KEYWORDS = [
+    "后端",
+    "前端",
+    "算法",
+    "开发",
+    "工程师",
+    "Java",
+    "Python",
+    "机器学习",
+    "推荐系统",
+]
+
+
+def _coerce_dict(value: Any) -> Dict[str, Any]:
+    if isinstance(value, dict):
+        return value
+    if isinstance(value, str):
+        try:
+            parsed = json.loads(value)
+            return parsed if isinstance(parsed, dict) else {}
+        except (json.JSONDecodeError, TypeError):
+            return {}
+    return {}
+
+
+def _normalize_job_traits(job: Job) -> Dict[str, float]:
+    raw_traits = _coerce_dict(job.required_traits)
+    if not raw_traits:
+        raw_traits = _coerce_dict(getattr(job, "personality_requirements", None))
+
+    normalized: Dict[str, float] = {}
+    for raw_key, raw_value in raw_traits.items():
+        key = TRAIT_KEY_ALIASES.get(str(raw_key).strip())
+        if not key:
+            continue
+        try:
+            value = float(raw_value)
+        except (TypeError, ValueError):
+            continue
+        if str(raw_key).strip() in {"情绪稳定性", "emotional_stability"}:
+            value = 10 - value
+        normalized[key] = max(0.0, min(10.0, value))
+    return normalized
+
+
+def _profile_traits(profile: CandidatePersonalityProfile) -> Dict[str, float]:
+    traits = {
+        "extraversion": profile.trait_extroversion,
+        "agreeableness": profile.trait_agreeableness,
+        "conscientiousness": profile.trait_conscientiousness,
+        "neuroticism": profile.trait_neuroticism,
+        "openness": profile.trait_openness,
+    }
+    return {key: float(value) for key, value in traits.items() if value is not None}
+
+
+def _job_text(job: Optional[Job], include_description: bool = False) -> str:
+    if not job:
+        return ""
+    values = [job.name, job.category]
+    if include_description:
+        values.append(job.description)
+    return " ".join(str(value or "") for value in values)
+
+
+def _contains_any(text: str, keywords: List[str]) -> bool:
+    folded = text.lower()
+    return any(keyword.lower() in folded for keyword in keywords)
+
+
+def _insight_role_tier(text: str) -> int:
+    folded = text.lower()
+    primary_keywords = [
+        "用户研究",
+        "用研",
+        "需求分析",
+        "体验研究",
+        "产品研究",
+        "市场研究",
+        "内容研究",
+    ]
+    secondary_keywords = [
+        "内容",
+        "文案",
+        "编辑",
+        "新媒体",
+        "ux",
+        "ui/ux",
+        "体验设计",
+        "产品经理",
+        "产品策划",
+        "产品运营",
+    ]
+    tertiary_keywords = ["策划运营", "营销策划", "活动策划", "策划"]
+
+    if any(keyword.lower() in folded for keyword in primary_keywords):
+        return 4
+    if any(keyword.lower() in folded for keyword in secondary_keywords):
+        return 3
+    if "产品" in folded and any(keyword in folded for keyword in ["经理", "策划", "运营", "需求", "用户", "体验"]):
+        return 3
+    if any(keyword.lower() in folded for keyword in tertiary_keywords):
+        return 2
+    return 0
+
+
+def _is_insight_creative_role(text: str) -> bool:
+    folded = text.lower()
+    if _insight_role_tier(text) > 0:
+        return True
+    if "产品" in folded and any(keyword in folded for keyword in ["经理", "策划", "运营", "需求", "用户", "体验"]):
+        return True
+    if "研究" in folded and any(keyword in folded for keyword in ["用户", "产品", "市场", "内容", "体验", "需求"]):
+        return True
+    return False
+
+
+def _calculate_role_affinity(
+    profile: CandidatePersonalityProfile,
+    job: Job,
+    source_job: Optional[Job] = None,
+) -> float:
+    job_text = _job_text(job)
+    source_text = _job_text(source_job)
+    candidate_traits = _profile_traits(profile)
+    score = 50.0
+
+    job_is_insight_creative = _is_insight_creative_role(job_text)
+    source_is_insight_creative = _is_insight_creative_role(source_text)
+    job_is_hard_tech = _contains_any(job_text, HARD_TECH_KEYWORDS)
+    role_tier = _insight_role_tier(job_text)
+
+    if source_job:
+        if job.id == source_job.id:
+            score += 25
+        elif job.category and source_job.category and job.category == source_job.category:
+            score += 12
+        if source_is_insight_creative and job_is_insight_creative:
+            score += role_tier * 8
+
+    if candidate_traits.get("openness", 0) >= 8 and job_is_insight_creative:
+        score += 14
+    if candidate_traits.get("agreeableness", 0) >= 7 and job_is_insight_creative:
+        score += 10
+    if candidate_traits.get("conscientiousness", 0) >= 7 and _contains_any(job_text, ["研究", "编辑", "策划", "产品", "内容"]):
+        score += 8
+
+    if role_tier == 2 and _contains_any(job_text, ["酒店", "营销"]) and not _contains_any(job_text, ["内容", "用户", "产品", "新媒体"]):
+        score -= 14
+    if job_is_hard_tech and not _contains_any(job_text, ["用户", "产品", "体验", "设计"]):
+        score -= 18
+    if candidate_traits.get("extraversion", 5) < 5 and _contains_any(job_text, ["销售", "主持", "直播", "客户经理"]):
+        score -= 12
+
+    return round(max(0.0, min(100.0, score)), 1)
+
+
+def _calculate_recommendation_score(
+    profile: CandidatePersonalityProfile,
+    job: Job,
+    source_job: Optional[Job] = None,
+) -> Dict[str, float]:
+    match_result = calculate_job_match_score(profile, job)
+    role_affinity = _calculate_role_affinity(profile, job, source_job)
+    overall = round(match_result["overall"] * 0.65 + role_affinity * 0.35, 1)
+    return {
+        **match_result,
+        "role_affinity": role_affinity,
+        "recommendation_score": overall,
+    }
+
 
 def resolve_candidate_user(candidate_identifier: str, db: Session) -> User:
     """Resolve candidate identifier into a concrete User record."""
@@ -120,19 +326,12 @@ def calculate_job_match_score(personality_profile: CandidatePersonalityProfile, 
     """
     default = {"skill_match": 50.0, "personality_match": 50.0, "overall": 50.0}
 
-    if not personality_profile or not job.required_traits:
+    if not personality_profile:
         return default
 
-    candidate_traits = {
-        "外向性": personality_profile.trait_extroversion,
-        "宜人性": personality_profile.trait_agreeableness,
-        "尽责性": personality_profile.trait_conscientiousness,
-        "神经质": personality_profile.trait_neuroticism,
-        "开放性": personality_profile.trait_openness,
-    }
-
-    required_traits = job.required_traits  # 期望是个 dict
-    if not isinstance(required_traits, dict):
+    candidate_traits = _profile_traits(personality_profile)
+    required_traits = _normalize_job_traits(job)
+    if not candidate_traits or not required_traits:
         return default
 
     # personality_match：大五人格匹配（0-100）
@@ -141,8 +340,14 @@ def calculate_job_match_score(personality_profile: CandidatePersonalityProfile, 
     for trait_name, required_score in required_traits.items():
         if trait_name in candidate_traits and candidate_traits[trait_name] is not None:
             candidate_score = candidate_traits[trait_name]
-            # 差值越小分数越高（0-10 scale → 完全匹配=10，最大差值=0）
-            similarity = 10 - abs(candidate_score - required_score)
+            if trait_name in LOWER_IS_BETTER_TRAITS:
+                gap = max(0.0, candidate_score - required_score)
+            elif trait_name in POSITIVE_TRAITS:
+                gap = max(0.0, required_score - candidate_score)
+            else:
+                gap = abs(candidate_score - required_score)
+            # 岗位人格需求表示胜任阈值：正向特质达到要求后不额外扣分，神经质低于要求视为稳定性满足。
+            similarity = max(0.0, 10 - gap)
             total_score += similarity
             matched_count += 1
 
@@ -321,6 +526,14 @@ async def get_recommended_jobs(
     
     # 获取所有岗位
     jobs = db.query(Job).all()
+    latest_record = db.query(AssessmentRecord).filter(
+        AssessmentRecord.candidate_id == candidate.id,
+        AssessmentRecord.assessment_status == AssessmentStatus.COMPLETED,
+        AssessmentRecord.is_deleted == False
+    ).order_by(desc(AssessmentRecord.created_at)).first()
+    source_job = None
+    if latest_record:
+        source_job = db.query(Job).filter(Job.id == latest_record.job_id).first()
     
     if not profile or not any([
         profile.trait_extroversion,
@@ -336,6 +549,10 @@ async def get_recommended_jobs(
                 id=job.id,
                 title=job.name,
                 description=job.description,
+                company=job.company,
+                city=job.city,
+                category=job.category,
+                salary=f"{int(job.salary_min)}k-{int(job.salary_max)}k",
                 department=job.category,
                 level="P6",  # 默认级别
                 match_score=75.0,
@@ -348,11 +565,19 @@ async def get_recommended_jobs(
     # 计算匹配度并排序
     job_scores = []
     for job in jobs:
-        result = calculate_job_match_score(profile, job)
-        job_scores.append((job, result["overall"]))
+        result = _calculate_recommendation_score(profile, job, source_job)
+        job_scores.append((job, result["recommendation_score"], result))
     
     # 按匹配度降序排序
-    job_scores.sort(key=lambda x: x[1], reverse=True)
+    job_scores.sort(
+        key=lambda x: (
+            x[1],
+            1 if source_job and x[0].id == source_job.id else 0,
+            x[2]["role_affinity"],
+            x[2]["personality_match"],
+        ),
+        reverse=True,
+    )
     
     # 获取top N
     top_jobs = job_scores[:limit]
@@ -370,12 +595,19 @@ async def get_recommended_jobs(
             id=job.id,
             title=job.name,
             description=job.description,
+            company=job.company,
+            city=job.city,
+            category=job.category,
+            salary=f"{int(job.salary_min)}k-{int(job.salary_max)}k",
             department=job.category,
             level="P6",  # 默认级别
             match_score=score,
-            match_reason=f"综合能力与岗位要求高度匹配"
+            match_reason=(
+                f"人格匹配度约 {detail['personality_match']}%，"
+                f"岗位方向亲和度约 {detail['role_affinity']}%"
+            )
         )
-        for job, score in top_jobs
+        for job, score, detail in top_jobs
     ]
     
     return RecommendedJobsResponse(data=data)

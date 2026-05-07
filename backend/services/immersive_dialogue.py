@@ -7,12 +7,22 @@
 import os
 from pathlib import Path
 
+BACKEND_DIR = Path(__file__).resolve().parent.parent
+OCR_CACHE_DIR = BACKEND_DIR / ".ocr_cache"
+PADDLEX_CACHE_DIR = OCR_CACHE_DIR / "paddlex"
+PADDLEOCR_HOME_DIR = OCR_CACHE_DIR / "paddleocr"
+PADDLEOCR_MODEL_DIR = PADDLEOCR_HOME_DIR / "models"
+
+for cache_dir in (PADDLEX_CACHE_DIR, PADDLEOCR_HOME_DIR, PADDLEOCR_MODEL_DIR):
+    cache_dir.mkdir(parents=True, exist_ok=True)
+
 os.environ['PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK'] = '1'
-os.environ['PADDLE_PDX_OFFLINE_MODE'] = 'True'
 os.environ['PADDLEOCR_USE_LAUNCH'] = '0'
-os.environ['PADDLE_OCR_LOCAL_MODEL_PATH'] = str(Path.home() / ".paddleocr" / "models")
-os.environ['PADDLE_REPO'] = ''
-os.environ['PADDLEOCR_HOME'] = str(Path.home() / ".paddleocr")
+os.environ['PADDLE_PDX_CACHE_HOME'] = str(PADDLEX_CACHE_DIR)
+os.environ['PADDLE_OCR_LOCAL_MODEL_PATH'] = str(PADDLEOCR_MODEL_DIR)
+os.environ['PADDLEOCR_HOME'] = str(PADDLEOCR_HOME_DIR)
+os.environ['PADDLE_PDX_ENABLE_MKLDNN_BYDEFAULT'] = 'False'
+os.environ['PADDLE_PDX_DISABLE_MKLDNN_MODEL_BL'] = 'True'
 
 from typing import Optional, Dict, List, Any
 from datetime import datetime
