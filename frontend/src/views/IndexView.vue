@@ -1,8 +1,8 @@
 <script setup lang="ts">
+import { computed, onMounted, ref, watch } from 'vue'
 import { useUserStore } from '../stores/user'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { ref, onMounted, watch } from 'vue'
 import request, { fetchNotificationSummary } from '../utils/request'
 import { useAssessmentStore } from '@/stores/assessment'
 
@@ -15,6 +15,25 @@ const notificationSummary = ref<{ unread_count: number; items: any[] }>({
   unread_count: 0,
   items: []
 })
+
+const candidateMenus = [
+  { key: 'home', label: '首页', icon: 'home' },
+  { key: 'jobs', label: '岗位浏览', icon: 'jobs' },
+  { key: 'interviews', label: '我的面试', icon: 'interviews' },
+  { key: 'reports', label: '报告中心', icon: 'reports' },
+  { key: 'psychology', label: '心理解读', icon: 'psychology' },
+  { key: 'profile', label: '设置中心', icon: 'settings' }
+]
+
+const hrMenus = [
+  { key: 'home', label: '首页', icon: 'home' },
+  { key: 'jobs-manage', label: '岗位管理', icon: 'jobs' },
+  { key: 'candidates', label: '候选人', icon: 'users' },
+  { key: 'reports-manage', label: '数据分析', icon: 'analytics' },
+  { key: 'profile', label: '设置中心', icon: 'settings' }
+]
+
+const sideMenus = computed(() => (userStore.isHR ? hrMenus : candidateMenus))
 
 const updateActiveMenu = () => {
   const path = router.currentRoute.value.path
@@ -202,15 +221,15 @@ watch(
             <svg class="logo-icon" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg">
               <defs>
                 <linearGradient id="logoGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-                  <stop offset="0%" style="stop-color:#667eea"/>
-                  <stop offset="100%" style="stop-color:#764ba2"/>
+                  <stop offset="0%" style="stop-color:#667eea" />
+                  <stop offset="100%" style="stop-color:#764ba2" />
                 </linearGradient>
               </defs>
-              <rect width="32" height="32" rx="8" fill="url(#logoGrad)"/>
-              <path d="M16 8L24 13L23 19L16 23L9 19L8 13Z" fill="none" stroke="white" stroke-width="2"/>
-              <circle cx="14" cy="15" r="2" fill="white"/>
-              <circle cx="18" cy="15" r="2" fill="white"/>
-              <path d="M12 21Q16 24 20 21" stroke="white" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+              <rect width="32" height="32" rx="8" fill="url(#logoGrad)" />
+              <path d="M16 8L24 13L23 19L16 23L9 19L8 13Z" fill="none" stroke="white" stroke-width="2" />
+              <circle cx="14" cy="15" r="2" fill="white" />
+              <circle cx="18" cy="15" r="2" fill="white" />
+              <path d="M12 21Q16 24 20 21" stroke="white" stroke-width="1.5" fill="none" stroke-linecap="round" />
             </svg>
             <div class="logo-copy">
               <span class="logo-text">AI 人岗匹配</span>
@@ -254,9 +273,9 @@ watch(
 
               <button :class="['nav-item', { active: activeMenu === 'psychology' }]" @click="handleMenuSelect('psychology')">
                 <svg class="nav-icon" viewBox="0 0 20 20" fill="currentColor">
-                  <path d="M10.5 1.5H4.75A2.25 2.25 0 002.5 3.75v12.5A2.25 2.25 0 004.75 18.5h10.5a2.25 2.25 0 002.25-2.25V8" stroke="currentColor" stroke-width="1.5" fill="none"/>
-                  <path d="M10 10l3-3m0 0l3 3m-3-3v8" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
-                  <circle cx="12" cy="5" r="1.5" fill="currentColor"/>
+                  <path d="M10.5 1.5H4.75A2.25 2.25 0 002.5 3.75v12.5A2.25 2.25 0 004.75 18.5h10.5a2.25 2.25 0 002.25-2.25V8" stroke="currentColor" stroke-width="1.5" fill="none" />
+                  <path d="M10 10l3-3m0 0l3 3m-3-3v8" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round" />
+                  <circle cx="12" cy="5" r="1.5" fill="currentColor" />
                 </svg>
                 <span>心理解读</span>
               </button>
@@ -288,11 +307,18 @@ watch(
         </div>
 
         <div class="header-right">
+          <div class="search-box">
+            <svg class="search-icon" viewBox="0 0 20 20" fill="currentColor">
+              <path fill-rule="evenodd" d="M8.5 3a5.5 5.5 0 014.356 8.86l3.642 3.641a1 1 0 01-1.414 1.415l-3.642-3.642A5.5 5.5 0 118.5 3zm0 2a3.5 3.5 0 100 7 3.5 3.5 0 000-7z" clip-rule="evenodd" />
+            </svg>
+            <span>搜索岗位、报告、百科...</span>
+          </div>
+
           <el-popover placement="bottom-end" :width="360" trigger="click" popper-class="notification-popover">
             <template #reference>
               <button class="notification-trigger" type="button">
                 <svg class="notification-icon" viewBox="0 0 20 20" fill="currentColor">
-                  <path d="M10 2a4 4 0 00-4 4v1.13c0 .72-.2 1.42-.58 2.03L4.3 11.1A1.5 1.5 0 005.58 13h8.84a1.5 1.5 0 001.28-1.9l-1.12-1.94A3.88 3.88 0 0114 7.13V6a4 4 0 00-4-4zm0 16a2.5 2.5 0 002.45-2h-4.9A2.5 2.5 0 0010 18z"/>
+                  <path d="M10 2a4 4 0 00-4 4v1.13c0 .72-.2 1.42-.58 2.03L4.3 11.1A1.5 1.5 0 005.58 13h8.84a1.5 1.5 0 001.28-1.9l-1.12-1.94A3.88 3.88 0 0114 7.13V6a4 4 0 00-4-4zm0 16a2.5 2.5 0 002.45-2h-4.9A2.5 2.5 0 0010 18z" />
                 </svg>
                 <span class="notification-label">通知</span>
                 <span v-if="notificationSummary.unread_count > 0" class="notification-badge">
@@ -338,17 +364,17 @@ watch(
           <el-dropdown @command="handleUserMenuCommand" trigger="click">
             <div class="user-profile">
               <div class="user-avatar">
-                <img v-if="userStore.profile?.avatar" :src="getFullAvatarUrl(userStore.profile.avatar)" alt="用户头像" class="avatar-img">
+                <img v-if="userStore.profile?.avatar" :src="getFullAvatarUrl(userStore.profile.avatar)" alt="用户头像" class="avatar-img" />
                 <svg v-else viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg">
                   <defs>
                     <linearGradient id="avatarGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-                      <stop offset="0%" style="stop-color:#667eea"/>
-                      <stop offset="100%" style="stop-color:#764ba2"/>
+                      <stop offset="0%" style="stop-color:#667eea" />
+                      <stop offset="100%" style="stop-color:#764ba2" />
                     </linearGradient>
                   </defs>
-                  <circle cx="16" cy="16" r="16" fill="url(#avatarGrad)"/>
-                  <circle cx="16" cy="12" r="5" fill="white" opacity="0.9"/>
-                  <path d="M6 28c0-5.5 4.5-10 10-10s10 4.5 10 10" fill="white" opacity="0.9"/>
+                  <circle cx="16" cy="16" r="16" fill="url(#avatarGrad)" />
+                  <circle cx="16" cy="12" r="5" fill="white" opacity="0.9" />
+                  <path d="M6 28c0-5.5 4.5-10 10-10s10 4.5 10 10" fill="white" opacity="0.9" />
                 </svg>
               </div>
               <div class="user-info">
@@ -389,7 +415,81 @@ watch(
     </el-header>
 
     <el-main class="app-main">
-      <router-view />
+      <div class="content-shell">
+        <aside class="left-rail">
+          <div class="side-menu-card">
+            <button
+              v-for="item in sideMenus"
+              :key="item.key"
+              type="button"
+              :class="['side-menu-item', { active: activeMenu === item.key }]"
+              @click="handleMenuSelect(item.key)"
+            >
+              <svg v-if="item.icon === 'home'" class="side-menu-icon" viewBox="0 0 20 20" fill="currentColor">
+                <path d="M10.707 2.293a1 1 0 00-1.414 0l-7 7a1 1 0 001.414 1.414L4 10.414V17a1 1 0 001 1h2a1 1 0 001-1v-2a1 1 0 011-1h2a1 1 0 011 1v2a1 1 0 001 1h2a1 1 0 001-1v-6.586l.293.293a1 1 0 001.414-1.414l-7-7z" />
+              </svg>
+              <svg v-else-if="item.icon === 'jobs'" class="side-menu-icon" viewBox="0 0 20 20" fill="currentColor">
+                <path fill-rule="evenodd" d="M6 6V5a3 3 0 013-3h2a3 3 0 013 3v1h2a2 2 0 012 2v3.57A22.952 22.952 0 0110 13a22.95 22.95 0 01-8-1.43V8a2 2 0 012-2h2zm2-1a1 1 0 011-1h2a1 1 0 011 1v1H8V5zm1 5a1 1 0 011-1h.01a1 1 0 110 2H10a1 1 0 01-1-1z" clip-rule="evenodd" />
+                <path d="M2 13.692V16a2 2 0 002 2h12a2 2 0 002-2v-2.308A24.974 24.974 0 0110 15c-2.796 0-5.487-.46-8-1.308z" />
+              </svg>
+              <svg v-else-if="item.icon === 'interviews'" class="side-menu-icon" viewBox="0 0 20 20" fill="currentColor">
+                <path d="M2 6a2 2 0 012-2h6a2 2 0 012 2v8a2 2 0 01-2 2H4a2 2 0 01-2-2V6zM14.553 7.106A1 1 0 0014 8v4a1 1 0 00.553.894l2 1A1 1 0 0018 13V7a1 1 0 00-1.447-.894l-2 1z" />
+              </svg>
+              <svg v-else-if="item.icon === 'reports'" class="side-menu-icon" viewBox="0 0 20 20" fill="currentColor">
+                <path d="M9 2a1 1 0 000 2h2a1 1 0 100-2H9z" />
+                <path fill-rule="evenodd" d="M4 5a2 2 0 012-2 3 3 0 003 3h2a3 3 0 003-3 2 2 0 012 2v11a2 2 0 01-2 2H6a2 2 0 01-2-2V5zm3 4a1 1 0 000 2h.01a1 1 0 100-2H7zm3 0a1 1 0 000 2h3a1 1 0 100-2h-3zm-3 4a1 1 0 100 2h.01a1 1 0 100-2H7zm3 0a1 1 0 100 2h3a1 1 0 100-2h-3z" clip-rule="evenodd" />
+              </svg>
+              <svg v-else-if="item.icon === 'psychology'" class="side-menu-icon" viewBox="0 0 20 20" fill="currentColor">
+                <path d="M10.5 1.5H4.75A2.25 2.25 0 002.5 3.75v12.5A2.25 2.25 0 004.75 18.5h10.5a2.25 2.25 0 002.25-2.25V8" stroke="currentColor" stroke-width="1.5" fill="none" />
+                <path d="M10 10l3-3m0 0l3 3m-3-3v8" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round" />
+                <circle cx="12" cy="5" r="1.5" fill="currentColor" />
+              </svg>
+              <svg v-else-if="item.icon === 'users'" class="side-menu-icon" viewBox="0 0 20 20" fill="currentColor">
+                <path d="M9 6a3 3 0 11-6 0 3 3 0 016 0zM17 6a3 3 0 11-6 0 3 3 0 016 0zM12.93 17c.046-.327.07-.66.07-1a6.97 6.97 0 00-1.5-4.33A5 5 0 0119 16v1h-6.07zM6 11a5 5 0 015 5v1H1v-1a5 5 0 015-5z" />
+              </svg>
+              <svg v-else-if="item.icon === 'analytics'" class="side-menu-icon" viewBox="0 0 20 20" fill="currentColor">
+                <path d="M2 11a1 1 0 011-1h2a1 1 0 011 1v5a1 1 0 01-1 1H3a1 1 0 01-1-1v-5zM8 7a1 1 0 011-1h2a1 1 0 011 1v9a1 1 0 01-1 1H9a1 1 0 01-1-1V7zM14 4a1 1 0 011-1h2a1 1 0 011 1v12a1 1 0 01-1 1h-2a1 1 0 01-1-1V4z" />
+              </svg>
+              <svg v-else class="side-menu-icon" viewBox="0 0 20 20" fill="currentColor">
+                <path fill-rule="evenodd" d="M11.49 3.17c-.38-1.56-2.6-1.56-2.98 0a1.532 1.532 0 01-2.286.948c-1.372-.836-2.942.734-2.106 2.106.54.886.061 2.042-.947 2.287-1.561.379-1.561 2.6 0 2.978a1.532 1.532 0 01.947 2.287c-.836 1.372.734 2.942 2.106 2.106a1.532 1.532 0 012.287.947c.379 1.561 2.6 1.561 2.978 0a1.533 1.533 0 012.287-.947c1.372.836 2.942-.734 2.106-2.106a1.533 1.533 0 01.947-2.287c1.561-.379 1.561-2.6 0-2.978a1.532 1.532 0 01-.947-2.287c.836-1.372-.734-2.942-2.106-2.106a1.532 1.532 0 01-2.287-.947zM10 13a3 3 0 100-6 3 3 0 000 6z" clip-rule="evenodd" />
+              </svg>
+              <span>{{ item.label }}</span>
+            </button>
+          </div>
+
+          <div class="assistant-card">
+            <div class="assistant-badge">{{ userStore.isHR ? 'AI 招聘助理' : 'AI 职业咨询师' }}</div>
+            <h4>{{ userStore.isHR ? '辅助处理候选人与岗位决策' : '为你提供职业发展建议' }}</h4>
+            <p>{{ userStore.isHR ? '围绕岗位实例、候选人报告与待处理事项进行辅助分析。' : '结合人格特质、报告结果与岗位方向，帮助你持续理解自己。' }}</p>
+            <button class="assistant-btn" type="button" @click="handleMenuSelect(userStore.isHR ? 'reports-manage' : 'psychology')">
+              {{ userStore.isHR ? '查看分析' : '立即咨询' }}
+            </button>
+            <div class="assistant-bot">
+              <svg viewBox="0 0 80 80" xmlns="http://www.w3.org/2000/svg">
+                <defs>
+                  <linearGradient id="botGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                    <stop offset="0%" stop-color="#667eea" />
+                    <stop offset="100%" stop-color="#8b5cf6" />
+                  </linearGradient>
+                </defs>
+                <rect x="18" y="22" width="44" height="30" rx="14" fill="url(#botGrad)" />
+                <rect x="24" y="28" width="32" height="18" rx="9" fill="white" opacity="0.92" />
+                <circle cx="34" cy="37" r="3" fill="#667eea" />
+                <circle cx="46" cy="37" r="3" fill="#667eea" />
+                <path d="M32 45Q40 50 48 45" stroke="#667eea" stroke-width="2.5" fill="none" stroke-linecap="round" />
+                <rect x="34" y="12" width="12" height="8" rx="4" fill="#c7d2fe" />
+                <path d="M40 20V14" stroke="#667eea" stroke-width="2.5" stroke-linecap="round" />
+                <circle cx="20" cy="57" r="5" fill="#dbeafe" />
+                <circle cx="60" cy="57" r="5" fill="#ddd6fe" />
+              </svg>
+            </div>
+          </div>
+        </aside>
+
+        <section class="main-content">
+          <router-view />
+        </section>
+      </div>
     </el-main>
   </el-container>
 </template>
@@ -404,13 +504,13 @@ watch(
 .main-layout {
   height: 100vh;
   background:
-    radial-gradient(circle at top left, rgba(99, 102, 241, 0.16), transparent 26%),
-    radial-gradient(circle at top right, rgba(59, 130, 246, 0.12), transparent 24%),
-    linear-gradient(180deg, #f5f7ff 0%, #f8fbff 44%, #eef3fb 100%);
+    radial-gradient(circle at top left, rgba(99, 102, 241, 0.16), transparent 24%),
+    radial-gradient(circle at top right, rgba(59, 130, 246, 0.12), transparent 20%),
+    linear-gradient(180deg, #f6f8ff 0%, #f8fbff 42%, #eef3fb 100%);
 }
 
 .app-header {
-  background: rgba(255, 255, 255, 0.72);
+  background: rgba(255, 255, 255, 0.74);
   backdrop-filter: blur(18px);
   box-shadow: 0 12px 40px rgba(15, 23, 42, 0.06);
   padding: 0;
@@ -422,13 +522,13 @@ watch(
 }
 
 .header-container {
-  max-width: 1480px;
+  max-width: 1560px;
   margin: 0 auto;
   height: 100%;
-  padding: 0 28px;
+  padding: 0 24px;
   display: flex;
   align-items: center;
-  gap: 28px;
+  gap: 22px;
 }
 
 .header-left {
@@ -448,7 +548,7 @@ watch(
 
 .app-logo:hover {
   transform: translateY(-1px);
-  background: rgba(255, 255, 255, 0.6);
+  background: rgba(255, 255, 255, 0.66);
   box-shadow: 0 8px 24px rgba(99, 102, 241, 0.12);
 }
 
@@ -493,11 +593,11 @@ watch(
 .main-nav {
   display: flex;
   gap: 10px;
-  background: rgba(255, 255, 255, 0.7);
+  background: rgba(255, 255, 255, 0.72);
   padding: 8px 10px;
   border-radius: 24px;
   border: 1px solid rgba(221, 229, 250, 0.95);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8), 0 8px 28px rgba(99, 102, 241, 0.08);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.85), 0 8px 28px rgba(99, 102, 241, 0.08);
   overflow-x: auto;
 }
 
@@ -530,7 +630,8 @@ watch(
   box-shadow: 0 10px 28px rgba(92, 101, 255, 0.3);
 }
 
-.nav-icon {
+.nav-icon,
+.side-menu-icon {
   width: 18px;
   height: 18px;
   flex-shrink: 0;
@@ -540,14 +641,38 @@ watch(
   flex-shrink: 0;
   display: flex;
   align-items: center;
-  gap: 14px;
+  gap: 12px;
+}
+
+.search-box {
+  min-width: 260px;
+  height: 46px;
+  padding: 0 16px;
+  border-radius: 18px;
+  border: 1px solid rgba(221, 229, 250, 0.95);
+  background: rgba(255, 255, 255, 0.78);
+  color: #98a2b3;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  box-shadow: 0 8px 24px rgba(99, 102, 241, 0.06);
+}
+
+.search-box span {
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.search-icon {
+  width: 18px;
+  height: 18px;
 }
 
 .notification-trigger {
   position: relative;
-  min-width: 86px;
+  min-width: 46px;
+  width: 46px;
   height: 46px;
-  padding: 0 16px;
   border: 1px solid rgba(221, 229, 250, 0.95);
   border-radius: 18px;
   background: rgba(255, 255, 255, 0.78);
@@ -555,7 +680,6 @@ watch(
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 8px;
   cursor: pointer;
   transition: all 0.2s ease;
   box-shadow: 0 8px 24px rgba(99, 102, 241, 0.08);
@@ -574,8 +698,7 @@ watch(
 }
 
 .notification-label {
-  font-size: 13px;
-  font-weight: 600;
+  display: none;
 }
 
 .notification-badge {
@@ -599,7 +722,7 @@ watch(
   align-items: center;
   gap: 12px;
   padding: 8px 14px 8px 8px;
-  background: rgba(255, 255, 255, 0.8);
+  background: rgba(255, 255, 255, 0.82);
   border-radius: 20px;
   cursor: pointer;
   transition: all 0.2s ease;
@@ -637,7 +760,7 @@ watch(
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  min-width: 100px;
+  min-width: 92px;
 }
 
 .user-name {
@@ -832,30 +955,187 @@ watch(
 
 .app-main {
   background: transparent;
-  padding: 28px 24px 24px;
+  padding: 20px 20px 20px;
   overflow-y: auto;
 }
 
-@media (max-width: 1200px) {
-  .header-container {
-    gap: 18px;
-    padding: 0 18px;
-  }
+.content-shell {
+  max-width: 1560px;
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: 220px minmax(0, 1fr);
+  gap: 20px;
+  align-items: start;
+}
 
-  .logo-subtitle {
+.left-rail {
+  position: sticky;
+  top: 102px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.side-menu-card,
+.assistant-card {
+  border-radius: 26px;
+  border: 1px solid rgba(226, 232, 255, 0.92);
+  background: rgba(255, 255, 255, 0.82);
+  box-shadow: 0 18px 44px rgba(15, 23, 42, 0.08);
+}
+
+.side-menu-card {
+  padding: 16px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.side-menu-item {
+  width: 100%;
+  height: 44px;
+  padding: 0 14px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: none;
+  border-radius: 14px;
+  background: transparent;
+  color: #667085;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  text-align: left;
+}
+
+.side-menu-item:hover {
+  background: rgba(244, 247, 255, 0.95);
+  color: #334155;
+}
+
+.side-menu-item.active {
+  background: linear-gradient(135deg, rgba(84, 104, 255, 0.12), rgba(124, 77, 255, 0.14));
+  color: #5468ff;
+}
+
+.assistant-card {
+  padding: 20px 18px 18px;
+  position: relative;
+  overflow: hidden;
+  min-height: 220px;
+}
+
+.assistant-card::before {
+  content: '';
+  position: absolute;
+  inset: auto -30px -40px auto;
+  width: 160px;
+  height: 160px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(99, 102, 241, 0.16), rgba(99, 102, 241, 0));
+}
+
+.assistant-badge {
+  position: relative;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  min-height: 30px;
+  padding: 0 12px;
+  border-radius: 999px;
+  background: rgba(91, 103, 255, 0.12);
+  color: #5b67ff;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.assistant-card h4 {
+  position: relative;
+  z-index: 1;
+  margin: 14px 0 10px;
+  font-size: 18px;
+  line-height: 1.5;
+  color: #172133;
+}
+
+.assistant-card p {
+  position: relative;
+  z-index: 1;
+  margin: 0;
+  color: #6f7c93;
+  font-size: 13px;
+  line-height: 1.8;
+}
+
+.assistant-btn {
+  position: relative;
+  z-index: 1;
+  margin-top: 18px;
+  width: 100%;
+  height: 42px;
+  border: none;
+  border-radius: 14px;
+  background: linear-gradient(135deg, #5468ff 0%, #7c4dff 100%);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: 0 12px 26px rgba(92, 101, 255, 0.2);
+}
+
+.assistant-bot {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+  width: 72px;
+  height: 72px;
+  z-index: 1;
+}
+
+.assistant-bot svg {
+  width: 100%;
+  height: 100%;
+}
+
+.main-content {
+  min-width: 0;
+}
+
+@media (max-width: 1360px) {
+  .search-box {
     display: none;
   }
 
-  .nav-item {
-    padding: 11px 14px;
+  .content-shell {
+    grid-template-columns: 200px minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 1100px) {
+  .header-container {
+    gap: 16px;
+    padding: 0 16px;
   }
 
+  .logo-subtitle,
   .user-info {
     display: none;
   }
 
   .user-profile {
     padding: 8px;
+  }
+
+  .content-shell {
+    grid-template-columns: 1fr;
+  }
+
+  .left-rail {
+    position: static;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 280px;
+    align-items: stretch;
   }
 }
 
@@ -864,57 +1144,38 @@ watch(
     height: 72px;
   }
 
-  .header-container {
-    padding: 0 16px;
-    gap: 12px;
-  }
-
-  .logo-text {
-    font-size: 18px;
-  }
-
-  .main-nav {
-    gap: 6px;
-    padding: 6px;
-    border-radius: 18px;
-  }
-
-  .nav-item {
-    padding: 9px 10px;
-  }
-
-  .nav-icon {
-    width: 18px;
-    height: 18px;
-  }
-
-  .notification-trigger {
-    min-width: 46px;
-    padding: 0;
-  }
-
-  .notification-label {
+  .header-center {
     display: none;
   }
 
   .app-main {
-    padding: 18px 10px 16px;
+    padding: 14px 10px 16px;
+  }
+
+  .left-rail {
+    grid-template-columns: 1fr;
+  }
+
+  .side-menu-card {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .side-menu-item {
+    justify-content: center;
   }
 }
 
-@media (max-width: 480px) {
+@media (max-width: 520px) {
   .logo-text {
     display: none;
   }
 
-  .header-center {
-    justify-content: flex-start;
-    overflow: hidden;
-  }
-
-  .logo-icon {
-    width: 32px;
-    height: 32px;
+  .notification-trigger {
+    width: 42px;
+    height: 42px;
+    border-radius: 16px;
   }
 
   .user-avatar {
@@ -924,6 +1185,10 @@ watch(
 
   .dropdown-arrow {
     display: none;
+  }
+
+  .side-menu-card {
+    grid-template-columns: 1fr;
   }
 }
 </style>

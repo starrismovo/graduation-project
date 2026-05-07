@@ -486,10 +486,11 @@ watchEffect(() => {
 
 <style scoped>
 .candidate-home {
-  max-width: 1440px;
-  margin: 0 auto;
-  padding: 8px 0 40px;
-  min-height: calc(100vh - 110px);
+  width: 100%;
+  max-width: none;
+  margin: 0;
+  padding: 0 0 36px;
+  min-height: calc(100vh - 120px);
 }
 
 .hero-grid {
