@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, watch, watchEffect } from 'vue'
+import { ref, computed, onMounted, watchEffect } from 'vue'
 import { useRouter } from 'vue-router'
 import { useUserStore } from '@/stores/user'
 import { useAssessmentStore } from '@/stores/assessment'
@@ -19,7 +19,6 @@ const user = computed(() => userStore.profile || {})
 const history = ref<Array<any>>([])
 const portraitData = ref<any>(null)
 const recommendedJobs = ref<Array<any>>([])
-const showWelcome = ref(false)
 const loading = ref(false)
 
 const isNewUser = computed(() => history.value.length === 0)
@@ -66,6 +65,65 @@ const sortedTraits = computed(() => {
   return [...portraitData.value].sort((a: any, b: any) => b.score - a.score)
 })
 
+const heroStats = computed(() => [
+  {
+    label: 'TraitScores',
+    value: portraitData.value?.length ? `${portraitData.value.length} 项` : '--',
+    hint: '当前心理画像维度'
+  },
+  {
+    label: 'AssessmentSession',
+    value: history.value.length ? `${history.value.length} 次` : '0 次',
+    hint: '累计评估会话'
+  },
+  {
+    label: 'Person-Job Matching',
+    value: latestReport.value?.match_score != null ? `${Math.round(latestReport.value.match_score)}%` : '--',
+    hint: '最近一次匹配结果'
+  }
+])
+
+const quickUpdates = computed(() => {
+  const items = history.value.slice(0, 3)
+  if (items.length === 0) {
+    return [
+      {
+        title: '尚未生成 EvaluationResult',
+        content: '完成一次多Agent面试后，这里将展示最新评估结果与可解释性摘要。',
+        meta: '等待首次评估'
+      }
+    ]
+  }
+
+  return items.map((item: any, index: number) => ({
+    title: item.job_title || `评估记录 ${index + 1}`,
+    content: item.match_score != null
+      ? `最近 Person-Job Matching 为 ${Math.round(item.match_score)}%，可进入报告中心查看详细解释。`
+      : '评估记录已生成，可进入报告中心查看详细内容。',
+    meta: formatTime(item.created_at)
+  }))
+})
+
+const activityItems = computed(() => {
+  if (history.value.length === 0) {
+    return [
+      {
+        title: '等待启动首个 AssessmentSession',
+        action: '开始评估',
+        time: '立即开始',
+        type: 'empty'
+      }
+    ]
+  }
+
+  return history.value.slice(0, 4).map((item: any, index: number) => ({
+    title: item.job_title || `评估记录 ${index + 1}`,
+    action: item.match_score != null ? `匹配度 ${Math.round(item.match_score)}%` : '查看评估结果',
+    time: formatTime(item.created_at),
+    type: getMatchLevel(item.match_score)
+  }))
+})
+
 function getScoreColor(score: number): string {
   if (score >= 7) return '#10b981'
   if (score >= 4) return '#6366f1'
@@ -78,6 +136,27 @@ function getBarGradient(score: number): string {
   return 'linear-gradient(90deg, #f59e0b, #fbbf24)'
 }
 
+function getMatchLevel(score?: number) {
+  if (score == null) return 'neutral'
+  if (score >= 80) return 'high'
+  if (score >= 60) return 'medium'
+  return 'low'
+}
+
+function formatTime(value?: string) {
+  if (!value) return '暂无时间'
+  try {
+    return new Date(value).toLocaleString('zh-CN', {
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit'
+    })
+  } catch {
+    return value
+  }
+}
+
 async function loadData() {
   loading.value = true
   try {
@@ -87,7 +166,6 @@ async function loadData() {
       return
     }
 
-    // 并行请求
     const [portrait, historyData, jobs] = await Promise.all([
       fetchPortrait(candidateId).catch(() => null),
       fetchHistory(candidateId).catch(() => []),
@@ -97,10 +175,6 @@ async function loadData() {
     portraitData.value = portrait
     history.value = historyData || []
     recommendedJobs.value = jobs || []
-
-    if (isNewUser.value) {
-      showWelcome.value = true
-    }
   } catch (error) {
     console.error('加载首页数据失败:', error)
     ElMessage.error('加载数据失败，请刷新重试')
@@ -110,8 +184,6 @@ async function loadData() {
 }
 
 function startNewAssessment() {
-  showWelcome.value = false
-  // 先去选择岗位
   router.push('/home/jobs')
 }
 
@@ -133,21 +205,21 @@ function goToPsychologyDetail() {
   router.push('/home/psychology')
 }
 
+function goToReportCenter() {
+  router.push('/home/reports')
+}
+
 onMounted(() => {
-  // 只有非HR用户才显示候选人首页
   if (userStore.isHR) {
     return
   }
   loadData()
 })
 
-// 监听评估完成事件，自动刷新数据
 watchEffect(() => {
   if (assessmentStore.completionTimestamp > 0) {
-    console.log('📊 检测到新的评估完成，自动刷新数据...')
     loadData().then(() => {
-      ElMessage.success('✨ 评估完成！数据已更新，请下滑查看最新的心理画像和推荐岗位')
-      // 刷新后清除标志
+      ElMessage.success('评估已完成，首页数据已更新')
       assessmentStore.clearCompletionMark()
     })
   }
@@ -156,105 +228,117 @@ watchEffect(() => {
 
 <template>
   <div class="candidate-home" v-loading="loading">
-    <!-- 欢迎/操作栏 -->
-    <div class="home-header">
-      <div class="greeting">
-        <h2>欢迎，{{ user.name || user.username || '候选人' }}</h2>
-        <p class="subtitle">通过AI智能体对话，发现你的心理特质和岗位潜力</p>
-      </div>
-      <div class="actions">
-        <el-button type="primary" size="large" @click="startNewAssessment">
-          <el-icon><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 8v8M8 12h8" stroke="currentColor" stroke-width="2"/></svg></el-icon>
-          开始新评估
-        </el-button>
-        <el-button 
-          type="info" 
-          size="large"
-          :disabled="!latestReport"
-          @click="viewLatestReport"
-        >
-          <el-icon><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z" fill="currentColor"/></svg></el-icon>
-          查看最新报告
-        </el-button>
-        <el-button 
-          size="large"
-          :loading="loading"
-          @click="loadData"
-        >
-          <el-icon><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M1 4v6h6M23 20v-6h-6" stroke="currentColor" stroke-width="2" fill="none"/><path d="M20.3 4.7A10 10 0 0 0 3.7 20.3" stroke="currentColor" stroke-width="2" fill="none"/></svg></el-icon>
-          刷新数据
-        </el-button>
-      </div>
-    </div>
+    <section class="hero-grid">
+      <article class="hero-card">
+        <div class="hero-copy">
+          <span class="hero-eyebrow">AI 人岗匹配首页</span>
+          <h2>欢迎回来，{{ user.name || user.username || '候选人' }}</h2>
+          <p class="hero-subtitle">
+            通过多Agent协同评估，持续沉淀你的 Basic Personality、Scenario Personality 与岗位匹配证据链。
+          </p>
 
-    <!-- 心理画像部分 -->
-    <div class="portrait-section">
-      <div class="portrait-panel">
-        <!-- 面板头部 -->
-        <div class="panel-header">
-          <div class="panel-title-row">
-            <div class="panel-icon">
-              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="22" height="22">
-                <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2z" fill="none" stroke="currentColor" stroke-width="1.5"/>
-                <path d="M12 6a2.5 2.5 0 0 1 0 5 2.5 2.5 0 0 1 0-5zM12 13c3 0 5.5 1.5 5.5 3.5V18h-11v-1.5c0-2 2.5-3.5 5.5-3.5z" fill="currentColor" opacity="0.9"/>
-              </svg>
+          <div class="hero-actions">
+            <el-button type="primary" size="large" @click="startNewAssessment">
+              <el-icon>
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+                  <circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" stroke-width="2" />
+                  <path d="M12 8v8M8 12h8" stroke="currentColor" stroke-width="2" />
+                </svg>
+              </el-icon>
+              开始新评估
+            </el-button>
+            <el-button size="large" :disabled="!latestReport" @click="viewLatestReport">
+              查看最新报告
+            </el-button>
+            <el-button size="large" :loading="loading" @click="loadData">
+              刷新数据
+            </el-button>
+          </div>
+
+          <div class="hero-stats">
+            <div v-for="item in heroStats" :key="item.label" class="hero-stat-card">
+              <div class="hero-stat-label">{{ item.label }}</div>
+              <div class="hero-stat-value">{{ item.value }}</div>
+              <div class="hero-stat-hint">{{ item.hint }}</div>
             </div>
-            <h3 class="panel-title">我的心理画像</h3>
-            <span v-if="portraitData && portraitData.length > 0" class="panel-badge">
+          </div>
+        </div>
+      </article>
+
+      <aside class="summary-card">
+        <div class="section-head compact">
+          <div>
+            <h3>最新动态</h3>
+            <p>基于现有 EvaluationResult 与 AssessmentSession 自动汇总。</p>
+          </div>
+          <button class="text-link" type="button" @click="goToReportCenter">全部报告</button>
+        </div>
+
+        <div class="summary-list">
+          <article v-for="(item, index) in quickUpdates" :key="`${item.title}-${index}`" class="summary-item">
+            <div class="summary-index">{{ index + 1 }}</div>
+            <div class="summary-content">
+              <h4>{{ item.title }}</h4>
+              <p>{{ item.content }}</p>
+              <span>{{ item.meta }}</span>
+            </div>
+          </article>
+        </div>
+      </aside>
+    </section>
+
+    <section class="dashboard-grid">
+      <div class="main-column">
+        <article class="dashboard-card portrait-card">
+          <div class="section-head">
+            <div>
+              <h3>我的心理画像</h3>
+              <p>汇总展示当前 TraitScores，用于支持后续 Person-Job Matching 解释。</p>
+            </div>
+            <span v-if="portraitData && portraitData.length > 0" class="section-badge">
               {{ portraitData.length }} 项特质
             </span>
           </div>
-          <p class="panel-desc">
-            🧠 整体心理特质（所有评估聚合）
-            <br/>
-            <small>具体岗位匹配度详见历史记录中的评估报告</small>
-          </p>
-        </div>
 
-        <!-- 空状态 -->
-        <EmptyState
-          v-if="!portraitData || portraitData.length === 0"
-          :image="null"
-          title="还没有评估数据"
-          text="完成一次 AI 面试评估，即可生成你的专属心理画像"
-          buttonText="开始评估"
-          @action="startNewAssessment"
-        />
+          <EmptyState
+            v-if="!portraitData || portraitData.length === 0"
+            :image="null"
+            title="还没有评估数据"
+            text="完成一次多Agent面试评估后，系统将生成你的 TraitScores 与心理画像。"
+            buttonText="开始评估"
+            @action="startNewAssessment"
+          />
 
-        <!-- 有数据时显示 -->
-        <template v-else>
-          <div class="portrait-body">
-            <!-- 左侧：雷达图 -->
-            <div class="radar-area">
-              <RadarChart :data="portraitData" :size="360" />
-              <div class="radar-caption">
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="14" height="14" fill="#94a3b8"><circle cx="8" cy="8" r="7" fill="none" stroke="#94a3b8" stroke-width="1.2"/><path d="M8 4.5v4M8 10.5v1" stroke="#94a3b8" stroke-width="1.3" stroke-linecap="round"/></svg>
-                悬停雷达图可查看详细分数
-              </div>
+          <div v-else class="portrait-layout">
+            <div class="portrait-block radar-block">
+              <RadarChart :data="portraitData" :size="320" />
+              <div class="block-footnote">悬停雷达图可查看各维度分数</div>
             </div>
 
-            <!-- 中间：特质详情 -->
-            <div class="trait-details">
-              <!-- 综合得分 -->
+            <div class="portrait-block score-block">
               <div class="score-overview">
                 <div class="avg-score-ring">
                   <svg viewBox="0 0 80 80" class="score-svg">
-                    <circle cx="40" cy="40" r="34" fill="none" stroke="#e2e8f0" stroke-width="5"/>
-                    <circle cx="40" cy="40" r="34" fill="none"
+                    <circle cx="40" cy="40" r="34" fill="none" stroke="#e2e8f0" stroke-width="5" />
+                    <circle
+                      cx="40"
+                      cy="40"
+                      r="34"
+                      fill="none"
                       :stroke="avgScoreColor"
                       stroke-width="5"
                       stroke-linecap="round"
                       :stroke-dasharray="avgScoreDash"
-                      stroke-dashoffset="0"
                       transform="rotate(-90 40 40)"
                       class="score-ring-progress"
                     />
                   </svg>
                   <div class="avg-score-text">
                     <span class="avg-num">{{ avgScore }}</span>
-                    <span class="avg-label">综合</span>
+                    <span class="avg-label">综合得分</span>
                   </div>
                 </div>
+
                 <div class="score-summary">
                   <div class="summary-line" v-if="strengths">
                     <span class="tag-label tag-green">优势</span>
@@ -265,12 +349,11 @@ watchEffect(() => {
                     <span class="tag-values">{{ weaknesses }}</span>
                   </div>
                   <div class="summary-line" v-if="!strengths && !weaknesses">
-                    <span class="tag-values muted">各维度表现均衡</span>
+                    <span class="tag-values muted">当前各维度表现相对均衡</span>
                   </div>
                 </div>
               </div>
 
-              <!-- 各维度分数条 -->
               <div class="trait-bars">
                 <div
                   v-for="(trait, idx) in sortedTraits"
@@ -280,13 +363,15 @@ watchEffect(() => {
                 >
                   <div class="trait-bar-header">
                     <span class="trait-name">{{ trait.name }}</span>
-                    <span class="trait-score" :style="{ color: getScoreColor(trait.score) }">{{ trait.score.toFixed(1) }}</span>
+                    <span class="trait-score" :style="{ color: getScoreColor(trait.score) }">
+                      {{ trait.score.toFixed(1) }}
+                    </span>
                   </div>
                   <div class="trait-bar-track">
                     <div
                       class="trait-bar-fill"
                       :style="{
-                        width: (trait.score / 10 * 100) + '%',
+                        width: `${trait.score / 10 * 100}%`,
                         background: getBarGradient(trait.score)
                       }"
                     ></div>
@@ -295,8 +380,7 @@ watchEffect(() => {
               </div>
             </div>
 
-            <!-- 右侧：视频小窗 -->
-            <div class="video-area">
+            <div class="portrait-block video-block">
               <MiniVideoPlayer
                 videoUrl="/lv_0_20260407225241.mp4"
                 title="心理特质解读"
@@ -304,240 +388,393 @@ watchEffect(() => {
               />
             </div>
           </div>
-        </template>
-      </div>
-    </div>
+        </article>
 
-    <!-- 历史评估记录 -->
-    <AssessmentHistory
-      v-if="!isNewUser && history.length > 0"
-      :data="history"
-      @view="viewRecord"
-    />
+        <section v-if="!isNewUser && history.length > 0" class="history-wrap">
+          <AssessmentHistory :data="history" @view="viewRecord" />
+        </section>
 
-    <!-- 推荐岗位 -->
-    <div v-if="!isNewUser && recommendedJobs.length > 0" class="recommend-section">
-      <h3 class="section-title">
-        <el-icon><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 2c5.52 0 10 4.48 10 10s-4.48 10-10 10S2 17.52 2 12 6.48 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z" fill="currentColor"/></svg></el-icon>
-        为您高匹配的岗位
-      </h3>
-      <el-row :gutter="20">
-        <el-col :xs="24" :sm="12" :md="8" v-for="job in recommendedJobs.slice(0, 3)" :key="job.id">
-          <JobCard 
-            :job="job"
-            @assess="goToJobDetail"
+        <article class="dashboard-card recommend-card">
+          <div class="section-head">
+            <div>
+              <h3>为你推荐的岗位</h3>
+              <p>根据现有 TraitScores 与历史 EvaluationResult 展示优先关注的岗位实例。</p>
+            </div>
+            <button class="text-link" type="button" @click="startNewAssessment">查看更多岗位</button>
+          </div>
+
+          <EmptyState
+            v-if="isNewUser || recommendedJobs.length === 0"
+            :image="null"
+            title="暂未生成岗位推荐"
+            text="完成评估后，系统将基于 Personality 与岗位需求生成推荐岗位。"
+            buttonText="开始评估"
+            @action="startNewAssessment"
           />
-        </el-col>
-      </el-row>
-    </div>
 
-    <!-- 底部说明卡 -->
-    <div class="footer-info">
-      <el-card shadow="never" class="info-card">
-        <div class="info-content">
-          <h4>🤖 系统说明</h4>
-          <p>本系统基于 <strong>AI 多智能体对话</strong>，动态评估您的心理特质，生成<strong>可视化画像</strong>并提供<strong>岗位匹配决策支持</strong>。评估过程沉浸感强，约15-20分钟可完成全面评估。</p>
-        </div>
-      </el-card>
-    </div>
+          <div v-else class="job-grid">
+            <JobCard
+              v-for="job in recommendedJobs.slice(0, 3)"
+              :key="job.id"
+              :job="job"
+              @assess="goToJobDetail"
+              @click="goToJobDetail(job.id)"
+            />
+          </div>
+        </article>
+      </div>
 
-    
+      <aside class="side-column">
+        <article class="dashboard-card side-card">
+          <div class="section-head compact">
+            <div>
+              <h3>心理解读入口</h3>
+              <p>进入心理解读中心查看 TraitScores 的详细说明。</p>
+            </div>
+          </div>
+
+          <div class="side-cta">
+            <div class="side-cta-copy">
+              <h4>TraitScores 深度解读</h4>
+              <p>查看人格维度结构、解释链路与岗位适配含义。</p>
+            </div>
+            <el-button type="primary" @click="goToPsychologyDetail">进入解读页</el-button>
+          </div>
+        </article>
+
+        <article class="dashboard-card side-card">
+          <div class="section-head compact">
+            <div>
+              <h3>最近活动</h3>
+              <p>保留现有业务逻辑，仅以新布局呈现最近记录。</p>
+            </div>
+          </div>
+
+          <div class="activity-list">
+            <div
+              v-for="(item, index) in activityItems"
+              :key="`${item.title}-${index}`"
+              class="activity-item"
+            >
+              <span :class="['activity-dot', item.type]"></span>
+              <div class="activity-copy">
+                <h4>{{ item.title }}</h4>
+                <p>{{ item.action }}</p>
+              </div>
+              <span class="activity-time">{{ item.time }}</span>
+            </div>
+          </div>
+        </article>
+
+        <article class="dashboard-card side-card info-card">
+          <div class="section-head compact">
+            <div>
+              <h3>系统说明</h3>
+              <p>首页仅展示前端结果视图，不改变后端计算链路。</p>
+            </div>
+          </div>
+
+          <div class="info-copy">
+            <p>评估会话以 AssessmentSession 为隔离单元，TraitScores 与人岗匹配计算均保留在后端服务层。</p>
+            <p>当前页面改版仅重构布局比例、卡片网格与留白层级，不修改接口、字段名、路由逻辑与业务流程。</p>
+          </div>
+        </article>
+      </aside>
+    </section>
   </div>
 </template>
 
 <style scoped>
-/* ==================== 整体布局 ==================== */
 .candidate-home {
-  padding: 24px;
-  background: linear-gradient(135deg, #f9fafc 0%, #e8eef5 100%);
-  min-height: calc(100vh - 60px);
+  max-width: 1440px;
+  margin: 0 auto;
+  padding: 8px 0 40px;
+  min-height: calc(100vh - 110px);
 }
 
-/* ==================== 顶部栏 ==================== */
-.home-header {
+.hero-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.7fr) minmax(340px, 0.95fr);
+  gap: 24px;
+  align-items: stretch;
+  margin-bottom: 24px;
+}
+
+.dashboard-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.7fr) minmax(320px, 0.9fr);
+  gap: 24px;
+  align-items: start;
+}
+
+.main-column,
+.side-column {
   display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  margin-bottom: 32px;
-  gap: 20px;
+  flex-direction: column;
+  gap: 24px;
 }
 
-.greeting {
-  flex: 1;
+.hero-card,
+.dashboard-card,
+.summary-card {
+  border-radius: 28px;
+  border: 1px solid rgba(226, 232, 255, 0.95);
+  background: rgba(255, 255, 255, 0.84);
+  box-shadow: 0 18px 48px rgba(15, 23, 42, 0.08);
+  overflow: hidden;
 }
 
-.greeting h2 {
-  margin: 0 0 8px 0;
-  font-size: 28px;
-  font-weight: 600;
-  color: #2c3e50;
-  letter-spacing: -0.5px;
+.hero-card {
+  min-height: 320px;
+  padding: 30px 32px;
+  display: flex;
+  align-items: stretch;
 }
 
-.subtitle {
+.hero-copy {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+}
+
+.hero-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  min-height: 30px;
+  padding: 0 12px;
+  border-radius: 999px;
+  background: rgba(91, 103, 255, 0.1);
+  color: #5b67ff;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.hero-copy h2 {
   margin: 0;
-  color: #606266;
-  font-size: 14px;
+  font-size: 40px;
+  line-height: 1.15;
+  color: #172133;
+  letter-spacing: -0.05em;
+}
+
+.hero-subtitle {
+  max-width: 760px;
+  margin: 0;
+  color: #6f7c93;
+  font-size: 15px;
+  line-height: 1.9;
+}
+
+.hero-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.hero-actions :deep(.el-button) {
+  min-width: 144px;
+  height: 44px;
+  border-radius: 14px;
+}
+
+.hero-stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+  margin-top: auto;
+}
+
+.hero-stat-card {
+  min-height: 108px;
+  padding: 18px;
+  border-radius: 20px;
+  background: linear-gradient(180deg, rgba(248, 250, 255, 0.95), rgba(242, 246, 255, 0.95));
+  border: 1px solid rgba(230, 235, 255, 0.95);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+
+.hero-stat-label {
+  color: #7a87a2;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.hero-stat-value {
+  color: #172133;
+  font-size: 28px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.hero-stat-hint {
+  color: #7a87a2;
+  font-size: 12px;
   line-height: 1.6;
 }
 
-.actions {
+.summary-card,
+.dashboard-card {
+  padding: 24px;
+}
+
+.section-head {
   display: flex;
-  gap: 12px;
-  flex-shrink: 0;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 20px;
 }
 
-.actions :deep(.el-button) {
-  min-width: 140px;
-  font-weight: 500;
+.section-head.compact {
+  margin-bottom: 18px;
 }
 
-/* ==================== 心理画像面板 ==================== */
-.portrait-section {
-  margin-bottom: 32px;
+.section-head h3 {
+  margin: 0 0 6px;
+  font-size: 24px;
+  color: #172133;
+  letter-spacing: -0.04em;
 }
 
-.portrait-panel {
-  background: #fff;
-  border-radius: 16px;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.06), 0 6px 24px rgba(99,102,241,0.08);
-  overflow: hidden;
-  transition: box-shadow 0.3s ease;
-}
-
-.portrait-panel:hover {
-  box-shadow: 0 2px 6px rgba(0,0,0,0.08), 0 12px 36px rgba(99,102,241,0.12);
-}
-
-/* 面板头部 */
-.panel-header {
-  padding: 24px 28px 16px;
-  background: linear-gradient(135deg, #f8f7ff 0%, #eef2ff 50%, #f0f9ff 100%);
-  border-bottom: 1px solid rgba(99,102,241,0.08);
-}
-
-.panel-title-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-bottom: 6px;
-}
-
-.panel-icon {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 36px;
-  height: 36px;
-  border-radius: 10px;
-  background: linear-gradient(135deg, #6366f1, #8b5cf6);
-  color: #fff;
-  flex-shrink: 0;
-}
-
-.panel-title {
+.section-head p {
   margin: 0;
-  font-size: 18px;
-  font-weight: 700;
-  color: #1e293b;
-  letter-spacing: -0.3px;
-}
-
-.panel-badge {
-  font-size: 12px;
-  font-weight: 500;
-  color: #6366f1;
-  background: rgba(99,102,241,0.1);
-  padding: 2px 10px;
-  border-radius: 20px;
-  margin-left: auto;
-}
-
-.panel-desc {
-  margin: 0;
+  color: #73809a;
   font-size: 13px;
-  color: #94a3b8;
-  padding-left: 46px;
+  line-height: 1.8;
 }
 
-/* 面板主体 */
-.portrait-body {
-  display: grid;
-  grid-template-columns: 1fr 1fr 1fr;
-  gap: 0;
-  padding: 24px 0;
-}
-
-/* portrait-body 内的视频小窗区域 */
-.portrait-body > .video-area {
-  padding: 0 24px;
-  display: flex;
-  flex-direction: column;
+.section-badge {
+  display: inline-flex;
   align-items: center;
-  justify-content: flex-start;
-  gap: 12px;
+  min-height: 30px;
+  padding: 0 12px;
+  border-radius: 999px;
+  background: rgba(91, 103, 255, 0.1);
+  color: #5b67ff;
+  font-size: 12px;
+  font-weight: 700;
 }
 
-.portrait-body > .video-area :deep(.mini-video-player) {
-  width: 100%;
-  max-width: 100%;
+.text-link {
+  border: none;
+  padding: 0;
+  background: transparent;
+  color: #5b67ff;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
 }
 
-/* 雷达图区域 */
-.radar-area {
+.summary-list {
+  display: grid;
+  gap: 14px;
+}
+
+.summary-item {
+  display: grid;
+  grid-template-columns: 38px minmax(0, 1fr);
+  gap: 14px;
+  align-items: start;
+  padding: 18px;
+  border-radius: 20px;
+  border: 1px solid rgba(234, 238, 251, 0.95);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(247, 249, 255, 0.96));
+  min-height: 116px;
+}
+
+.summary-index {
+  width: 38px;
+  height: 38px;
+  border-radius: 14px;
+  background: rgba(91, 103, 255, 0.1);
+  color: #5b67ff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.summary-content h4 {
+  margin: 0 0 8px;
+  font-size: 15px;
+  color: #1f2937;
+}
+
+.summary-content p {
+  margin: 0 0 10px;
+  color: #6f7c93;
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+.summary-content span {
+  color: #94a3b8;
+  font-size: 12px;
+}
+
+.portrait-layout {
+  display: grid;
+  grid-template-columns: minmax(280px, 0.95fr) minmax(320px, 1.1fr) minmax(280px, 0.95fr);
+  gap: 0;
+  align-items: stretch;
+}
+
+.portrait-block {
+  min-width: 0;
+}
+
+.radar-block,
+.score-block {
+  border-right: 1px solid #edf2ff;
+}
+
+.radar-block {
+  padding: 8px 24px 8px 8px;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 0 24px;
-  border-right: 1px solid #f1f5f9;
+  min-height: 440px;
 }
 
-.radar-caption {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 12px;
+.block-footnote {
   color: #94a3b8;
-  margin-top: -8px;
+  font-size: 12px;
+  margin-top: -4px;
 }
 
-/* 中间特质详情 */
-.trait-details {
-  padding: 0 24px;
+.score-block {
+  padding: 8px 24px;
   display: flex;
   flex-direction: column;
-  gap: 16px;
-  border-right: 1px solid #f1f5f9;
+  gap: 20px;
+  min-height: 440px;
 }
 
-/* 右侧视频小窗 */
-.video-area {
-  padding: 0 24px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: flex-start;
+.video-block {
+  padding-left: 24px;
 }
 
-/* 综合评分区 */
 .score-overview {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 16px;
-  padding: 14px 16px;
-  background: linear-gradient(135deg, #fafafe 0%, #f8fafc 100%);
-  border-radius: 12px;
-  border: 1px solid #f1f5f9;
-  text-align: center;
+  display: grid;
+  grid-template-columns: 120px minmax(0, 1fr);
+  gap: 18px;
+  padding: 18px;
+  border-radius: 20px;
+  border: 1px solid #edf2ff;
+  background: linear-gradient(180deg, #fafbff 0%, #f8fbff 100%);
 }
 
 .avg-score-ring {
   position: relative;
   width: 80px;
   height: 80px;
-  flex-shrink: 0;
+  margin: 0 auto;
 }
 
 .score-svg {
@@ -551,12 +788,11 @@ watchEffect(() => {
 
 .avg-score-text {
   position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
+  inset: 0;
   display: flex;
   flex-direction: column;
   align-items: center;
+  justify-content: center;
   line-height: 1;
 }
 
@@ -569,59 +805,54 @@ watchEffect(() => {
 .avg-label {
   font-size: 11px;
   color: #94a3b8;
-  margin-top: 3px;
+  margin-top: 4px;
 }
 
 .score-summary {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  flex: 1;
-  width: 100%;
+  justify-content: center;
+  gap: 10px;
 }
 
 .summary-line {
   display: flex;
-  align-items: center;
-  gap: 6px;
-  flex-wrap: wrap;
-  justify-content: center;
+  align-items: flex-start;
+  gap: 8px;
 }
 
 .tag-label {
   font-size: 12px;
-  font-weight: 600;
-  padding: 2px 10px;
-  border-radius: 6px;
-  flex-shrink: 0;
+  font-weight: 700;
+  padding: 3px 10px;
+  border-radius: 999px;
+  white-space: nowrap;
 }
 
 .tag-green {
   color: #059669;
-  background: rgba(16,185,129,0.1);
+  background: rgba(16, 185, 129, 0.1);
 }
 
 .tag-orange {
   color: #d97706;
-  background: rgba(245,158,11,0.1);
+  background: rgba(245, 158, 11, 0.1);
 }
 
 .tag-values {
-  font-size: 12px;
+  font-size: 13px;
   color: #475569;
-  line-height: 1.4;
+  line-height: 1.7;
 }
 
 .tag-values.muted {
   color: #94a3b8;
-  font-style: italic;
 }
 
-/* 各维度分数条 */
 .trait-bars {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 12px;
 }
 
 .trait-bar-item {
@@ -633,6 +864,7 @@ watchEffect(() => {
     opacity: 0;
     transform: translateX(-12px);
   }
+
   to {
     opacity: 1;
     transform: translateX(0);
@@ -643,12 +875,12 @@ watchEffect(() => {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 4px;
+  margin-bottom: 6px;
 }
 
 .trait-name {
-  font-size: 12px;
-  font-weight: 500;
+  font-size: 13px;
+  font-weight: 600;
   color: #334155;
 }
 
@@ -661,436 +893,205 @@ watchEffect(() => {
 .trait-bar-track {
   height: 8px;
   background: #f1f5f9;
-  border-radius: 4px;
+  border-radius: 999px;
   overflow: hidden;
 }
 
 .trait-bar-fill {
   height: 100%;
-  border-radius: 4px;
+  border-radius: 999px;
   transition: width 1s cubic-bezier(0.4, 0, 0.2, 1);
-  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
 }
 
-/* ==================== 大五人格解读 ==================== */
-.bigfive-section {
-  margin-bottom: 32px;
+.history-wrap {
+  margin-top: -2px;
 }
 
-.bigfive-panel {
-  background: #fff;
-  border-radius: 16px;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.06), 0 6px 24px rgba(99,102,241,0.06);
-  overflow: hidden;
-  padding: 28px;
-}
-
-.bigfive-layout {
+.job-grid {
   display: grid;
-  grid-template-columns: 380px 1fr;
-  gap: 32px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 18px;
 }
 
-/* 视频区域 */
-.video-area {
+.side-card {
+  min-height: 220px;
+}
+
+.side-cta {
+  min-height: 170px;
+  border-radius: 22px;
+  border: 1px solid rgba(236, 240, 255, 0.95);
+  background: linear-gradient(180deg, rgba(249, 251, 255, 0.96), rgba(244, 247, 255, 0.96));
+  padding: 20px;
   display: flex;
   flex-direction: column;
-  gap: 14px;
-}
-
-.video-header {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.video-badge {
-  font-size: 12px;
-  font-weight: 600;
-  color: #6366f1;
-  background: rgba(99,102,241,0.08);
-  padding: 3px 10px;
-  border-radius: 20px;
-  align-self: flex-start;
-}
-
-.video-title {
-  margin: 0;
-  font-size: 17px;
-  font-weight: 700;
-  color: #1e293b;
-}
-
-.video-wrapper {
-  position: relative;
-  width: 100%;
-  padding-bottom: 56.25%;
-  border-radius: 12px;
-  overflow: hidden;
-  background: #0f172a;
-  box-shadow: 0 4px 16px rgba(0,0,0,0.12);
-}
-
-.video-iframe {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  border: none;
-}
-
-.video-caption {
-  margin: 0;
-  font-size: 13px;
-  color: #64748b;
-  line-height: 1.7;
-  padding: 0 2px;
-}
-
-/* 五维度卡片区域 */
-.traits-explain {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-}
-
-.traits-explain-header {
-  display: flex;
-  align-items: baseline;
   justify-content: space-between;
-  gap: 12px;
+  gap: 18px;
 }
 
-.traits-explain-title {
+.side-cta-copy h4,
+.activity-copy h4 {
+  margin: 0 0 8px;
+  font-size: 16px;
+  color: #1f2937;
+}
+
+.side-cta-copy p,
+.activity-copy p,
+.info-copy p {
   margin: 0;
-  font-size: 17px;
-  font-weight: 700;
-  color: #1e293b;
-}
-
-.traits-explain-hint {
-  font-size: 12px;
-  color: #94a3b8;
-}
-
-.trait-cards {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.trait-card {
-  border: 1px solid #f1f5f9;
-  border-radius: 12px;
-  overflow: hidden;
-  cursor: pointer;
-  transition: all 0.25s ease;
-  background: #fff;
-}
-
-.trait-card:hover {
-  border-color: #e2e8f0;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.05);
-}
-
-.trait-card.expanded {
-  border-color: #e0e7ff;
-  box-shadow: 0 2px 12px rgba(99,102,241,0.08);
-}
-
-.trait-card-main {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 12px 14px;
-}
-
-.trait-card-icon {
-  width: 36px;
-  height: 36px;
-  border-radius: 10px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 18px;
-  flex-shrink: 0;
-}
-
-.trait-card-info {
-  flex: 1;
-  min-width: 0;
-}
-
-.trait-card-name {
-  font-size: 14px;
-  font-weight: 600;
-  color: #1e293b;
-  line-height: 1.3;
-}
-
-.trait-card-brief {
-  font-size: 12px;
-  color: #94a3b8;
-  margin-top: 2px;
-}
-
-.trait-card-arrow {
-  flex-shrink: 0;
-  transition: transform 0.3s ease;
-}
-
-.trait-card-arrow.rotated {
-  transform: rotate(180deg);
-}
-
-.trait-card-detail {
-  padding: 0 14px 14px;
-  overflow: hidden;
-}
-
-.trait-card-desc {
-  margin: 0 0 10px;
+  color: #6f7c93;
   font-size: 13px;
-  color: #475569;
-  line-height: 1.7;
-  padding: 10px 12px;
-  background: #f8fafc;
-  border-radius: 8px;
+  line-height: 1.8;
 }
 
-.trait-card-spectrum {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
+.activity-list {
+  display: grid;
+  gap: 14px;
 }
 
-.spectrum-end {
-  display: flex;
-  align-items: center;
-  gap: 8px;
+.activity-item {
+  display: grid;
+  grid-template-columns: 12px minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: start;
+  padding: 14px 0;
+  border-bottom: 1px solid #edf2ff;
 }
 
-.spectrum-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  flex-shrink: 0;
-}
-
-.spectrum-label {
-  font-size: 12px;
-  color: #64748b;
-}
-
-/* 展开/折叠过渡 */
-.expand-enter-active,
-.expand-leave-active {
-  transition: all 0.3s ease;
-  max-height: 200px;
-}
-
-.expand-enter-from,
-.expand-leave-to {
-  opacity: 0;
-  max-height: 0;
-  padding-top: 0;
+.activity-item:last-child {
+  border-bottom: none;
   padding-bottom: 0;
 }
 
-/* ==================== 历史评估 ==================== */
-.history-section {
-  margin-bottom: 32px;
+.activity-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  margin-top: 4px;
+  background: #cbd5e1;
 }
 
-/* ==================== 推荐岗位 ==================== */
-.recommend-section {
-  margin-bottom: 32px;
+.activity-dot.high {
+  background: #10b981;
 }
 
-.section-title {
-  margin: 0 0 20px 0;
-  font-size: 18px;
-  font-weight: 600;
-  color: #2c3e50;
-  display: flex;
-  align-items: center;
-  gap: 8px;
+.activity-dot.medium {
+  background: #6366f1;
 }
 
-.section-title :deep(.el-icon) {
-  font-size: 20px;
-  color: #e6a23c;
+.activity-dot.low {
+  background: #f59e0b;
 }
 
-/* ==================== 底部说明 ==================== */
-.footer-info {
-  margin-top: 40px;
+.activity-copy p {
+  margin-top: 2px;
+}
+
+.activity-time {
+  color: #94a3b8;
+  font-size: 12px;
+  white-space: nowrap;
 }
 
 .info-card {
-  background: linear-gradient(135deg, #e3f2fd 0%, #f0f7ff 100%);
-  border: 1px solid #bbdefb;
+  min-height: 0;
 }
 
-.info-content {
-  padding: 0;
+.info-copy {
+  display: grid;
+  gap: 12px;
 }
 
-.info-content h4 {
-  margin: 0 0 12px 0;
-  font-size: 16px;
-  color: #1976d2;
-  font-weight: 600;
+@media (max-width: 1280px) {
+  .hero-grid,
+  .dashboard-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .side-column {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .job-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
-.info-content p {
-  margin: 0 0 8px 0;
-  color: #555;
-  line-height: 1.6;
-  font-size: 14px;
-}
-
-.info-content p:last-child {
-  margin-bottom: 0;
-}
-
-.info-content strong {
-  color: #1976d2;
-  font-weight: 600;
-}
-
-/* ==================== 欢迎对话框 ==================== */
-.welcome-dialog-content {
-  padding: 12px 0;
-}
-
-.welcome-dialog-content p {
-  margin: 0 0 12px 0;
-  color: #606266;
-  line-height: 1.6;
-}
-
-.welcome-dialog-content p:first-child {
-  font-size: 15px;
-  color: #2c3e50;
-  font-weight: 500;
-}
-
-.features-list {
-  margin: 16px 0;
-  padding-left: 20px;
-  list-style: none;
-}
-
-.features-list li {
-  margin: 8px 0;
-  color: #606266;
-  font-size: 14px;
-  line-height: 1.6;
-}
-
-.estimate {
-  background: #fff7e6;
-  padding: 10px 12px;
-  border-radius: 6px;
-  border-left: 3px solid #e6a23c;
-  margin: 16px 0 !important;
-  font-size: 13px;
-  color: #606266;
-}
-
-.estimate strong {
-  color: #e6a23c;
-}
-
-.note {
-  font-size: 13px;
-  color: #909399;
-  background: #f5f7fa;
-  padding: 8px 10px;
-  border-radius: 4px;
-  margin-top: 12px !important;
-}
-
-/* ==================== 响应式 ==================== */
-@media (max-width: 1200px) {
-  .portrait-body {
+@media (max-width: 1100px) {
+  .portrait-layout {
     grid-template-columns: 1fr;
     gap: 20px;
   }
 
-  .radar-area {
+  .radar-block,
+  .score-block {
     border-right: none;
-    border-bottom: 1px solid #f1f5f9;
-    padding-bottom: 20px;
+    border-bottom: 1px solid #edf2ff;
   }
 
-  .trait-details {
-    border-right: none;
-    border-bottom: 1px solid #f1f5f9;
-    padding-bottom: 20px;
+  .radar-block,
+  .score-block,
+  .video-block {
+    min-height: 0;
+    padding: 0 0 20px;
   }
 
-  .video-area {
-    border: none;
+  .video-block {
     padding: 0;
   }
 
-  .bigfive-layout {
+  .side-column {
     grid-template-columns: 1fr;
-    gap: 24px;
-  }
-
-  .home-header {
-    flex-direction: column;
-    align-items: stretch;
-  }
-
-  .actions {
-    width: 100%;
-    justify-content: flex-start;
-  }
-
-  .actions :deep(.el-button) {
-    flex: 1;
-    min-width: auto;
   }
 }
 
 @media (max-width: 768px) {
   .candidate-home {
-    padding: 16px;
+    padding-bottom: 24px;
   }
 
-  .greeting h2 {
-    font-size: 20px;
-  }
-
-  .panel-header {
-    padding: 16px 18px 12px;
-  }
-
-  .panel-desc {
-    padding-left: 0;
-  }
-
-  .trait-details {
-    padding: 0 16px;
-  }
-
-  .score-overview {
-    flex-direction: column;
-    text-align: center;
-  }
-
-  .bigfive-panel {
+  .hero-card,
+  .summary-card,
+  .dashboard-card {
+    border-radius: 22px;
     padding: 18px;
   }
 
-  .actions :deep(.el-button) {
-    padding: 8px 12px;
-    font-size: 14px;
+  .hero-copy h2 {
+    font-size: 28px;
+  }
+
+  .hero-stats,
+  .job-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .score-overview {
+    grid-template-columns: 1fr;
+    text-align: center;
+  }
+
+  .summary-line {
+    flex-direction: column;
+  }
+
+  .hero-actions :deep(.el-button) {
+    width: 100%;
+  }
+
+  .section-head {
+    flex-direction: column;
+  }
+
+  .activity-item {
+    grid-template-columns: 12px minmax(0, 1fr);
+  }
+
+  .activity-time {
+    grid-column: 2;
   }
 }
 </style>
