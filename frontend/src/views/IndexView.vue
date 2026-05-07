@@ -2,20 +2,25 @@
 import { useUserStore } from '../stores/user'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { ref, onMounted } from 'vue'
-import request from '../utils/request'
+import { ref, onMounted, watch } from 'vue'
+import request, { fetchNotificationSummary } from '../utils/request'
+import { useAssessmentStore } from '@/stores/assessment'
 
 const userStore = useUserStore()
 const router = useRouter()
+const assessmentStore = useAssessmentStore()
 
 const activeMenu = ref('home')
+const notificationSummary = ref<{ unread_count: number; items: any[] }>({
+  unread_count: 0,
+  items: []
+})
 
-// 根据当前路由更新活跃菜单
 const updateActiveMenu = () => {
   const path = router.currentRoute.value.path
   if (path === '/home') {
     activeMenu.value = 'home'
-  } else if (path.startsWith('/home/profile')) {
+  } else if (path.startsWith('/home/profile') || path.startsWith('/home/settings')) {
     activeMenu.value = 'profile'
   } else if (path.startsWith('/home/jobs')) {
     activeMenu.value = 'jobs'
@@ -36,52 +41,81 @@ const updateActiveMenu = () => {
   }
 }
 
-// 监听路由变化
 router.afterEach(() => {
   updateActiveMenu()
 })
 
-// 页面加载时获取完整用户信息
 onMounted(async () => {
   updateActiveMenu()
   try {
     const response = await request.get('/user/profile')
     if (response.data?.code === 200 && response.data?.data) {
       const userData = response.data.data
-      console.log('📥 后端返回的用户数据:', userData)
-      
-      // 处理字段映射（后端可能使用 snake_case）
       const profileData = {
         ...userData,
-        // 确保 avatar 字段存在
         avatar: userData.avatar || userData.head_photo || userData.avatar_url || null,
-        // 其他字段映射
         realName: userData.real_name || userData.realName || null,
         deliveryPrivacy: userData.delivery_privacy || userData.deliveryPrivacy || 2
       }
-      
-      // 更新 store 中的用户信息为完整数据
       userStore.updateUserInfo(profileData)
-      console.log('✅ 头像已加载:', profileData.avatar ? '有头像' : '无头像')
-      console.log('📦 Store中的头像:', userStore.profile?.avatar)
     }
   } catch (error) {
     console.warn('获取用户信息失败:', error)
   }
+
+  await refreshNotifications()
 })
 
-// 获取完整头像URL
 const getFullAvatarUrl = (url: string | null | undefined) => {
-  if (!url) return '';
-  if (url.startsWith('http')) return url;
-  if (url.startsWith('data:')) return url; // Base64 data URL 直接返回
-  return `http://localhost:8000${url}`;
-};
-// 菜单点击处理
+  if (!url) return ''
+  if (url.startsWith('http')) return url
+  if (url.startsWith('data:')) return url
+  return `http://localhost:8000${url}`
+}
+
+const refreshNotifications = async () => {
+  notificationSummary.value = await fetchNotificationSummary()
+}
+
+const normalizeNotificationText = (text: string) => {
+  if (!text) return ''
+  return text
+    .replace(/AssessmentSession/g, '面试流程')
+    .replace(/EvaluationResult/g, '评估报告')
+    .replace(/TraitScores/g, '人格画像')
+}
+
+const getNotificationTitle = (item: any) => {
+  const title = normalizeNotificationText(item?.title || '')
+  if (title) return title
+
+  switch (item?.type) {
+    case 'interview_reminder':
+      return '面试流程提醒'
+    case 'assessment_completed':
+      return '评估已完成'
+    case 'report_ready':
+      return '评估报告已生成'
+    case 'job_recommendation':
+      return '岗位推荐已更新'
+    case 'candidate_delivery':
+      return '候选人投递提醒'
+    default:
+      return '业务提醒'
+  }
+}
+
+const getNotificationContent = (item: any) => normalizeNotificationText(item?.content || '')
+
+const handleNotificationClick = (item: any) => {
+  if (!item?.action_path) return
+  router.push(item.action_path)
+}
+
 const handleMenuSelect = (index: string) => {
   activeMenu.value = index
-  
-  switch(index) {
+
+  switch (index) {
     case 'home':
       router.push('/home')
       break
@@ -112,17 +146,12 @@ const handleMenuSelect = (index: string) => {
   }
 }
 
-// 退出登录
 const handleLogout = () => {
-  ElMessageBox.confirm(
-    '确定要退出登录吗？',
-    '提示',
-    {
-      confirmButtonText: '确定',
-      cancelButtonText: '取消',
-      type: 'warning',
-    }
-  )
+  ElMessageBox.confirm('确定要退出登录吗？', '提示', {
+    confirmButtonText: '确定',
+    cancelButtonText: '取消',
+    type: 'warning'
+  })
     .then(() => {
       userStore.logout()
       router.push('/login')
@@ -131,36 +160,43 @@ const handleLogout = () => {
     .catch(() => {})
 }
 
-// 用户菜单命令处理
 const handleUserMenuCommand = (command: string) => {
   switch (command) {
     case 'logout':
       handleLogout()
       break
-    
     case 'profile':
-      // 跳转到个人信息页（子路由）
       router.push('/home/profile')
       break
-    
     case 'settings':
-      // 账号设置页（未来扩展）
-      ElMessage.info('账号设置功能开发中')
-      // 后续可改成：router.push('/home/settings')
+      router.push('/home/settings')
       break
-    
     default:
       ElMessage.warning('未知操作')
   }
 }
+
+watch(
+  () => router.currentRoute.value.fullPath,
+  () => {
+    refreshNotifications()
+  }
+)
+
+watch(
+  () => assessmentStore.completionTimestamp,
+  (value) => {
+    if (value > 0) {
+      refreshNotifications()
+    }
+  }
+)
 </script>
 
 <template>
   <el-container class="main-layout">
-    <!-- 顶部导航栏 -->
     <el-header class="app-header">
       <div class="header-container">
-        <!-- 左侧Logo -->
         <div class="header-left">
           <div class="app-logo" @click="handleMenuSelect('home')">
             <svg class="logo-icon" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg">
@@ -176,61 +212,47 @@ const handleUserMenuCommand = (command: string) => {
               <circle cx="18" cy="15" r="2" fill="white"/>
               <path d="M12 21Q16 24 20 21" stroke="white" stroke-width="1.5" fill="none" stroke-linecap="round"/>
             </svg>
-            <span class="logo-text">AI 人岗匹配</span>
+            <div class="logo-copy">
+              <span class="logo-text">AI 人岗匹配</span>
+              <span class="logo-subtitle">智能评估 · 精准匹配</span>
+            </div>
           </div>
         </div>
 
-        <!-- 中间导航菜单 -->
         <div class="header-center">
           <nav class="main-nav">
-            <button 
-              :class="['nav-item', { active: activeMenu === 'home' }]"
-              @click="handleMenuSelect('home')"
-            >
+            <button :class="['nav-item', { active: activeMenu === 'home' }]" @click="handleMenuSelect('home')">
               <svg class="nav-icon" viewBox="0 0 20 20" fill="currentColor">
                 <path d="M10.707 2.293a1 1 0 00-1.414 0l-7 7a1 1 0 001.414 1.414L4 10.414V17a1 1 0 001 1h2a1 1 0 001-1v-2a1 1 0 011-1h2a1 1 0 011 1v2a1 1 0 001 1h2a1 1 0 001-1v-6.586l.293.293a1 1 0 001.414-1.414l-7-7z" />
               </svg>
               <span>首页</span>
             </button>
-            
-            <!-- 候选人菜单 -->
+
             <template v-if="!userStore.isHR">
-              <button 
-                :class="['nav-item', { active: activeMenu === 'jobs' }]"
-                @click="handleMenuSelect('jobs')"
-              >
+              <button :class="['nav-item', { active: activeMenu === 'jobs' }]" @click="handleMenuSelect('jobs')">
                 <svg class="nav-icon" viewBox="0 0 20 20" fill="currentColor">
                   <path fill-rule="evenodd" d="M6 6V5a3 3 0 013-3h2a3 3 0 013 3v1h2a2 2 0 012 2v3.57A22.952 22.952 0 0110 13a22.95 22.95 0 01-8-1.43V8a2 2 0 012-2h2zm2-1a1 1 0 011-1h2a1 1 0 011 1v1H8V5zm1 5a1 1 0 011-1h.01a1 1 0 110 2H10a1 1 0 01-1-1z" clip-rule="evenodd" />
                   <path d="M2 13.692V16a2 2 0 002 2h12a2 2 0 002-2v-2.308A24.974 24.974 0 0110 15c-2.796 0-5.487-.46-8-1.308z" />
                 </svg>
                 <span>岗位浏览</span>
               </button>
-              
-              <button 
-                :class="['nav-item', { active: activeMenu === 'interviews' }]"
-                @click="handleMenuSelect('interviews')"
-              >
+
+              <button :class="['nav-item', { active: activeMenu === 'interviews' }]" @click="handleMenuSelect('interviews')">
                 <svg class="nav-icon" viewBox="0 0 20 20" fill="currentColor">
                   <path d="M2 6a2 2 0 012-2h6a2 2 0 012 2v8a2 2 0 01-2 2H4a2 2 0 01-2-2V6zM14.553 7.106A1 1 0 0014 8v4a1 1 0 00.553.894l2 1A1 1 0 0018 13V7a1 1 0 00-1.447-.894l-2 1z" />
                 </svg>
                 <span>我的面试</span>
               </button>
-              
-              <button 
-                :class="['nav-item', { active: activeMenu === 'reports' }]"
-                @click="handleMenuSelect('reports')"
-              >
+
+              <button :class="['nav-item', { active: activeMenu === 'reports' }]" @click="handleMenuSelect('reports')">
                 <svg class="nav-icon" viewBox="0 0 20 20" fill="currentColor">
                   <path d="M9 2a1 1 0 000 2h2a1 1 0 100-2H9z" />
                   <path fill-rule="evenodd" d="M4 5a2 2 0 012-2 3 3 0 003 3h2a3 3 0 003-3 2 2 0 012 2v11a2 2 0 01-2 2H6a2 2 0 01-2-2V5zm3 4a1 1 0 000 2h.01a1 1 0 100-2H7zm3 0a1 1 0 000 2h3a1 1 0 100-2h-3zm-3 4a1 1 0 100 2h.01a1 1 0 100-2H7zm3 0a1 1 0 100 2h3a1 1 0 100-2h-3z" clip-rule="evenodd" />
                 </svg>
                 <span>报告中心</span>
               </button>
-              
-              <button 
-                :class="['nav-item', { active: activeMenu === 'psychology' }]"
-                @click="handleMenuSelect('psychology')"
-              >
+
+              <button :class="['nav-item', { active: activeMenu === 'psychology' }]" @click="handleMenuSelect('psychology')">
                 <svg class="nav-icon" viewBox="0 0 20 20" fill="currentColor">
                   <path d="M10.5 1.5H4.75A2.25 2.25 0 002.5 3.75v12.5A2.25 2.25 0 004.75 18.5h10.5a2.25 2.25 0 002.25-2.25V8" stroke="currentColor" stroke-width="1.5" fill="none"/>
                   <path d="M10 10l3-3m0 0l3 3m-3-3v8" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
@@ -240,32 +262,22 @@ const handleUserMenuCommand = (command: string) => {
               </button>
             </template>
 
-            <!-- HR菜单 -->
             <template v-else>
-              <button 
-                :class="['nav-item', { active: activeMenu === 'jobs-manage' }]"
-                @click="handleMenuSelect('jobs-manage')"
-              >
+              <button :class="['nav-item', { active: activeMenu === 'jobs-manage' }]" @click="handleMenuSelect('jobs-manage')">
                 <svg class="nav-icon" viewBox="0 0 20 20" fill="currentColor">
                   <path fill-rule="evenodd" d="M3 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1z" clip-rule="evenodd" />
                 </svg>
                 <span>岗位管理</span>
               </button>
-              
-              <button 
-                :class="['nav-item', { active: activeMenu === 'candidates' }]"
-                @click="handleMenuSelect('candidates')"
-              >
+
+              <button :class="['nav-item', { active: activeMenu === 'candidates' }]" @click="handleMenuSelect('candidates')">
                 <svg class="nav-icon" viewBox="0 0 20 20" fill="currentColor">
                   <path d="M9 6a3 3 0 11-6 0 3 3 0 016 0zM17 6a3 3 0 11-6 0 3 3 0 016 0zM12.93 17c.046-.327.07-.66.07-1a6.97 6.97 0 00-1.5-4.33A5 5 0 0119 16v1h-6.07zM6 11a5 5 0 015 5v1H1v-1a5 5 0 015-5z" />
                 </svg>
                 <span>候选人</span>
               </button>
-              
-              <button 
-                :class="['nav-item', { active: activeMenu === 'reports-manage' }]"
-                @click="handleMenuSelect('reports-manage')"
-              >
+
+              <button :class="['nav-item', { active: activeMenu === 'reports-manage' }]" @click="handleMenuSelect('reports-manage')">
                 <svg class="nav-icon" viewBox="0 0 20 20" fill="currentColor">
                   <path d="M2 11a1 1 0 011-1h2a1 1 0 011 1v5a1 1 0 01-1 1H3a1 1 0 01-1-1v-5zM8 7a1 1 0 011-1h2a1 1 0 011 1v9a1 1 0 01-1 1H9a1 1 0 01-1-1V7zM14 4a1 1 0 011-1h2a1 1 0 011 1v12a1 1 0 01-1 1h-2a1 1 0 01-1-1V4z" />
                 </svg>
@@ -275,19 +287,58 @@ const handleUserMenuCommand = (command: string) => {
           </nav>
         </div>
 
-        <!-- 右侧用户区域 -->
         <div class="header-right">
+          <el-popover placement="bottom-end" :width="360" trigger="click" popper-class="notification-popover">
+            <template #reference>
+              <button class="notification-trigger" type="button">
+                <svg class="notification-icon" viewBox="0 0 20 20" fill="currentColor">
+                  <path d="M10 2a4 4 0 00-4 4v1.13c0 .72-.2 1.42-.58 2.03L4.3 11.1A1.5 1.5 0 005.58 13h8.84a1.5 1.5 0 001.28-1.9l-1.12-1.94A3.88 3.88 0 0114 7.13V6a4 4 0 00-4-4zm0 16a2.5 2.5 0 002.45-2h-4.9A2.5 2.5 0 0010 18z"/>
+                </svg>
+                <span class="notification-label">通知</span>
+                <span v-if="notificationSummary.unread_count > 0" class="notification-badge">
+                  {{ notificationSummary.unread_count > 9 ? '9+' : notificationSummary.unread_count }}
+                </span>
+              </button>
+            </template>
+
+            <div class="notification-panel">
+              <div class="notification-panel-header">
+                <div>
+                  <h4>通知中心</h4>
+                  <p>围绕 AssessmentSession、EvaluationResult 与岗位推荐进度生成业务提醒。</p>
+                </div>
+                <el-button text type="primary" @click="refreshNotifications">刷新</el-button>
+              </div>
+
+              <div v-if="notificationSummary.items.length === 0" class="notification-empty">
+                当前暂无新的系统提醒
+              </div>
+
+              <div v-else class="notification-list">
+                <button
+                  v-for="item in notificationSummary.items"
+                  :key="item.id"
+                  type="button"
+                  class="notification-item"
+                  @click="handleNotificationClick(item)"
+                >
+                  <div class="notification-item-top">
+                    <span class="notification-type">{{ getNotificationTitle(item) }}</span>
+                    <span :class="['notification-priority', item.priority]">
+                      {{ item.priority === 'high' ? '高优先' : item.priority === 'medium' ? '处理中' : '一般' }}
+                    </span>
+                  </div>
+                  <p>{{ getNotificationContent(item) }}</p>
+                  <div class="notification-action">{{ item.action_label || '立即查看' }}</div>
+                </button>
+              </div>
+            </div>
+          </el-popover>
+
           <el-dropdown @command="handleUserMenuCommand" trigger="click">
             <div class="user-profile">
               <div class="user-avatar">
-                <!-- 如果有头像 URL，显示图片 -->
-                <img 
-                  v-if="userStore.profile?.avatar" 
-                  :src="getFullAvatarUrl(userStore.profile.avatar)" 
-                  alt="用户头像"
-                  class="avatar-img"
-                >
-                <!-- 否则显示默认的 SVG 图形 -->
+                <img v-if="userStore.profile?.avatar" :src="getFullAvatarUrl(userStore.profile.avatar)" alt="用户头像" class="avatar-img">
                 <svg v-else viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg">
                   <defs>
                     <linearGradient id="avatarGrad" x1="0%" y1="0%" x2="100%" y2="100%">
@@ -308,7 +359,7 @@ const handleUserMenuCommand = (command: string) => {
                 <path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd" />
               </svg>
             </div>
-            
+
             <template #dropdown>
               <el-dropdown-menu class="user-dropdown-menu">
                 <el-dropdown-item command="profile">
@@ -337,9 +388,7 @@ const handleUserMenuCommand = (command: string) => {
       </div>
     </el-header>
 
-    <!-- 主内容区 -->
     <el-main class="app-main">
-      <!-- 使用 router-view 来显示子路由的内容（HomeView 或 HRHomeView） -->
       <router-view />
     </el-main>
   </el-container>
@@ -354,32 +403,34 @@ const handleUserMenuCommand = (command: string) => {
 
 .main-layout {
   height: 100vh;
-  background: #f5f7fa;
+  background:
+    radial-gradient(circle at top left, rgba(99, 102, 241, 0.16), transparent 26%),
+    radial-gradient(circle at top right, rgba(59, 130, 246, 0.12), transparent 24%),
+    linear-gradient(180deg, #f5f7ff 0%, #f8fbff 44%, #eef3fb 100%);
 }
 
-/* ========== 顶部导航栏 ========== */
 .app-header {
-  background: #ffffff;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+  background: rgba(255, 255, 255, 0.72);
+  backdrop-filter: blur(18px);
+  box-shadow: 0 12px 40px rgba(15, 23, 42, 0.06);
   padding: 0;
-  height: 64px;
-  border-bottom: 1px solid #e5e7eb;
+  height: 82px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.6);
   position: sticky;
   top: 0;
-  z-index: 100;
+  z-index: 120;
 }
 
 .header-container {
-  max-width: 1400px;
+  max-width: 1480px;
   margin: 0 auto;
   height: 100%;
-  padding: 0 24px;
+  padding: 0 28px;
   display: flex;
   align-items: center;
-  gap: 40px;
+  gap: 28px;
 }
 
-/* ========== Logo区域 ========== */
 .header-left {
   flex-shrink: 0;
 }
@@ -387,74 +438,96 @@ const handleUserMenuCommand = (command: string) => {
 .app-logo {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 14px;
   cursor: pointer;
   user-select: none;
-  transition: transform 0.2s ease;
+  padding: 10px 14px 10px 10px;
+  border-radius: 22px;
+  transition: transform 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
 }
 
 .app-logo:hover {
-  transform: scale(1.02);
+  transform: translateY(-1px);
+  background: rgba(255, 255, 255, 0.6);
+  box-shadow: 0 8px 24px rgba(99, 102, 241, 0.12);
 }
 
 .logo-icon {
-  width: 36px;
-  height: 36px;
+  width: 42px;
+  height: 42px;
   flex-shrink: 0;
+  filter: drop-shadow(0 8px 20px rgba(99, 102, 241, 0.24));
+}
+
+.logo-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
 }
 
 .logo-text {
-  font-size: 18px;
+  font-size: 25px;
   font-weight: 700;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  line-height: 1;
+  background: linear-gradient(135deg, #5b5ff8 0%, #8b5cf6 52%, #4f9cf9 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
-  letter-spacing: -0.3px;
+  letter-spacing: -0.6px;
 }
 
-/* ========== 中间导航菜单 ========== */
+.logo-subtitle {
+  font-size: 12px;
+  color: #8b93a7;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+}
+
 .header-center {
   flex: 1;
   display: flex;
   justify-content: center;
+  min-width: 0;
 }
 
 .main-nav {
   display: flex;
-  gap: 4px;
-  background: #f9fafb;
-  padding: 4px;
-  border-radius: 10px;
+  gap: 10px;
+  background: rgba(255, 255, 255, 0.7);
+  padding: 8px 10px;
+  border-radius: 24px;
+  border: 1px solid rgba(221, 229, 250, 0.95);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8), 0 8px 28px rgba(99, 102, 241, 0.08);
+  overflow-x: auto;
 }
 
 .nav-item {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 10px 20px;
+  gap: 9px;
+  padding: 12px 18px;
   border: none;
   background: transparent;
-  color: #6b7280;
+  color: #667085;
   font-size: 14px;
-  font-weight: 500;
-  border-radius: 8px;
+  font-weight: 600;
+  border-radius: 16px;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: all 0.22s ease;
   white-space: nowrap;
   outline: none;
 }
 
 .nav-item:hover {
-  color: #374151;
-  background: rgba(255, 255, 255, 0.6);
+  color: #334155;
+  background: rgba(255, 255, 255, 0.82);
+  transform: translateY(-1px);
 }
 
 .nav-item.active {
-  color: #667eea;
-  background: #ffffff;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1),
-              0 1px 2px rgba(0, 0, 0, 0.06);
+  color: #ffffff;
+  background: linear-gradient(135deg, #5468ff 0%, #7c4dff 100%);
+  box-shadow: 0 10px 28px rgba(92, 101, 255, 0.3);
 }
 
 .nav-icon {
@@ -463,48 +536,101 @@ const handleUserMenuCommand = (command: string) => {
   flex-shrink: 0;
 }
 
-/* ========== 右侧用户区域 ========== */
 .header-right {
   flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.notification-trigger {
+  position: relative;
+  min-width: 86px;
+  height: 46px;
+  padding: 0 16px;
+  border: 1px solid rgba(221, 229, 250, 0.95);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.78);
+  color: #4b5563;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 8px 24px rgba(99, 102, 241, 0.08);
+}
+
+.notification-trigger:hover {
+  background: #ffffff;
+  border-color: #c7d2fe;
+  color: #667eea;
+  box-shadow: 0 12px 30px rgba(102, 126, 234, 0.16);
+}
+
+.notification-icon {
+  width: 20px;
+  height: 20px;
+}
+
+.notification-label {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.notification-badge {
+  position: absolute;
+  top: -6px;
+  right: -3px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: linear-gradient(135deg, #ef4444, #f97316);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 18px;
+  text-align: center;
 }
 
 .user-profile {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 8px 12px 8px 8px;
-  background: #f9fafb;
-  border-radius: 12px;
+  padding: 8px 14px 8px 8px;
+  background: rgba(255, 255, 255, 0.8);
+  border-radius: 20px;
   cursor: pointer;
   transition: all 0.2s ease;
-  border: 1px solid transparent;
+  border: 1px solid rgba(221, 229, 250, 0.95);
+  box-shadow: 0 10px 26px rgba(15, 23, 42, 0.06);
 }
 
 .user-profile:hover {
-  background: #f3f4f6;
-  border-color: #e5e7eb;
+  background: #ffffff;
+  border-color: #dbe2ff;
+  box-shadow: 0 14px 30px rgba(99, 102, 241, 0.14);
 }
 
 .user-avatar {
-  width: 40px;
-  height: 40px;
-  border-radius: 10px;
+  width: 42px;
+  height: 42px;
+  border-radius: 14px;
   overflow: hidden;
   flex-shrink: 0;
-  box-shadow: 0 2px 4px rgba(102, 126, 234, 0.2);
+  box-shadow: 0 8px 18px rgba(102, 126, 234, 0.2);
 }
 
-.user-avatar svg {
+.user-avatar svg,
+.user-avatar .avatar-img {
   width: 100%;
   height: 100%;
   display: block;
 }
 
 .user-avatar .avatar-img {
-  width: 100%;
-  height: 100%;
   object-fit: cover;
-  display: block;
 }
 
 .user-info {
@@ -517,7 +643,7 @@ const handleUserMenuCommand = (command: string) => {
 .user-name {
   font-size: 14px;
   font-weight: 600;
-  color: #1a1a1a;
+  color: #0f172a;
   line-height: 1.3;
   max-width: 120px;
   overflow: hidden;
@@ -544,13 +670,127 @@ const handleUserMenuCommand = (command: string) => {
   transform: translateY(1px);
 }
 
-/* ========== 用户下拉菜单样式 ========== */
 :deep(.user-dropdown-menu) {
   margin-top: 8px;
-  border-radius: 10px;
+  border-radius: 16px;
   border: 1px solid #e5e7eb;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-  padding: 6px;
+  box-shadow: 0 18px 40px rgba(15, 23, 42, 0.12);
+  padding: 8px;
+}
+
+:deep(.notification-popover) {
+  border-radius: 18px;
+  border: 1px solid #e5e7eb;
+  box-shadow: 0 20px 44px rgba(15, 23, 42, 0.14);
+  padding: 0;
+}
+
+.notification-panel {
+  padding: 18px;
+  background: linear-gradient(180deg, #ffffff 0%, #f8faff 100%);
+}
+
+.notification-panel-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.notification-panel-header h4 {
+  margin: 0 0 4px;
+  font-size: 16px;
+  color: #111827;
+}
+
+.notification-panel-header p {
+  margin: 0;
+  font-size: 12px;
+  color: #6b7280;
+  line-height: 1.5;
+}
+
+.notification-empty {
+  padding: 24px 12px;
+  border-radius: 14px;
+  background: #f9fafb;
+  text-align: center;
+  color: #6b7280;
+  font-size: 13px;
+}
+
+.notification-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.notification-item {
+  width: 100%;
+  border: 1px solid #e8ecf8;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.9);
+  padding: 12px;
+  text-align: left;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.notification-item:hover {
+  border-color: #c7d2fe;
+  background: #f8faff;
+  box-shadow: 0 10px 24px rgba(99, 102, 241, 0.08);
+}
+
+.notification-item-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+
+.notification-type {
+  font-size: 13px;
+  font-weight: 600;
+  color: #1f2937;
+}
+
+.notification-priority {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 999px;
+}
+
+.notification-priority.high {
+  color: #dc2626;
+  background: #fee2e2;
+}
+
+.notification-priority.medium {
+  color: #d97706;
+  background: #fef3c7;
+}
+
+.notification-priority.low {
+  color: #2563eb;
+  background: #dbeafe;
+}
+
+.notification-item p {
+  margin: 0;
+  color: #6b7280;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.notification-action {
+  margin-top: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #667eea;
 }
 
 :deep(.user-dropdown-menu .el-dropdown-menu__item) {
@@ -558,7 +798,7 @@ const handleUserMenuCommand = (command: string) => {
   align-items: center;
   gap: 10px;
   padding: 10px 14px;
-  border-radius: 6px;
+  border-radius: 10px;
   font-size: 14px;
   color: #374151;
   transition: all 0.2s ease;
@@ -590,25 +830,24 @@ const handleUserMenuCommand = (command: string) => {
   margin: 6px 0;
 }
 
-/* ========== 主内容区 ========== */
 .app-main {
   background: transparent;
-  padding: 24px;
+  padding: 28px 24px 24px;
   overflow-y: auto;
 }
 
-/* ========== 响应式设计 ========== */
 @media (max-width: 1200px) {
   .header-container {
-    gap: 24px;
+    gap: 18px;
+    padding: 0 18px;
   }
 
-  .nav-item span {
+  .logo-subtitle {
     display: none;
   }
 
   .nav-item {
-    padding: 10px 12px;
+    padding: 11px 14px;
   }
 
   .user-info {
@@ -621,33 +860,56 @@ const handleUserMenuCommand = (command: string) => {
 }
 
 @media (max-width: 768px) {
+  .app-header {
+    height: 72px;
+  }
+
   .header-container {
     padding: 0 16px;
-    gap: 16px;
+    gap: 12px;
   }
 
   .logo-text {
-    font-size: 16px;
+    font-size: 18px;
   }
 
   .main-nav {
-    gap: 2px;
-    padding: 3px;
+    gap: 6px;
+    padding: 6px;
+    border-radius: 18px;
   }
 
   .nav-item {
-    padding: 8px 10px;
+    padding: 9px 10px;
   }
 
   .nav-icon {
-    width: 20px;
-    height: 20px;
+    width: 18px;
+    height: 18px;
+  }
+
+  .notification-trigger {
+    min-width: 46px;
+    padding: 0;
+  }
+
+  .notification-label {
+    display: none;
+  }
+
+  .app-main {
+    padding: 18px 10px 16px;
   }
 }
 
 @media (max-width: 480px) {
   .logo-text {
     display: none;
+  }
+
+  .header-center {
+    justify-content: flex-start;
+    overflow: hidden;
   }
 
   .logo-icon {

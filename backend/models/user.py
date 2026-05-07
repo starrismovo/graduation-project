@@ -30,6 +30,12 @@ class User(Base):
     bio = Column(Text, nullable=True)  # 自我介绍
     avatar_url = Column(Text, nullable=True)  # 头像 Base64 (LONGTEXT 支持最大2MB图片)
     delivery_privacy = Column(Integer, default=2)  # 1=实名, 2=昵称, 3=匿名
+    notify_interview_reminder = Column(Boolean, default=True, nullable=False)
+    notify_assessment_completed = Column(Boolean, default=True, nullable=False)
+    notify_report_ready = Column(Boolean, default=True, nullable=False)
+    notify_job_recommendation = Column(Boolean, default=True, nullable=False)
+    notify_candidate_delivery = Column(Boolean, default=True, nullable=False)
+    notify_candidate_assessment_completed = Column(Boolean, default=True, nullable=False)
     
     # ===== 候选人专属字段 =====
     age = Column(Integer, nullable=True)  # 年龄

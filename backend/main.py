@@ -21,6 +21,7 @@ from routers.immersive_dialogue import router as immersive_dialogue_router
 from routers.job_requirements import router as job_requirements_router
 from routers.saved_job import router as saved_job_router
 from routers.hr_invitation import router as hr_invitation_router
+from services.user_settings_service import ensure_notification_columns
 
 # 加载环境变量
 load_dotenv()
@@ -48,6 +49,7 @@ app.add_middleware(
 
 # 创建所有表
 Base.metadata.create_all(bind=engine)
+ensure_notification_columns(engine)
 
 # 引入路由
 app.include_router(auth_router)

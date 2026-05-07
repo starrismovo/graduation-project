@@ -1,44 +1,47 @@
 <template>
   <div class="history-section">
-    <h3 class="section-title">
-      <el-icon><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm.5-13H11v6l5.25 3.15.75-1.23-4.5-2.67z" fill="currentColor"/></svg></el-icon>
-      历史评估记录
-    </h3>
+    <div class="history-head">
+      <div>
+        <h3>历史评估记录</h3>
+        <p>展示已完成的 AssessmentSession 与 EvaluationResult，便于回溯人岗匹配结果变化。</p>
+      </div>
+    </div>
 
-    <el-table :data="data" stripe class="history-table">
-      <el-table-column prop="created_at" label="评估时间" width="160">
-        <template #default="{ row }">
-          {{ formatTime(row.created_at) }}
-        </template>
-      </el-table-column>
+    <div class="history-panel">
+      <el-table :data="data" class="history-table">
+        <el-table-column prop="created_at" label="评估时间" width="180">
+          <template #default="{ row }">
+            {{ formatTime(row.created_at) }}
+          </template>
+        </el-table-column>
 
-      <el-table-column prop="job_title" label="对应岗位" min-width="180" />
+        <el-table-column prop="job_title" label="对应岗位" min-width="180" />
 
-      <el-table-column prop="match_score" label="匹配度" width="100" align="center">
-        <template #default="{ row }">
-          <el-progress
-            :percentage="row.match_score"
-            :color="getScoreColor(row.match_score)"
-            :stroke-width="6"
-            :text-inside="true"
-          />
-        </template>
-      </el-table-column>
+        <el-table-column prop="match_score" label="匹配度" width="160">
+          <template #default="{ row }">
+            <div class="match-cell">
+              <el-progress
+                :percentage="row.match_score"
+                :color="getScoreColor(row.match_score)"
+                :stroke-width="8"
+                :show-text="false"
+              />
+              <span class="match-value">{{ row.match_score }}%</span>
+            </div>
+          </template>
+        </el-table-column>
 
-      <el-table-column label="操作" width="100" align="center">
-        <template #default="{ row }">
-          <el-button type="text" @click="$emit('view', row)">
-            查看详情
-          </el-button>
-        </template>
-      </el-table-column>
-    </el-table>
+        <el-table-column label="操作" width="120" align="center">
+          <template #default="{ row }">
+            <button class="view-btn" type="button" @click="$emit('view', row)">查看详情</button>
+          </template>
+        </el-table-column>
+      </el-table>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
-
 interface HistoryRecord {
   id: string | number
   job_title: string
@@ -71,44 +74,97 @@ function formatTime(dateString: string): string {
 }
 
 function getScoreColor(score: number): string {
-  if (score >= 80) return '#67c23a'
-  if (score >= 60) return '#409eff'
-  if (score >= 40) return '#e6a23c'
-  return '#f56c6c'
+  if (score >= 80) return '#22c55e'
+  if (score >= 60) return '#5b67ff'
+  if (score >= 40) return '#f59e0b'
+  return '#ef4444'
 }
 </script>
 
 <style scoped>
 .history-section {
-  margin: 32px 0;
+  border-radius: 28px;
+  border: 1px solid rgba(226, 232, 255, 0.95);
+  background: rgba(255, 255, 255, 0.82);
+  box-shadow: 0 18px 48px rgba(15, 23, 42, 0.08);
+  overflow: hidden;
 }
 
-.section-title {
-  margin: 0 0 20px 0;
-  font-size: 18px;
-  font-weight: 600;
-  color: #2c3e50;
-  display: flex;
-  align-items: center;
-  gap: 8px;
+.history-head {
+  padding: 24px 26px 18px;
 }
 
-.section-title :deep(.el-icon) {
-  font-size: 20px;
-  color: #409eff;
+.history-head h3 {
+  margin: 0 0 6px;
+  font-size: 26px;
+  color: #172133;
+  letter-spacing: -0.04em;
+}
+
+.history-head p {
+  margin: 0;
+  color: #73809a;
+  font-size: 13px;
+  line-height: 1.8;
+}
+
+.history-panel {
+  padding: 0 16px 16px;
 }
 
 .history-table {
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  --el-table-border-color: #eef2ff;
+  --el-table-header-bg-color: transparent;
+  --el-table-tr-bg-color: transparent;
+  border-radius: 20px;
+  overflow: hidden;
 }
 
-.history-table :deep(.el-table__header th) {
-  background: #f5f7fa;
-  color: #2c3e50;
-  font-weight: 600;
+.match-cell {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
 }
 
-.history-table :deep(.el-table__body) {
-  background: #fff;
+.match-value {
+  font-size: 12px;
+  font-weight: 700;
+  color: #334155;
+}
+
+.view-btn {
+  border: none;
+  background: transparent;
+  color: #5b67ff;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.history-table :deep(.el-table__inner-wrapper::before) {
+  display: none;
+}
+
+.history-table :deep(th.el-table__cell) {
+  padding: 18px 0 12px;
+  background: transparent;
+  color: #7b879c;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.history-table :deep(td.el-table__cell) {
+  padding: 16px 0;
+  color: #1f2937;
+  font-size: 13px;
+}
+
+.history-table :deep(.el-table__row) {
+  transition: background 0.2s ease;
+}
+
+.history-table :deep(.el-table__row:hover > td.el-table__cell) {
+  background: rgba(247, 249, 255, 0.9);
 }
 </style>

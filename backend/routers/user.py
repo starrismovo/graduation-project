@@ -9,6 +9,7 @@ import json
 from datetime import datetime
 import shutil
 from pathlib import Path
+from passlib.context import CryptContext
 
 from models.user import User
 from models.assessment import AssessmentRecord
@@ -17,8 +18,14 @@ from schemas.user import (
     UserProfileResponse,
     AvatarUploadResponse,
     StandardResponse,
+    ChangePasswordRequest,
+    NotificationSettingsUpdate,
 )
 from database import get_db
+from services.user_settings_service import (
+    build_notification_settings,
+    build_notification_summary,
+)
 
 load_dotenv()
 
@@ -27,6 +34,7 @@ router = APIRouter(prefix="/user", tags=["用户信息"])
 SECRET_KEY = os.getenv("SECRET_KEY")
 ALGORITHM = os.getenv("ALGORITHM")
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="auth/login")
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 # 上传文件保存目录
 UPLOAD_DIR = Path(__file__).parent.parent / "uploads" / "avatars"
@@ -54,6 +62,14 @@ def get_current_user(
     if user is None:
         raise credentials_exception
     return user
+
+
+def verify_password(plain_password: str, hashed_password: str) -> bool:
+    return pwd_context.verify(plain_password, hashed_password)
+
+
+def get_password_hash(password: str) -> str:
+    return pwd_context.hash(password)
 
 
 @router.get("/profile", response_model=StandardResponse)
@@ -208,6 +224,90 @@ async def upload_avatar(
     except Exception as e:
         db.rollback()
         return StandardResponse(code=500, message=f"头像上传失败: {str(e)}")
+
+
+@router.post("/change-password", response_model=StandardResponse)
+def change_password(
+    payload: ChangePasswordRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """修改当前登录用户密码"""
+    try:
+        if not verify_password(payload.current_password, current_user.hashed_password):
+            return StandardResponse(code=400, message="当前密码错误")
+
+        if payload.new_password != payload.confirm_password:
+            return StandardResponse(code=400, message="两次输入的新密码不一致")
+
+        if len(payload.new_password) < 6:
+            return StandardResponse(code=400, message="新密码长度不能少于 6 位")
+
+        current_user.hashed_password = get_password_hash(payload.new_password)
+        current_user.updated_at = datetime.utcnow()
+        db.commit()
+
+        return StandardResponse(code=200, message="密码修改成功")
+    except Exception as e:
+        db.rollback()
+        return StandardResponse(code=500, message=f"密码修改失败: {str(e)}")
+
+
+@router.get("/settings/notifications", response_model=StandardResponse)
+def get_notification_settings(
+    current_user: User = Depends(get_current_user),
+):
+    """获取通知设置"""
+    try:
+        return StandardResponse(
+            code=200,
+            message="获取成功",
+            data=build_notification_settings(current_user),
+        )
+    except Exception as e:
+        return StandardResponse(code=500, message=f"获取失败: {str(e)}")
+
+
+@router.patch("/settings/notifications", response_model=StandardResponse)
+def update_notification_settings(
+    payload: NotificationSettingsUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """更新通知设置"""
+    try:
+        update_map = payload.model_dump(exclude_unset=True)
+        for field_name, field_value in update_map.items():
+            setattr(current_user, field_name, field_value)
+
+        current_user.updated_at = datetime.utcnow()
+        db.commit()
+        db.refresh(current_user)
+
+        return StandardResponse(
+            code=200,
+            message="更新成功",
+            data=build_notification_settings(current_user),
+        )
+    except Exception as e:
+        db.rollback()
+        return StandardResponse(code=500, message=f"更新失败: {str(e)}")
+
+
+@router.get("/notifications/summary", response_model=StandardResponse)
+def get_notification_summary(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """获取通知中心摘要"""
+    try:
+        return StandardResponse(
+            code=200,
+            message="获取成功",
+            data=build_notification_summary(current_user, db),
+        )
+    except Exception as e:
+        return StandardResponse(code=500, message=f"获取失败: {str(e)}")
 
 
 @router.delete("/assessments", response_model=StandardResponse)

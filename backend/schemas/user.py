@@ -76,3 +76,20 @@ class StandardResponse(BaseModel):
     message: str
     data: Optional[dict] = None
 
+
+class ChangePasswordRequest(BaseModel):
+    """修改密码请求"""
+    current_password: str
+    new_password: str
+    confirm_password: str
+
+
+class NotificationSettingsUpdate(BaseModel):
+    """通知设置更新请求"""
+    notify_interview_reminder: Optional[bool] = None
+    notify_assessment_completed: Optional[bool] = None
+    notify_report_ready: Optional[bool] = None
+    notify_job_recommendation: Optional[bool] = None
+    notify_candidate_delivery: Optional[bool] = None
+    notify_candidate_assessment_completed: Optional[bool] = None
+

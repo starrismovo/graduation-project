@@ -157,6 +157,30 @@ def _profile_traits(profile: CandidatePersonalityProfile) -> Dict[str, float]:
     return {key: float(value) for key, value in traits.items() if value is not None}
 
 
+def _extract_report_sections(
+    evaluation_result: Optional[EvaluationResult],
+    match_analysis_record: Optional[AssessmentMatchAnalysis],
+) -> Optional[Dict[str, Any]]:
+    if evaluation_result and isinstance(evaluation_result.report_content, dict):
+        report_content = evaluation_result.report_content
+        if isinstance(report_content.get("report_sections"), dict):
+            return report_content["report_sections"]
+        analysis = report_content.get("analysis")
+        if isinstance(analysis, dict) and isinstance(analysis.get("report_sections"), dict):
+            return analysis["report_sections"]
+
+    if match_analysis_record and match_analysis_record.detailed_analysis:
+        try:
+            detail_obj = json.loads(match_analysis_record.detailed_analysis)
+        except Exception:
+            detail_obj = {}
+        structured_report = detail_obj.get("structured_report")
+        if isinstance(structured_report, dict):
+            return structured_report
+
+    return None
+
+
 def _job_text(job: Optional[Job], include_description: bool = False) -> str:
     if not job:
         return ""
@@ -667,6 +691,11 @@ async def get_report(record_id: int, db: Session = Depends(get_db)):
                 for t in personality_traits
             ]
     
+    job = db.query(Job).filter_by(id=record.job_id).first()
+    evaluation_result = db.query(EvaluationResult).filter_by(
+        assessment_record_id=record_id
+    ).first()
+
     # 获取匹配分析
     match_analysis_record = db.query(AssessmentMatchAnalysis).filter_by(
         assessment_record_id=record_id
@@ -682,6 +711,8 @@ async def get_report(record_id: int, db: Session = Depends(get_db)):
         )
         recommendations = match_analysis_record.recommendations or []
 
+    report_sections = _extract_report_sections(evaluation_result, match_analysis_record)
+
     model_version = None
     if match_analysis_record and match_analysis_record.detailed_analysis:
         try:
@@ -689,6 +720,29 @@ async def get_report(record_id: int, db: Session = Depends(get_db)):
             model_version = detail_obj.get("model_version")
         except Exception:
             model_version = None
+
+    if not report_sections:
+        profile = db.query(CandidatePersonalityProfile).filter_by(
+            candidate_id=record.candidate_id
+        ).first()
+        if profile:
+            generated_sections = report_agent.build_report_sections(
+                profile=profile,
+                job=job,
+                match_breakdown={
+                    "skill_match": 50.0,
+                    "personality_match": record.match_score or 50.0,
+                    "overall_score": record.match_score or 50.0,
+                },
+            )
+            report_sections = generated_sections
+
+    if (not recommendations) and report_sections:
+        recommendations = [
+            item.get("action") or item.get("reason")
+            for item in report_sections.get("career_recommendations", [])
+            if isinstance(item, dict) and (item.get("action") or item.get("reason"))
+        ][:3]
     
     # 构建响应
     details = AssessmentDetails(
@@ -713,6 +767,7 @@ async def get_report(record_id: int, db: Session = Depends(get_db)):
         conversation_summary=record.conversation_summary,
         match_analysis=match_analysis,
         recommendations=recommendations,
+        report_sections=report_sections,
         assessement_details=details  # 注意 typo 保持与前端一致
     )
     
@@ -1061,6 +1116,7 @@ async def save_assessment_result(
                     "overall_score": overall_score,
                     "agent_fusion": fusion_details,
                     "analysis": analysis_payload,
+                    "report_sections": analysis_payload.get("report_sections"),
                     "generated_at": datetime.now().isoformat(),
                 }
                 evaluation_result.report_content = report_content

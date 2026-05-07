@@ -370,14 +370,11 @@ onMounted(() => {
 </script>
 
 <style scoped>
-:root {
+.report-list-container {
   --primary-gradient: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   --success-gradient: linear-gradient(135deg, #67c23a 0%, #52b06c 100%);
   --warning-gradient: linear-gradient(135deg, #e6a23c 0%, #f0a853 100%);
   --danger-gradient: linear-gradient(135deg, #f56c6c 0%, #f88780 100%);
-}
-
-.report-list-container {
   padding: 32px 24px;
   background: linear-gradient(135deg, #f5f7fa 0%, #e8eef5 100%);
   min-height: 100vh;

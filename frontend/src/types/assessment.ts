@@ -45,6 +45,45 @@ export interface MatchAnalysis {
   gaps: string[]
 }
 
+export interface MatchDimension {
+  label: string
+  score: number
+  description?: string
+}
+
+export interface TraitInsight {
+  name: string
+  score: number
+  description?: string
+  job_requirement?: number | null
+  match_status: 'aligned' | 'watch' | 'gap' | 'balanced'
+  summary: string
+  advice?: string
+}
+
+export interface CareerRecommendationItem {
+  title: string
+  fit_level: string
+  reason: string
+  action?: string
+}
+
+export interface DevelopmentActionItem {
+  phase: string
+  title: string
+  description: string
+}
+
+export interface ReportSections {
+  overview_summary?: string
+  personality_summary?: string
+  match_dimensions: MatchDimension[]
+  trait_insights: TraitInsight[]
+  career_recommendations: CareerRecommendationItem[]
+  cautious_career_recommendations: CareerRecommendationItem[]
+  development_actions: DevelopmentActionItem[]
+}
+
 /**
  * 评估详情统计
  */
@@ -72,6 +111,7 @@ export interface AssessmentReport {
   conversation_summary?: string
   match_analysis?: MatchAnalysis
   recommendations?: string[]
+  report_sections?: ReportSections
   assessement_details?: AssessmentDetails
 }
 

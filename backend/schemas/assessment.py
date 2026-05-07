@@ -95,6 +95,50 @@ class AssessmentDetails(BaseModel):
     model_version: Optional[str] = None
 
 
+class MatchDimension(BaseModel):
+    """结构化匹配维度"""
+    label: str
+    score: float
+    description: Optional[str] = None
+
+
+class TraitInsight(BaseModel):
+    """大五人格结构化解读"""
+    name: str
+    score: float
+    description: Optional[str] = None
+    job_requirement: Optional[float] = None
+    match_status: str
+    summary: str
+    advice: Optional[str] = None
+
+
+class CareerRecommendationItem(BaseModel):
+    """职业建议条目"""
+    title: str
+    fit_level: str
+    reason: str
+    action: Optional[str] = None
+
+
+class DevelopmentActionItem(BaseModel):
+    """发展建议条目"""
+    phase: str
+    title: str
+    description: str
+
+
+class ReportSections(BaseModel):
+    """报告详情页结构化内容"""
+    overview_summary: Optional[str] = None
+    personality_summary: Optional[str] = None
+    match_dimensions: List[MatchDimension] = Field(default_factory=list)
+    trait_insights: List[TraitInsight] = Field(default_factory=list)
+    career_recommendations: List[CareerRecommendationItem] = Field(default_factory=list)
+    cautious_career_recommendations: List[CareerRecommendationItem] = Field(default_factory=list)
+    development_actions: List[DevelopmentActionItem] = Field(default_factory=list)
+
+
 class AssessmentReport(BaseModel):
     """完整的评估报告"""
     id: int
@@ -110,6 +154,7 @@ class AssessmentReport(BaseModel):
     conversation_summary: Optional[str] = None
     match_analysis: Optional[MatchAnalysis] = None
     recommendations: Optional[List[str]] = None
+    report_sections: Optional[ReportSections] = None
     assessement_details: Optional[AssessmentDetails] = None
     
     class Config:

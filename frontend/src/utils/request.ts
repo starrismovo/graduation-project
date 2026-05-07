@@ -210,6 +210,16 @@ export const fetchReportDetail = async (recordId: string | number) => {
   }
 }
 
+export const fetchNotificationSummary = async () => {
+  try {
+    const response = await request.get('/user/notifications/summary')
+    return response.data?.data || { unread_count: 0, items: [] }
+  } catch (error) {
+    console.warn('获取通知摘要失败:', error)
+    return { unread_count: 0, items: [] }
+  }
+}
+
 // 获取故事模板
 export function getStoryTemplate(jobId: string) {
   return request({
