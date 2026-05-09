@@ -331,7 +331,7 @@ watch(
               <div class="notification-panel-header">
                 <div>
                   <h4>通知中心</h4>
-                  <p>围绕 AssessmentSession、EvaluationResult 与岗位推荐进度生成业务提醒。</p>
+                  
                 </div>
                 <el-button text type="primary" @click="refreshNotifications">刷新</el-button>
               </div>
@@ -502,20 +502,27 @@ watch(
 }
 
 .main-layout {
+  --shell-radius: 24px;
+  --shell-radius-sm: 18px;
+  --shell-border: 1px solid rgba(223, 230, 250, 0.95);
+  --shell-shadow: 0 18px 42px rgba(15, 23, 42, 0.08);
+  --shell-shadow-soft: 0 10px 26px rgba(15, 23, 42, 0.06);
+  --primary-gradient: linear-gradient(135deg, #5468ff 0%, #7c4dff 100%);
+  --panel-bg: rgba(255, 255, 255, 0.84);
   height: 100vh;
   background:
-    radial-gradient(circle at top left, rgba(99, 102, 241, 0.16), transparent 24%),
+    radial-gradient(circle at top left, rgba(99, 102, 241, 0.18), transparent 24%),
     radial-gradient(circle at top right, rgba(59, 130, 246, 0.12), transparent 20%),
-    linear-gradient(180deg, #f6f8ff 0%, #f8fbff 42%, #eef3fb 100%);
+    linear-gradient(180deg, #f5f7ff 0%, #f7faff 42%, #edf3ff 100%);
 }
 
 .app-header {
-  background: rgba(255, 255, 255, 0.74);
+  background: rgba(255, 255, 255, 0.76);
   backdrop-filter: blur(18px);
-  box-shadow: 0 12px 40px rgba(15, 23, 42, 0.06);
+  box-shadow: 0 12px 36px rgba(15, 23, 42, 0.06);
   padding: 0;
   height: 82px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.6);
+  border-bottom: 1px solid rgba(227, 234, 250, 0.88);
   position: sticky;
   top: 0;
   z-index: 120;
@@ -593,10 +600,10 @@ watch(
 .main-nav {
   display: flex;
   gap: 10px;
-  background: rgba(255, 255, 255, 0.72);
+  background: rgba(255, 255, 255, 0.78);
   padding: 8px 10px;
-  border-radius: 24px;
-  border: 1px solid rgba(221, 229, 250, 0.95);
+  border-radius: var(--shell-radius);
+  border: var(--shell-border);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.85), 0 8px 28px rgba(99, 102, 241, 0.08);
   overflow-x: auto;
 }
@@ -626,7 +633,7 @@ watch(
 
 .nav-item.active {
   color: #ffffff;
-  background: linear-gradient(135deg, #5468ff 0%, #7c4dff 100%);
+  background: var(--primary-gradient);
   box-shadow: 0 10px 28px rgba(92, 101, 255, 0.3);
 }
 
@@ -648,9 +655,9 @@ watch(
   min-width: 260px;
   height: 46px;
   padding: 0 16px;
-  border-radius: 18px;
-  border: 1px solid rgba(221, 229, 250, 0.95);
-  background: rgba(255, 255, 255, 0.78);
+  border-radius: var(--shell-radius-sm);
+  border: var(--shell-border);
+  background: rgba(255, 255, 255, 0.82);
   color: #98a2b3;
   display: inline-flex;
   align-items: center;
@@ -673,9 +680,9 @@ watch(
   min-width: 46px;
   width: 46px;
   height: 46px;
-  border: 1px solid rgba(221, 229, 250, 0.95);
-  border-radius: 18px;
-  background: rgba(255, 255, 255, 0.78);
+  border: var(--shell-border);
+  border-radius: var(--shell-radius-sm);
+  background: rgba(255, 255, 255, 0.82);
   color: #4b5563;
   display: inline-flex;
   align-items: center;
@@ -722,12 +729,12 @@ watch(
   align-items: center;
   gap: 12px;
   padding: 8px 14px 8px 8px;
-  background: rgba(255, 255, 255, 0.82);
-  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.86);
+  border-radius: 22px;
   cursor: pointer;
   transition: all 0.2s ease;
-  border: 1px solid rgba(221, 229, 250, 0.95);
-  box-shadow: 0 10px 26px rgba(15, 23, 42, 0.06);
+  border: var(--shell-border);
+  box-shadow: var(--shell-shadow-soft);
 }
 
 .user-profile:hover {
@@ -955,7 +962,7 @@ watch(
 
 .app-main {
   background: transparent;
-  padding: 20px 20px 20px;
+  padding: 24px 24px 28px;
   overflow-y: auto;
 }
 
@@ -963,8 +970,8 @@ watch(
   max-width: 1560px;
   margin: 0 auto;
   display: grid;
-  grid-template-columns: 220px minmax(0, 1fr);
-  gap: 20px;
+  grid-template-columns: 236px minmax(0, 1fr);
+  gap: 28px;
   align-items: start;
 }
 
@@ -973,31 +980,31 @@ watch(
   top: 102px;
   display: flex;
   flex-direction: column;
-  gap: 18px;
+  gap: 20px;
 }
 
 .side-menu-card,
 .assistant-card {
-  border-radius: 26px;
-  border: 1px solid rgba(226, 232, 255, 0.92);
-  background: rgba(255, 255, 255, 0.82);
-  box-shadow: 0 18px 44px rgba(15, 23, 42, 0.08);
+  border-radius: var(--shell-radius);
+  border: var(--shell-border);
+  background: var(--panel-bg);
+  box-shadow: var(--shell-shadow);
 }
 
 .side-menu-card {
-  padding: 16px 12px;
+  padding: 18px 14px;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 8px;
 }
 
 .side-menu-item {
   width: 100%;
-  height: 44px;
-  padding: 0 14px;
+  height: 48px;
+  padding: 0 16px;
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
   border: none;
   border-radius: 14px;
   background: transparent;
@@ -1017,13 +1024,14 @@ watch(
 .side-menu-item.active {
   background: linear-gradient(135deg, rgba(84, 104, 255, 0.12), rgba(124, 77, 255, 0.14));
   color: #5468ff;
+  box-shadow: inset 0 0 0 1px rgba(124, 77, 255, 0.06);
 }
 
 .assistant-card {
-  padding: 20px 18px 18px;
+  padding: 22px 18px 18px;
   position: relative;
   overflow: hidden;
-  min-height: 220px;
+  min-height: 300px;
 }
 
 .assistant-card::before {
@@ -1053,9 +1061,9 @@ watch(
 .assistant-card h4 {
   position: relative;
   z-index: 1;
-  margin: 14px 0 10px;
-  font-size: 18px;
-  line-height: 1.5;
+  margin: 16px 0 12px;
+  font-size: 19px;
+  line-height: 1.45;
   color: #172133;
 }
 
@@ -1065,18 +1073,18 @@ watch(
   margin: 0;
   color: #6f7c93;
   font-size: 13px;
-  line-height: 1.8;
+  line-height: 1.85;
 }
 
 .assistant-btn {
   position: relative;
   z-index: 1;
-  margin-top: 18px;
+  margin-top: 24px;
   width: 100%;
-  height: 42px;
+  height: 46px;
   border: none;
   border-radius: 14px;
-  background: linear-gradient(135deg, #5468ff 0%, #7c4dff 100%);
+  background: var(--primary-gradient);
   color: #fff;
   font-size: 14px;
   font-weight: 700;
@@ -1086,10 +1094,10 @@ watch(
 
 .assistant-bot {
   position: absolute;
-  right: 8px;
+  right: 10px;
   bottom: 8px;
-  width: 72px;
-  height: 72px;
+  width: 76px;
+  height: 76px;
   z-index: 1;
 }
 
@@ -1100,6 +1108,8 @@ watch(
 
 .main-content {
   min-width: 0;
+  display: flex;
+  flex-direction: column;
 }
 
 @media (max-width: 1360px) {
@@ -1108,7 +1118,7 @@ watch(
   }
 
   .content-shell {
-    grid-template-columns: 200px minmax(0, 1fr);
+    grid-template-columns: 208px minmax(0, 1fr);
   }
 }
 

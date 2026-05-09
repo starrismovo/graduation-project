@@ -140,6 +140,15 @@ function goToJobDetail(jobId: number | string) {
   router.push(`/home/jobs/${jobId}`)
 }
 
+function startJobAssessment(jobId: number | string) {
+  router.push({
+    path: '/home/interviews/room',
+    query: {
+      jobId: String(jobId)
+    }
+  })
+}
+
 // 监听筛选条件变化
 watch([selectedCity, selectedSalary, sortBy], () => {
   currentPage.value = 1
@@ -272,7 +281,11 @@ onMounted(() => {
     <div class="job-grid" v-loading="loading">
       <template v-if="jobs.length > 0">
         <div v-for="job in jobs" :key="job.id" class="grid-item">
-          <JobCard :job="job" @assess="goToJobDetail" />
+          <JobCard
+            :job="job"
+            @assess="startJobAssessment"
+            @click="goToJobDetail(job.id)"
+          />
         </div>
       </template>
       

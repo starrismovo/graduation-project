@@ -46,7 +46,7 @@
     <div class="card-footer">
       <button class="ghost-btn" type="button" @click.stop="handleClick">查看信息</button>
       <button class="assess-btn" @click.stop="$emit('assess', job.id)">
-        查看详情
+        开始评估
       </button>
     </div>
   </div>
