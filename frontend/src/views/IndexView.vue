@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
+import { ArrowLeftBold, ArrowRightBold } from '@element-plus/icons-vue'
 import { useUserStore } from '../stores/user'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
@@ -11,6 +12,7 @@ const router = useRouter()
 const assessmentStore = useAssessmentStore()
 
 const activeMenu = ref('home')
+const isSidebarCollapsed = ref(false)
 const notificationSummary = ref<{ unread_count: number; items: any[] }>({
   unread_count: 0,
   items: []
@@ -34,6 +36,17 @@ const hrMenus = [
 ]
 
 const sideMenus = computed(() => (userStore.isHR ? hrMenus : candidateMenus))
+const assistantTitle = computed(() => (userStore.isHR ? 'AI 招聘助理' : 'AI 职业咨询师'))
+
+const toggleSidebar = () => {
+  isSidebarCollapsed.value = !isSidebarCollapsed.value
+}
+
+const collapseSidebarOnHover = () => {
+  if (!isSidebarCollapsed.value) {
+    isSidebarCollapsed.value = true
+  }
+}
 
 const updateActiveMenu = () => {
   const path = router.currentRoute.value.path
@@ -169,7 +182,10 @@ const handleLogout = () => {
   ElMessageBox.confirm('确定要退出登录吗？', '提示', {
     confirmButtonText: '确定',
     cancelButtonText: '取消',
-    type: 'warning'
+    type: 'warning',
+    customClass: 'logout-confirm-box',
+    confirmButtonClass: 'logout-confirm-button',
+    cancelButtonClass: 'logout-cancel-button'
   })
     .then(() => {
       userStore.logout()
@@ -361,7 +377,7 @@ watch(
             </div>
           </el-popover>
 
-          <el-dropdown @command="handleUserMenuCommand" trigger="click">
+          <el-dropdown @command="handleUserMenuCommand" trigger="click" popper-class="user-dropdown-popper">
             <div class="user-profile">
               <div class="user-avatar">
                 <img v-if="userStore.profile?.avatar" :src="getFullAvatarUrl(userStore.profile.avatar)" alt="用户头像" class="avatar-img" />
@@ -389,22 +405,28 @@ watch(
             <template #dropdown>
               <el-dropdown-menu class="user-dropdown-menu">
                 <el-dropdown-item command="profile">
-                  <svg class="menu-icon" viewBox="0 0 20 20" fill="currentColor">
+                  <span class="menu-icon-shell">
+                    <svg class="menu-icon" viewBox="0 0 20 20" fill="currentColor">
                     <path fill-rule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clip-rule="evenodd" />
-                  </svg>
+                    </svg>
+                  </span>
                   <span>个人信息</span>
                 </el-dropdown-item>
                 <el-dropdown-item command="settings">
-                  <svg class="menu-icon" viewBox="0 0 20 20" fill="currentColor">
+                  <span class="menu-icon-shell">
+                    <svg class="menu-icon" viewBox="0 0 20 20" fill="currentColor">
                     <path fill-rule="evenodd" d="M11.49 3.17c-.38-1.56-2.6-1.56-2.98 0a1.532 1.532 0 01-2.286.948c-1.372-.836-2.942.734-2.106 2.106.54.886.061 2.042-.947 2.287-1.561.379-1.561 2.6 0 2.978a1.532 1.532 0 01.947 2.287c-.836 1.372.734 2.942 2.106 2.106a1.532 1.532 0 012.287.947c.379 1.561 2.6 1.561 2.978 0a1.533 1.533 0 012.287-.947c1.372.836 2.942-.734 2.106-2.106a1.533 1.533 0 01.947-2.287c1.561-.379 1.561-2.6 0-2.978a1.532 1.532 0 01-.947-2.287c.836-1.372-.734-2.942-2.106-2.106a1.532 1.532 0 01-2.287-.947zM10 13a3 3 0 100-6 3 3 0 000 6z" clip-rule="evenodd" />
-                  </svg>
+                    </svg>
+                  </span>
                   <span>账号设置</span>
                 </el-dropdown-item>
                 <div class="dropdown-divider"></div>
-                <el-dropdown-item command="logout">
-                  <svg class="menu-icon logout-icon" viewBox="0 0 20 20" fill="currentColor">
+                <el-dropdown-item command="logout" class="logout-menu-item">
+                  <span class="menu-icon-shell logout-shell">
+                    <svg class="menu-icon logout-icon" viewBox="0 0 20 20" fill="currentColor">
                     <path fill-rule="evenodd" d="M3 3a1 1 0 00-1 1v12a1 1 0 102 0V4a1 1 0 00-1-1zm10.293 9.293a1 1 0 001.414 1.414l3-3a1 1 0 000-1.414l-3-3a1 1 0 10-1.414 1.414L14.586 9H7a1 1 0 100 2h7.586l-1.293 1.293z" clip-rule="evenodd" />
-                  </svg>
+                    </svg>
+                  </span>
                   <span>退出登录</span>
                 </el-dropdown-item>
               </el-dropdown-menu>
@@ -415,14 +437,31 @@ watch(
     </el-header>
 
     <el-main class="app-main">
-      <div class="content-shell">
-        <aside class="left-rail">
+      <div :class="['content-shell', { 'sidebar-collapsed': isSidebarCollapsed }]">
+        <aside :class="['left-rail', { collapsed: isSidebarCollapsed }]">
           <div class="side-menu-card">
+            <div class="side-menu-top">
+              <span v-if="!isSidebarCollapsed" class="side-menu-title">功能导航</span>
+              <button
+                type="button"
+                class="sidebar-toggle"
+                :aria-label="isSidebarCollapsed ? '展开侧边栏' : '折叠侧边栏'"
+                @click="toggleSidebar"
+                @mouseenter="collapseSidebarOnHover"
+              >
+                <el-icon>
+                  <ArrowLeftBold v-if="!isSidebarCollapsed" />
+                  <ArrowRightBold v-else />
+                </el-icon>
+              </button>
+            </div>
+
             <button
               v-for="item in sideMenus"
               :key="item.key"
               type="button"
-              :class="['side-menu-item', { active: activeMenu === item.key }]"
+              :class="['side-menu-item', { active: activeMenu === item.key, collapsed: isSidebarCollapsed }]"
+              :title="isSidebarCollapsed ? item.label : ''"
               @click="handleMenuSelect(item.key)"
             >
               <svg v-if="item.icon === 'home'" class="side-menu-icon" viewBox="0 0 20 20" fill="currentColor">
@@ -453,11 +492,11 @@ watch(
               <svg v-else class="side-menu-icon" viewBox="0 0 20 20" fill="currentColor">
                 <path fill-rule="evenodd" d="M11.49 3.17c-.38-1.56-2.6-1.56-2.98 0a1.532 1.532 0 01-2.286.948c-1.372-.836-2.942.734-2.106 2.106.54.886.061 2.042-.947 2.287-1.561.379-1.561 2.6 0 2.978a1.532 1.532 0 01.947 2.287c-.836 1.372.734 2.942 2.106 2.106a1.532 1.532 0 012.287.947c.379 1.561 2.6 1.561 2.978 0a1.533 1.533 0 012.287-.947c1.372.836 2.942-.734 2.106-2.106a1.533 1.533 0 01.947-2.287c1.561-.379 1.561-2.6 0-2.978a1.532 1.532 0 01-.947-2.287c.836-1.372-.734-2.942-2.106-2.106a1.532 1.532 0 01-2.287-.947zM10 13a3 3 0 100-6 3 3 0 000 6z" clip-rule="evenodd" />
               </svg>
-              <span>{{ item.label }}</span>
+              <span class="side-menu-label">{{ item.label }}</span>
             </button>
           </div>
 
-          <div class="assistant-card">
+          <div :class="['assistant-card', { collapsed: isSidebarCollapsed }]" :title="isSidebarCollapsed ? assistantTitle : ''">
             <div class="assistant-badge">{{ userStore.isHR ? 'AI 招聘助理' : 'AI 职业咨询师' }}</div>
             <h4>{{ userStore.isHR ? '辅助处理候选人与岗位决策' : '为你提供职业发展建议' }}</h4>
             <p>{{ userStore.isHR ? '围绕岗位实例、候选人报告与待处理事项进行辅助分析。' : '结合人格特质、报告结果与岗位方向，帮助你持续理解自己。' }}</p>
@@ -800,12 +839,24 @@ watch(
   transform: translateY(1px);
 }
 
+:global(.user-dropdown-popper.el-popper) {
+  border: 1px solid rgba(226, 232, 240, 0.96);
+  border-radius: 18px;
+  box-shadow: 0 22px 48px rgba(15, 23, 42, 0.15);
+  overflow: hidden;
+}
+
+:global(.user-dropdown-popper.el-popper .el-popper__arrow::before) {
+  border-color: rgba(226, 232, 240, 0.96);
+  background: #ffffff;
+}
+
 :deep(.user-dropdown-menu) {
-  margin-top: 8px;
-  border-radius: 16px;
-  border: 1px solid #e5e7eb;
-  box-shadow: 0 18px 40px rgba(15, 23, 42, 0.12);
+  min-width: 178px;
   padding: 8px;
+  border: none;
+  background:
+    linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
 }
 
 :deep(.notification-popover) {
@@ -927,22 +978,51 @@ watch(
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 10px 14px;
-  border-radius: 10px;
-  font-size: 14px;
-  color: #374151;
-  transition: all 0.2s ease;
+  min-height: 42px;
+  padding: 8px 12px;
+  border-radius: 12px;
+  font-size: 15px;
+  font-weight: 600;
+  color: #4b5563;
+  transition: all 0.22s ease;
 }
 
 :deep(.user-dropdown-menu .el-dropdown-menu__item:hover) {
-  background: #f3f4f6;
-  color: #1a1a1a;
+  background: linear-gradient(135deg, rgba(91, 103, 255, 0.1), rgba(124, 77, 255, 0.08));
+  color: #4f46e5;
+  transform: translateX(2px);
+}
+
+:deep(.user-dropdown-menu .el-dropdown-menu__item.logout-menu-item) {
+  color: #b91c1c;
+}
+
+:deep(.user-dropdown-menu .el-dropdown-menu__item.logout-menu-item:hover) {
+  background: #fff1f2;
+  color: #dc2626;
+}
+
+.menu-icon-shell {
+  width: 28px;
+  height: 28px;
+  border-radius: 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: #eef2ff;
+  color: #667eea;
+  flex-shrink: 0;
+}
+
+.logout-shell {
+  background: #fee2e2;
+  color: #ef4444;
 }
 
 .menu-icon {
-  width: 18px;
-  height: 18px;
-  color: #6b7280;
+  width: 17px;
+  height: 17px;
+  color: currentColor;
   flex-shrink: 0;
 }
 
@@ -956,8 +1036,92 @@ watch(
 
 .dropdown-divider {
   height: 1px;
-  background: #e5e7eb;
-  margin: 6px 0;
+  background: linear-gradient(90deg, transparent, #e5e7eb, transparent);
+  margin: 8px 4px;
+}
+
+:global(.logout-confirm-box) {
+  width: 430px;
+  padding: 22px 24px 20px;
+  border: 1px solid rgba(226, 232, 240, 0.96);
+  border-radius: 18px;
+  box-shadow: 0 24px 60px rgba(15, 23, 42, 0.18);
+}
+
+:global(.logout-confirm-box .el-message-box__header) {
+  padding: 0 0 12px;
+}
+
+:global(.logout-confirm-box .el-message-box__title) {
+  color: #111827;
+  font-size: 20px;
+  font-weight: 700;
+}
+
+:global(.logout-confirm-box .el-message-box__headerbtn) {
+  top: 18px;
+  right: 18px;
+  width: 30px;
+  height: 30px;
+  border-radius: 10px;
+}
+
+:global(.logout-confirm-box .el-message-box__headerbtn:hover) {
+  background: #f3f4f6;
+}
+
+:global(.logout-confirm-box .el-message-box__content) {
+  padding: 8px 0 22px;
+  color: #4b5563;
+}
+
+:global(.logout-confirm-box .el-message-box__status) {
+  color: #f59e0b;
+  font-size: 24px !important;
+}
+
+:global(.logout-confirm-box .el-message-box__message) {
+  padding-left: 40px;
+}
+
+:global(.logout-confirm-box .el-message-box__message p) {
+  font-size: 16px;
+  line-height: 1.7;
+}
+
+:global(.logout-confirm-box .el-message-box__btns) {
+  padding: 0;
+  gap: 12px;
+}
+
+:global(.logout-confirm-box .el-button) {
+  min-width: 88px;
+  height: 40px;
+  border-radius: 10px;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+:global(.logout-confirm-box .logout-cancel-button) {
+  border-color: #d9e0ec;
+  color: #667085;
+  background: #ffffff;
+}
+
+:global(.logout-confirm-box .logout-cancel-button:hover) {
+  border-color: #c7d2fe;
+  color: #4f46e5;
+  background: #f8faff;
+}
+
+:global(.logout-confirm-box .logout-confirm-button) {
+  border: none;
+  background: linear-gradient(135deg, #5468ff 0%, #7c4dff 100%);
+  box-shadow: 0 10px 22px rgba(84, 104, 255, 0.24);
+}
+
+:global(.logout-confirm-box .logout-confirm-button:hover) {
+  background: linear-gradient(135deg, #4b5ff5 0%, #7144f0 100%);
 }
 
 .app-main {
@@ -967,20 +1131,32 @@ watch(
 }
 
 .content-shell {
+  --sidebar-width: 220px;
   max-width: 1560px;
   margin: 0 auto;
   display: grid;
-  grid-template-columns: 236px minmax(0, 1fr);
+  grid-template-columns: var(--sidebar-width) minmax(0, 1fr);
   gap: 28px;
   align-items: start;
+  transition: grid-template-columns 0.26s ease;
+}
+
+.content-shell.sidebar-collapsed {
+  --sidebar-width: 60px;
 }
 
 .left-rail {
   position: sticky;
   top: 102px;
+  width: 220px;
   display: flex;
   flex-direction: column;
   gap: 20px;
+  transition: width 0.26s ease;
+}
+
+.left-rail.collapsed {
+  width: 60px;
 }
 
 .side-menu-card,
@@ -996,6 +1172,51 @@ watch(
   display: flex;
   flex-direction: column;
   gap: 8px;
+  transition: padding 0.26s ease, border-radius 0.26s ease;
+}
+
+.left-rail.collapsed .side-menu-card {
+  padding: 14px 8px;
+}
+
+.side-menu-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 36px;
+  margin-bottom: 6px;
+}
+
+.side-menu-title {
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+
+.sidebar-toggle {
+  width: 34px;
+  height: 34px;
+  border: 1px solid rgba(211, 220, 255, 0.95);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.92);
+  color: #5b67ff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.24s ease;
+}
+
+.sidebar-toggle:hover {
+  background: #ffffff;
+  border-color: #c9d5ff;
+  box-shadow: 0 10px 24px rgba(91, 103, 255, 0.14);
+}
+
+.left-rail.collapsed .sidebar-toggle {
+  margin: 0 auto;
 }
 
 .side-menu-item {
@@ -1012,8 +1233,9 @@ watch(
   font-size: 14px;
   font-weight: 600;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: all 0.26s ease;
   text-align: left;
+  overflow: hidden;
 }
 
 .side-menu-item:hover {
@@ -1027,11 +1249,34 @@ watch(
   box-shadow: inset 0 0 0 1px rgba(124, 77, 255, 0.06);
 }
 
+.side-menu-label {
+  white-space: nowrap;
+  opacity: 1;
+  transform: translateX(0);
+  transition: opacity 0.18s ease, transform 0.22s ease, width 0.22s ease;
+}
+
+.left-rail.collapsed .side-menu-item {
+  justify-content: center;
+  padding: 0;
+  gap: 0;
+}
+
+.left-rail.collapsed .side-menu-label {
+  width: 0;
+  opacity: 0;
+  transform: translateX(-8px);
+}
+
 .assistant-card {
   padding: 22px 18px 18px;
   position: relative;
   overflow: hidden;
   min-height: 300px;
+  transition:
+    min-height 0.26s ease,
+    padding 0.26s ease,
+    border-radius 0.26s ease;
 }
 
 .assistant-card::before {
@@ -1056,6 +1301,7 @@ watch(
   color: #5b67ff;
   font-size: 12px;
   font-weight: 700;
+  transition: opacity 0.2s ease, transform 0.22s ease;
 }
 
 .assistant-card h4 {
@@ -1065,6 +1311,7 @@ watch(
   font-size: 19px;
   line-height: 1.45;
   color: #172133;
+  transition: opacity 0.2s ease, transform 0.22s ease;
 }
 
 .assistant-card p {
@@ -1074,6 +1321,7 @@ watch(
   color: #6f7c93;
   font-size: 13px;
   line-height: 1.85;
+  transition: opacity 0.2s ease, transform 0.22s ease;
 }
 
 .assistant-btn {
@@ -1090,6 +1338,7 @@ watch(
   font-weight: 700;
   cursor: pointer;
   box-shadow: 0 12px 26px rgba(92, 101, 255, 0.2);
+  transition: opacity 0.2s ease, transform 0.22s ease;
 }
 
 .assistant-bot {
@@ -1099,11 +1348,30 @@ watch(
   width: 76px;
   height: 76px;
   z-index: 1;
+  transition: all 0.26s ease;
 }
 
 .assistant-bot svg {
   width: 100%;
   height: 100%;
+}
+
+.left-rail.collapsed .assistant-card {
+  min-height: 84px;
+  padding: 10px 8px;
+}
+
+.left-rail.collapsed .assistant-card > :not(.assistant-bot) {
+  display: none;
+}
+
+.left-rail.collapsed .assistant-bot {
+  position: relative;
+  right: auto;
+  bottom: auto;
+  width: 44px;
+  height: 44px;
+  margin: 0 auto;
 }
 
 .main-content {

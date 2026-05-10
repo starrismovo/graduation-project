@@ -2,6 +2,7 @@
 import { computed, onMounted, ref, watchEffect } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
+import { Document, MagicStick } from '@element-plus/icons-vue'
 import { useUserStore } from '@/stores/user'
 import { useAssessmentStore } from '@/stores/assessment'
 import RadarChart from '@/components/RadarChart.vue'
@@ -225,6 +226,13 @@ function startJobAssessment(jobId: number | string) {
 }
 
 function goToPsychologyDetail() {
+  if (latestReport.value?.id) {
+    router.push({
+      path: '/home/psychology',
+      query: { recordId: String(latestReport.value.id) }
+    })
+    return
+  }
   router.push('/home/psychology')
 }
 
@@ -256,25 +264,23 @@ watchEffect(() => {
           <span class="hero-eyebrow">AI 人岗匹配首页</span>
           <h2>欢迎回来，{{ user.name || user.username || '候选人' }}</h2>
           <p class="hero-subtitle">
-            通过多Agent协同评估，持续沉淀你的 Basic Personality、Scenario Personality 与岗位匹配证据链。
+            选择、对话、评估，全流程智能化支持，助你精准把握人岗匹配的每一个关键细节，开启高效求职之旅。
           </p>
 
           <div class="hero-actions">
-            <el-button type="primary" size="large" @click="startNewAssessment">开始新评估</el-button>
-            <el-button size="large" :disabled="!latestReport" @click="viewLatestReport">查看最新报告</el-button>
+            <el-button class="hero-action-btn primary-action" size="large" @click="startNewAssessment">
+              <el-icon><MagicStick /></el-icon>
+              <span>开始新评估</span>
+            </el-button>
+            <el-button class="hero-action-btn secondary-action" size="large" :disabled="!latestReport" @click="viewLatestReport">
+              <el-icon><Document /></el-icon>
+              <span>查看最新报告</span>
+            </el-button>
           </div>
         </div>
 
         <div class="hero-visual" aria-hidden="true">
-          <div class="hero-orbit hero-orbit-one"></div>
-          <div class="hero-orbit hero-orbit-two"></div>
-          <div class="hero-device">
-            <div class="hero-device-card primary"></div>
-            <div class="hero-device-card secondary"></div>
-          </div>
-          <span class="hero-dot dot-a"></span>
-          <span class="hero-dot dot-b"></span>
-          <span class="hero-dot dot-c"></span>
+          <img src="/首页logo.png" alt="" class="hero-visual-image" />
         </div>
       </article>
 
@@ -394,7 +400,7 @@ watchEffect(() => {
 
           <div class="insight-panel">
             <div class="insight-visual">
-              <div class="insight-core"></div>
+              <img src="/ai首页.png" alt="" class="insight-visual-image" />
             </div>
 
             <div class="insight-list">
@@ -539,101 +545,98 @@ watchEffect(() => {
 
 .hero-actions :deep(.el-button) {
   min-width: 164px;
-  height: 44px;
+  height: 48px;
   border-radius: 16px;
+}
+
+.hero-actions :deep(.hero-action-btn) {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 0 28px;
+  font-size: 15px;
+  font-weight: 700;
+  transition:
+    transform 0.2s ease,
+    box-shadow 0.2s ease,
+    border-color 0.2s ease,
+    background 0.2s ease;
+}
+
+.hero-actions :deep(.hero-action-btn .el-icon) {
+  font-size: 18px;
+}
+
+.hero-actions :deep(.hero-action-btn:hover) {
+  transform: translateY(-1px);
+}
+
+.hero-actions :deep(.primary-action) {
+  color: #ffffff;
+  border: none;
+  background: linear-gradient(90deg, #2f8cff 0%, #5a3ff5 100%);
+  box-shadow: 0 14px 30px rgba(90, 103, 255, 0.3);
+}
+
+.hero-actions :deep(.primary-action .el-icon) {
+  color: rgba(255, 255, 255, 0.96);
+}
+
+.hero-actions :deep(.primary-action:hover),
+.hero-actions :deep(.primary-action:focus-visible) {
+  color: #ffffff;
+  border: none;
+  background: linear-gradient(90deg, #287ff2 0%, #5239e6 100%);
+  box-shadow: 0 18px 36px rgba(90, 103, 255, 0.34);
+}
+
+.hero-actions :deep(.secondary-action) {
+  color: #24324a;
+  border: 1.5px solid #7aa8ff;
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 10px 22px rgba(148, 163, 184, 0.08);
+}
+
+.hero-actions :deep(.secondary-action .el-icon) {
+  color: #4c94ff;
+}
+
+.hero-actions :deep(.secondary-action:hover),
+.hero-actions :deep(.secondary-action:focus-visible) {
+  color: #172133;
+  border-color: #5f90ff;
+  background: #ffffff;
+  box-shadow: 0 14px 28px rgba(95, 144, 255, 0.14);
+}
+
+.hero-actions :deep(.secondary-action.is-disabled) {
+  color: #94a3b8;
+  border-color: #c7d8ff;
+  background: rgba(255, 255, 255, 0.88);
+  box-shadow: none;
+}
+
+.hero-actions :deep(.secondary-action.is-disabled .el-icon) {
+  color: #a8b7d1;
 }
 
 .hero-visual {
   position: relative;
   border-radius: 34px;
-  background:
-    radial-gradient(circle at 22% 56%, rgba(99, 102, 241, 0.24) 0 10px, transparent 11px),
-    radial-gradient(circle at 76% 25%, rgba(129, 140, 248, 0.16) 0 8px, transparent 9px),
-    radial-gradient(circle at 82% 76%, rgba(99, 102, 241, 0.16) 0 7px, transparent 8px),
-    linear-gradient(145deg, rgba(239, 243, 255, 0.9), rgba(249, 250, 255, 0.58));
+  background: #fafbff;
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.9);
   min-height: 184px;
   overflow: hidden;
 }
 
-.hero-device {
-  position: absolute;
-  inset: 18% 16% 12% 20%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.hero-device-card {
-  position: absolute;
-  border-radius: 24px;
-  border: 1px solid rgba(205, 216, 255, 0.85);
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.66), rgba(223, 231, 255, 0.32));
-  box-shadow: 0 18px 38px rgba(99, 102, 241, 0.12);
-}
-
-.hero-device-card.primary {
-  width: 150px;
-  height: 176px;
-  transform: rotate(8deg);
-}
-
-.hero-device-card.secondary {
-  width: 88px;
-  height: 88px;
-  left: 26%;
-  bottom: 10%;
-  background: linear-gradient(180deg, rgba(97, 92, 255, 0.92), rgba(140, 102, 255, 0.85));
-}
-
-.hero-orbit {
-  position: absolute;
-  border-radius: 50%;
-  border: 1px solid rgba(137, 150, 255, 0.32);
-}
-
-.hero-orbit-one {
-  width: 210px;
-  height: 110px;
-  top: 30%;
-  left: 12%;
-  transform: rotate(-12deg);
-}
-
-.hero-orbit-two {
-  width: 244px;
-  height: 132px;
-  bottom: 12%;
-  right: 10%;
-  opacity: 0.55;
-}
-
-.hero-dot {
-  position: absolute;
-  border-radius: 50%;
-  background: linear-gradient(180deg, rgba(101, 114, 255, 0.92), rgba(136, 92, 246, 0.8));
-  box-shadow: 0 10px 18px rgba(99, 102, 241, 0.2);
-}
-
-.dot-a {
-  width: 13px;
-  height: 13px;
-  top: 26%;
-  right: 16%;
-}
-
-.dot-b {
-  width: 10px;
-  height: 10px;
-  top: 58%;
-  left: 16%;
-}
-
-.dot-c {
-  width: 8px;
-  height: 8px;
-  bottom: 19%;
-  right: 23%;
+.hero-visual-image {
+  width: 100%;
+  height: 100%;
+  min-height: 184px;
+  display: block;
+  object-fit: cover;
+  object-position: center;
 }
 
 .summary-card,
@@ -975,17 +978,15 @@ watchEffect(() => {
   align-items: center;
   justify-content: center;
   min-height: 198px;
+  padding: 10px 0;
 }
 
-.insight-core {
-  width: 132px;
-  height: 132px;
-  border-radius: 50%;
-  background:
-    radial-gradient(circle at 42% 38%, rgba(255, 255, 255, 0.82) 0 12px, transparent 13px),
-    radial-gradient(circle at 60% 50%, rgba(137, 92, 246, 0.8), rgba(99, 102, 241, 0.2) 58%, rgba(255, 255, 255, 0) 72%),
-    radial-gradient(circle at 50% 50%, rgba(194, 205, 255, 0.42), rgba(91, 103, 255, 0.1) 68%, rgba(255, 255, 255, 0) 72%);
-  box-shadow: 0 22px 48px rgba(99, 102, 241, 0.14);
+.insight-visual-image {
+  width: min(100%, 196px);
+  aspect-ratio: 1 / 1.38;
+  display: block;
+  object-fit: contain;
+  object-position: center;
 }
 
 .insight-list {

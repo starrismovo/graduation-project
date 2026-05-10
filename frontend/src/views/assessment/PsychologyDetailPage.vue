@@ -1,5 +1,12 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
+import { useRoute } from 'vue-router'
+import { ElMessage } from 'element-plus'
+import { useUserStore } from '@/stores/user'
+import { fetchPsychologyDetail } from '@/utils/request'
+
+const route = useRoute()
+const userStore = useUserStore()
 
 // 大五人格维度解释
 const personalityDimensions = [
@@ -58,6 +65,9 @@ const personalityDimensions = [
 const videoUrl = '/lv_0_20260407225241.mp4'
 const activeDimension = ref(0)
 const syncedDimensionIndexes = ref<number[]>([])
+const loading = ref(false)
+const psychologyDetail = ref<any | null>(null)
+const bubbleMessage = ref('点击任一人格维度后，我会基于本次 EvaluationResult 给出简短解释。')
 
 const dimensionDisplayMeta = [
   {
@@ -99,6 +109,56 @@ const dimensionDisplayMeta = [
 
 const isDimensionSynced = (idx: number) => syncedDimensionIndexes.value.includes(idx)
 
+const fallbackOverview = {
+  summary: '系统已基于本次评估会话形成大五人格解释，可结合岗位匹配结果理解个人优势与发展方向。',
+  score: 0,
+  highlighted_traits: ['责任心强', '情绪稳定', '乐于协作'],
+  growth_advice: '建议结合评估结果持续完善岗位案例与能力证据。',
+  updated_at: '2026-05-08'
+}
+
+const overview = computed(() => psychologyDetail.value?.overview || fallbackOverview)
+
+const traitCards = computed(() => {
+  const serverCards = psychologyDetail.value?.trait_cards
+  if (Array.isArray(serverCards) && serverCards.length) {
+    return serverCards
+  }
+  return dimensionDisplayMeta.map((item, idx) => ({
+    trait_key: ['openness', 'conscientiousness', 'extraversion', 'agreeableness', 'neuroticism'][idx],
+    trait_name: item.title,
+    english: item.english,
+    summary: item.summary,
+    tags: item.tags,
+    match_status: 'balanced',
+    bubble_message: `你当前关注的是“${item.title}”。${item.summary} 建议结合后续评估结果继续观察该维度。`
+  }))
+})
+
+const actionGuides = computed(() => {
+  const guides = psychologyDetail.value?.action_guides
+  if (Array.isArray(guides) && guides.length) {
+    return guides
+  }
+  return [
+    { title: '自我认知', description: '先找出你的高分和低分维度，理解“自然偏好”与“压力反应”' },
+    { title: '岗位匹配', description: '将人格倾向与岗位要求对照，优先选择优势能够被放大的场景' },
+    { title: '人际协作', description: '把“你习惯怎么做”明确告诉团队，降低沟通误差' },
+    { title: '成长策略', description: '为每个低分维度设定一个可执行的小目标，并按周复盘' },
+    { title: '动态更新', description: '每隔一段时间复测一次，关注趋势变化而非单次分数' }
+  ]
+})
+
+const overviewUpdatedAt = computed(() => {
+  const value = overview.value.updated_at
+  if (!value) return '暂无更新时间'
+  try {
+    return new Date(value).toLocaleDateString('zh-CN')
+  } catch {
+    return String(value)
+  }
+})
+
 const focusDimension = (idx: number) => {
   activeDimension.value = idx
 }
@@ -112,18 +172,39 @@ const syncDimensionToConsult = (idx: number) => {
 const handleConsultDimension = (idx: number) => {
   activeDimension.value = idx
   syncDimensionToConsult(idx)
-  // TODO: 接入现有 AI 咨询入口时，在此处携带维度上下文进入咨询流程。
+  bubbleMessage.value = traitCards.value[idx]?.bubble_message || '已基于本次评估结果生成该维度的简短解释。'
 }
 
 const handleSyncAllToConsult = () => {
   syncedDimensionIndexes.value = personalityDimensions.map((_, idx) => idx)
-  // TODO: 接入现有 AI 咨询入口时，在此处同步全部维度上下文。
+  bubbleMessage.value = `已汇总 ${syncedDimensionIndexes.value.length} 个维度。${overview.value.growth_advice}`
 }
+
+const loadPsychologyDetail = async () => {
+  loading.value = true
+  try {
+    const recordId = route.query.recordId as string | undefined
+    psychologyDetail.value = await fetchPsychologyDetail({
+      recordId,
+      candidateId: userStore.candidateId
+    })
+    bubbleMessage.value = psychologyDetail.value?.overview?.growth_advice || bubbleMessage.value
+  } catch (error) {
+    console.warn('心理解读详情加载失败，使用页面默认展示:', error)
+    ElMessage.warning('暂未找到可回溯的心理解读结果，已展示默认说明')
+  } finally {
+    loading.value = false
+  }
+}
+
+onMounted(() => {
+  loadPsychologyDetail()
+})
 
 </script>
 
 <template>
-  <div class="psychology-detail-page">
+  <div class="psychology-detail-page" v-loading="loading">
     <div class="page-content">
       <section class="hero-section">
         <div class="hero-main">
@@ -135,16 +216,16 @@ const handleSyncAllToConsult = () => {
             </div>
             <p class="hero-desc">
               基于心理测评结果的可解释路径，帮助你了解自己的性格特征、优势与发展方向，
-              并给出职业发展与行动建议，让自我认知转化为成长动力。
+              并通过气泡式建议给出职业发展与行动提示，让自我认知转化为成长动力。
             </p>
           </div>
 
           <div class="hero-actions">
             <button class="hero-ghost-button" type="button" @click="handleConsultDimension(activeDimension)">
-              生成咨询问题
+              查看当前维度建议
             </button>
             <button class="hero-primary-button" type="button" @click="handleSyncAllToConsult">
-              立即 AI 咨询
+              汇总五维建议
             </button>
           </div>
         </div>
@@ -152,10 +233,10 @@ const handleSyncAllToConsult = () => {
         <div class="hero-overview-card">
           <div class="overview-block">
             <span class="overview-label">总体概览</span>
-            <p>你的整体人格特征均衡，兼具探索精神与责任感，在人际互动中表现友好，同时保持较为稳定的情绪状态。</p>
+            <p>{{ overview.summary }}</p>
             <div class="overview-score">
               <span>综合评分</span>
-              <strong>86</strong>
+              <strong>{{ Math.round(overview.score || 0) }}</strong>
               <small>/100</small>
             </div>
           </div>
@@ -163,16 +244,14 @@ const handleSyncAllToConsult = () => {
           <div class="overview-block">
             <span class="overview-label">高突出的特质</span>
             <div class="overview-tags">
-              <span>责任心强</span>
-              <span>情绪稳定</span>
-              <span>乐于协作</span>
+              <span v-for="item in overview.highlighted_traits" :key="item">{{ item }}</span>
             </div>
           </div>
 
           <div class="overview-block">
             <span class="overview-label">成长建议</span>
-            <p>可在保持稳定优势的基础上，适度突破舒适区，增强表达影响力与创新尝试。</p>
-            <span class="overview-update">更新于 2026-05-08</span>
+            <p>{{ overview.growth_advice }}</p>
+            <span class="overview-update">更新于 {{ overviewUpdatedAt }}</span>
           </div>
         </div>
       </section>
@@ -186,7 +265,10 @@ const handleSyncAllToConsult = () => {
             :src="videoUrl"
             controls
             controlsList="nodownload"
-            preload="metadata"
+            preload="auto"
+            autoplay
+            muted
+            playsinline
             class="video-element"
           ></video>
           </div>
@@ -197,7 +279,7 @@ const handleSyncAllToConsult = () => {
             <span class="video-guide-accent"></span>
             <div>
               <h2>先看视频，重点解读</h2>
-              <p>通过更短的路径建立整体认知，再进入五维细化分析与追问。</p>
+              <p>通过更短的路径建立整体认知，再进入五维细化分析与建议查看。</p>
             </div>
           </div>
 
@@ -221,14 +303,14 @@ const handleSyncAllToConsult = () => {
             <div class="guide-item">
               <span class="guide-icon guide-icon--green">3</span>
               <div class="guide-copy">
-                <h3>一看就懂，可追问</h3>
-                <p>看完即可进入 AI 咨询，将人格维度与后续职业发展建议串联起来。</p>
+                <h3>一看就懂，可查看建议</h3>
+                <p>看完即可查看气泡式建议，将人格维度与后续职业发展提示串联起来。</p>
               </div>
             </div>
           </div>
 
           <button class="guide-action-button" type="button" @click="handleConsultDimension(activeDimension)">
-            标记已看完，展开详细解读
+            查看当前维度建议
           </button>
         </div>
         </div>
@@ -236,10 +318,10 @@ const handleSyncAllToConsult = () => {
         <div class="consult-side-card">
           <div class="consult-side-top">
             <div>
-              <div class="consult-side-badge">AI 职业咨询师</div>
+              <div class="consult-side-badge">AI 解读助手</div>
               <div class="consult-side-status">
                 <span class="consult-status-dot"></span>
-                <span>在线</span>
+                <span>基于本次评估</span>
               </div>
             </div>
             <button class="consult-more" type="button" aria-label="更多操作">...</button>
@@ -268,24 +350,26 @@ const handleSyncAllToConsult = () => {
           </div>
 
           <p class="consult-side-desc">
-            基于你的心理画像与岗位匹配结果，继续提炼咨询问题，获得更有针对性的建议。
+            基于你的心理画像与岗位匹配结果，展示当前维度的简短解释与行动建议。
           </p>
+
+          <div class="consult-bubble">
+            <span class="consult-bubble-label">AI 气泡回复</span>
+            <p>{{ bubbleMessage }}</p>
+          </div>
 
           <div class="consult-side-actions">
             <button class="consult-primary-button" type="button" @click="handleConsultDimension(activeDimension)">
-              开始咨询
+              查看当前建议
             </button>
             <button class="consult-secondary-button" type="button" @click="handleSyncAllToConsult">
-              同步到首页咨询
-            </button>
-            <button class="consult-secondary-button" type="button">
-              查看咨询记录
+              汇总五维建议
             </button>
           </div>
 
           <div class="consult-context-tip">
             <span class="consult-context-icon"></span>
-            <span>已同步 {{ syncedDimensionIndexes.length }} 个维度追问上下文</span>
+            <span>已选中 {{ syncedDimensionIndexes.length }} 个维度用于气泡解释</span>
           </div>
         </div>
       </div>
@@ -295,7 +379,7 @@ const handleSyncAllToConsult = () => {
           <div class="dimensions-head">
             <div class="dimensions-head-copy">
               <h2 class="section-title">五维解读卡片</h2>
-              <p class="section-desc">每个维度均可发起追问，获取更深入的个性化建议</p>
+              <p class="section-desc">每个维度均可查看气泡式建议，获取更清晰的个性化解释</p>
             </div>
 
             <el-button class="sync-all-button" @click="handleSyncAllToConsult">
@@ -321,7 +405,7 @@ const handleSyncAllToConsult = () => {
                   opacity="0.35"
                 />
               </svg>
-              全部同步到咨询
+              汇总五维建议
             </el-button>
           </div>
 
@@ -351,8 +435,8 @@ const handleSyncAllToConsult = () => {
                       {{ dim.icon }}
                     </span>
                     <div class="modern-title-wrap">
-                      <h3 class="modern-dimension-name" :style="{ color: dim.palette.title }">{{ dimensionDisplayMeta[idx].title }}</h3>
-                      <p class="modern-dimension-subtitle">{{ dimensionDisplayMeta[idx].english }}</p>
+                      <h3 class="modern-dimension-name" :style="{ color: dim.palette.title }">{{ traitCards[idx].trait_name }}</h3>
+                      <p class="modern-dimension-subtitle">{{ traitCards[idx].english }}</p>
                     </div>
                   </div>
 
@@ -363,11 +447,11 @@ const handleSyncAllToConsult = () => {
 
                 <div class="modern-dimension-body">
                   <div class="modern-dimension-copy">
-                    <p class="modern-dimension-description">{{ dimensionDisplayMeta[idx].summary }}</p>
+                    <p class="modern-dimension-description">{{ traitCards[idx].summary }}</p>
 
                     <div class="modern-tag-list">
                       <span
-                        v-for="tag in dimensionDisplayMeta[idx].tags"
+                        v-for="tag in traitCards[idx].tags"
                         :key="tag"
                         class="modern-tag"
                         :style="{ background: dim.palette.chip, color: dim.palette.title }"
@@ -378,14 +462,14 @@ const handleSyncAllToConsult = () => {
                   </div>
 
                   <div class="modern-dimension-visual">
-                    <img :src="dim.image" :alt="dimensionDisplayMeta[idx].title" class="modern-dimension-image" loading="lazy" />
+                    <img :src="dim.image" :alt="traitCards[idx].trait_name" class="modern-dimension-image" loading="lazy" />
                   </div>
                 </div>
 
                 <div class="modern-dimension-footer">
                   <div class="modern-dimension-status" :class="{ synced: isDimensionSynced(idx) }">
                     <span class="modern-dimension-status-dot"></span>
-                    <span>{{ isDimensionSynced(idx) ? '已同步咨询上下文' : '可发起追问' }}</span>
+                    <span>{{ isDimensionSynced(idx) ? '已加入气泡解释' : '可查看建议' }}</span>
                   </div>
 
                   <el-button
@@ -394,7 +478,7 @@ const handleSyncAllToConsult = () => {
                     type="primary"
                     @click.stop="handleConsultDimension(idx)"
                   >
-                    咨询该维度
+                    查看建议
                   </el-button>
                 </div>
               </div>
@@ -411,20 +495,8 @@ const handleSyncAllToConsult = () => {
             <p>将心理特质解释转化为后续学习、岗位选择与职业发展的可执行线索。</p>
           </div>
           <ul class="tips-list">
-            <li>
-              <strong>自我认知</strong>：先找出你的高分和低分维度，理解“自然偏好”与“压力反应”
-            </li>
-            <li>
-              <strong>岗位匹配</strong>：将人格倾向与岗位要求对照，优先选择优势能够被放大的场景
-            </li>
-            <li>
-              <strong>人际协作</strong>：把“你习惯怎么做”明确告诉团队，降低沟通误差
-            </li>
-            <li>
-              <strong>成长策略</strong>：为每个低分维度设定一个可执行的小目标，并按周复盘
-            </li>
-            <li>
-              <strong>动态更新</strong>：每隔一段时间复测一次，关注趋势变化而非单次分数
+            <li v-for="item in actionGuides" :key="item.title">
+              <strong>{{ item.title }}</strong>：{{ item.description }}
             </li>
           </ul>
         </div>
@@ -498,7 +570,7 @@ const handleSyncAllToConsult = () => {
 
 .hero-breadcrumb {
   margin: 0 0 10px;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 600;
   color: #667085;
 }
@@ -528,14 +600,14 @@ const handleSyncAllToConsult = () => {
   border-radius: 999px;
   background: rgba(99, 102, 241, 0.1);
   color: #6366f1;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 800;
 }
 
 .hero-desc {
   margin: 12px 0 0;
   max-width: 820px;
-  font-size: 15px;
+  font-size: 16px;
   line-height: 1.8;
   color: #526071;
 }
@@ -552,7 +624,7 @@ const handleSyncAllToConsult = () => {
   height: 48px;
   padding: 0 22px;
   border-radius: 14px;
-  font-size: 14px;
+  font-size: 15px;
   font-weight: 700;
   cursor: pointer;
   transition: transform 0.24s ease, box-shadow 0.24s ease, border-color 0.24s ease;
@@ -604,14 +676,14 @@ const handleSyncAllToConsult = () => {
   display: block;
   margin-bottom: 10px;
   color: #344054;
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 800;
 }
 
 .overview-block p {
   margin: 0;
   color: #667085;
-  font-size: 13px;
+  font-size: 14px;
   line-height: 1.75;
 }
 
@@ -624,13 +696,13 @@ const handleSyncAllToConsult = () => {
   border-radius: 12px;
   background: linear-gradient(135deg, #eef2ff, #ffffff);
   color: #667085;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 700;
 }
 
 .overview-score strong {
   color: #4f46e5;
-  font-size: 22px;
+  font-size: 24px;
 }
 
 .overview-tags {
@@ -647,7 +719,7 @@ const handleSyncAllToConsult = () => {
   border-radius: 999px;
   background: rgba(34, 197, 94, 0.1);
   color: #15803d;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 700;
 }
 
@@ -655,7 +727,7 @@ const handleSyncAllToConsult = () => {
   display: inline-block;
   margin-top: 14px;
   color: #98a2b3;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 600;
 }
 
@@ -685,23 +757,24 @@ const handleSyncAllToConsult = () => {
 .video-card,
 .video-guide-card,
 .consult-side-card {
-  border-radius: 24px;
+  border-radius: 16px;
   border: 1px solid rgba(224, 231, 255, 0.96);
   background: rgba(255, 255, 255, 0.9);
-  box-shadow: 0 18px 42px rgba(15, 23, 42, 0.08);
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.06);
 }
 
 .video-card {
   min-width: 0;
-  padding: 14px;
+  padding: 16px;
   border: 1px solid rgba(224, 231, 255, 0.96);
-  box-shadow: 0 14px 30px rgba(15, 23, 42, 0.06);
+  border-radius: 16px;
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.06);
   background:
-    radial-gradient(circle at 88% 18%, rgba(139, 92, 246, 0.14), transparent 28%),
     linear-gradient(180deg, rgba(241, 245, 255, 0.98), rgba(255, 255, 255, 0.98));
   display: flex;
   flex-direction: column;
   align-self: stretch;
+  justify-content: flex-start;
 }
 
 .video-card-badge {
@@ -710,42 +783,46 @@ const handleSyncAllToConsult = () => {
   min-height: 30px;
   padding: 0 12px;
   border-radius: 999px;
-  margin-bottom: 10px;
+  margin: 0 0 14px;
   background: rgba(124, 58, 237, 0.12);
   color: #7c3aed;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 700;
+  align-self: flex-start;
 }
 
 .video-wrapper {
   position: relative;
   width: 100%;
-  height: 100%;
-  min-height: 320px;
+  aspect-ratio: 16 / 9;
+  min-height: 0;
+  margin: auto 0;
   border-radius: 16px;
   overflow: hidden;
   background: #0f172a;
-  box-shadow: 0 18px 36px rgba(15, 23, 42, 0.18);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.04);
 }
 
 .video-element {
   display: block;
   width: 100%;
   height: 100%;
+  object-fit: contain;
   background: #000;
 }
 
 .video-description {
-  padding: 24px 22px;
-  border-radius: 24px;
+  padding: 22px;
+  border-radius: 16px;
   border: 1px solid rgba(224, 231, 255, 0.96);
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(248, 250, 255, 0.94));
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.06);
 }
 
 .video-description h2 {
-  margin: 0 0 12px 0;
-  font-size: 16px;
+  margin: 0 0 8px 0;
+  font-size: 18px;
   font-weight: 700;
   color: #1f2937;
   font-family: 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
@@ -753,9 +830,9 @@ const handleSyncAllToConsult = () => {
 
 .video-description p {
   margin: 0 0 12px 0;
-  font-size: 14px;
+  font-size: 15px;
   color: #667085;
-  line-height: 1.75;
+  line-height: 1.58;
 }
 
 .video-description p:last-child {
@@ -766,11 +843,12 @@ const handleSyncAllToConsult = () => {
   min-width: 0;
   display: flex;
   flex-direction: column;
-  padding: 22px 20px 18px;
+  padding: 22px;
   height: 100%;
   min-height: 0;
-  border: none;
-  box-shadow: none;
+  border: 1px solid rgba(224, 231, 255, 0.96);
+  border-radius: 16px;
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.06);
   align-self: stretch;
   overflow: hidden;
 }
@@ -778,16 +856,12 @@ const handleSyncAllToConsult = () => {
 .video-guide-head {
   display: flex;
   align-items: flex-start;
-  gap: 14px;
-  margin-bottom: 20px;
+  gap: 0;
+  margin-bottom: 18px;
 }
 
 .video-guide-accent {
-  width: 4px;
-  min-height: 44px;
-  border-radius: 999px;
-  background: linear-gradient(180deg, #7c3aed, #5b67ff);
-  flex-shrink: 0;
+  display: none;
 }
 
 .video-guide-head p {
@@ -797,8 +871,8 @@ const handleSyncAllToConsult = () => {
 .guide-list {
   display: flex;
   flex-direction: column;
-  gap: 14px;
-  margin-bottom: 18px;
+  gap: 16px;
+  margin-bottom: 20px;
   flex: 1;
   min-height: 0;
 }
@@ -806,12 +880,12 @@ const handleSyncAllToConsult = () => {
 .guide-item {
   display: flex;
   align-items: flex-start;
-  gap: 14px;
+  gap: 12px;
 }
 
 .guide-icon {
-  width: 34px;
-  height: 34px;
+  width: 32px;
+  height: 32px;
   border-radius: 999px;
   display: inline-flex;
   align-items: center;
@@ -819,55 +893,58 @@ const handleSyncAllToConsult = () => {
   flex-shrink: 0;
   font-size: 14px;
   font-weight: 700;
+  margin-top: 1px;
 }
 
 .guide-icon--blue {
-  background: rgba(59, 130, 246, 0.12);
+  background: rgba(59, 130, 246, 0.1);
   color: #2563eb;
 }
 
 .guide-icon--violet {
-  background: rgba(124, 58, 237, 0.12);
+  background: rgba(124, 58, 237, 0.1);
   color: #7c3aed;
 }
 
 .guide-icon--green {
-  background: rgba(34, 197, 94, 0.12);
+  background: rgba(34, 197, 94, 0.1);
   color: #16a34a;
 }
 
 .guide-copy h3 {
-  margin: 0 0 6px;
-  font-size: 14px;
-  line-height: 1.4;
+  margin: 0 0 5px;
+  font-size: 15px;
+  line-height: 1.5;
   color: #344054;
   font-weight: 700;
 }
 
 .guide-copy p {
   margin: 0;
-  font-size: 12px;
-  line-height: 1.68;
+  font-size: 14px;
+  line-height: 1.58;
 }
 
 .guide-action-button {
-  margin-top: 4px;
+  margin-top: auto;
+  align-self: flex-end;
   flex-shrink: 0;
-  width: 100%;
-  height: 42px;
-  border: 1px solid rgba(199, 210, 254, 0.96);
+  width: 176px;
+  height: 40px;
+  border: none;
   border-radius: 14px;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(245, 247, 255, 0.98));
-  color: #6366f1;
-  font-size: 14px;
+  background: linear-gradient(135deg, #7c3aed 0%, #5b67ff 100%);
+  color: #ffffff;
+  font-size: 15px;
   font-weight: 700;
   cursor: pointer;
-  transition: all 0.24s ease;
+  box-shadow: 0 10px 22px rgba(91, 103, 255, 0.2);
+  transition: transform 0.24s ease, box-shadow 0.24s ease;
 }
 
 .guide-action-button:hover {
-  border-color: #a5b4fc;
-  background: #ffffff;
+  transform: translateY(-1px);
+  box-shadow: 0 12px 26px rgba(91, 103, 255, 0.24);
 }
 
 .consult-side-card {
@@ -890,7 +967,7 @@ const handleSyncAllToConsult = () => {
 }
 
 .consult-side-badge {
-  font-size: 18px;
+  font-size: 20px;
   line-height: 1.25;
   font-weight: 700;
   color: #344054;
@@ -902,7 +979,7 @@ const handleSyncAllToConsult = () => {
   align-items: center;
   gap: 8px;
   color: #667085;
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 600;
 }
 
@@ -957,9 +1034,33 @@ const handleSyncAllToConsult = () => {
 .consult-side-desc {
   margin: 16px 0 0;
   color: #667085;
-  font-size: 14px;
+  font-size: 15px;
   line-height: 1.8;
-  min-height: 72px;
+  min-height: 0;
+}
+
+.consult-bubble {
+  margin-top: 14px;
+  padding: 14px 16px;
+  border: 1px solid rgba(199, 210, 254, 0.82);
+  border-radius: 18px 18px 18px 6px;
+  background: rgba(255, 255, 255, 0.86);
+  box-shadow: 0 12px 26px rgba(91, 103, 255, 0.08);
+}
+
+.consult-bubble-label {
+  display: inline-flex;
+  margin-bottom: 8px;
+  color: #5b67ff;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.consult-bubble p {
+  margin: 0;
+  color: #526071;
+  font-size: 14px;
+  line-height: 1.75;
 }
 
 .consult-side-actions {
@@ -973,7 +1074,7 @@ const handleSyncAllToConsult = () => {
 .consult-secondary-button {
   height: 44px;
   border-radius: 14px;
-  font-size: 14px;
+  font-size: 15px;
   font-weight: 700;
   cursor: pointer;
   transition: all 0.24s ease;
@@ -1008,7 +1109,7 @@ const handleSyncAllToConsult = () => {
   align-items: center;
   gap: 8px;
   color: #7c86a2;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 600;
   border-top: 1px solid rgba(220, 228, 245, 0.88);
 }
@@ -1038,7 +1139,7 @@ const handleSyncAllToConsult = () => {
 }
 
 .dimensions-shell {
-  padding: 24px;
+  padding: 18px;
   border-radius: 26px;
   border: 1px solid rgba(226, 232, 255, 0.92);
   background: rgba(255, 255, 255, 0.88);
@@ -1050,7 +1151,7 @@ const handleSyncAllToConsult = () => {
   align-items: flex-start;
   justify-content: space-between;
   gap: 18px;
-  margin-bottom: 22px;
+  margin-bottom: 16px;
 }
 
 .dimensions-head-copy {
@@ -1059,7 +1160,7 @@ const handleSyncAllToConsult = () => {
 
 .dimensions-shell .section-title {
   margin: 0 0 6px 0;
-  font-size: 26px;
+  font-size: 24px;
   line-height: 1.2;
   font-weight: 700;
   color: #1f2937;
@@ -1070,8 +1171,8 @@ const handleSyncAllToConsult = () => {
   margin: 0;
   display: inline-flex;
   align-items: center;
-  min-height: 34px;
-  padding: 0 14px;
+  min-height: 28px;
+  padding: 0 12px;
   border-radius: 999px;
   background: rgba(99, 102, 241, 0.08);
   color: #7c86a2;
@@ -1080,8 +1181,8 @@ const handleSyncAllToConsult = () => {
 }
 
 .sync-all-button {
-  min-height: 42px;
-  padding: 0 16px;
+  min-height: 38px;
+  padding: 0 14px;
   border-radius: 14px;
   border: 1px solid #d7def0;
   background: #ffffff;
@@ -1105,16 +1206,16 @@ const handleSyncAllToConsult = () => {
 .dimensions-grid-modern {
   display: grid;
   grid-template-columns: repeat(6, minmax(0, 1fr));
-  gap: 20px;
+  gap: 18px;
   align-items: stretch;
 }
 
 .modern-dimension-card {
   grid-column: span 2;
-  min-height: 330px;
+  min-height: 240px;
   min-width: 0;
   display: flex;
-  border-radius: 22px;
+  border-radius: 18px;
   cursor: pointer;
   animation: floatUp 0.5s ease both;
   transition: transform 0.28s ease, box-shadow 0.28s ease;
@@ -1130,7 +1231,7 @@ const handleSyncAllToConsult = () => {
 }
 
 .modern-dimension-card.active .modern-dimension-surface {
-  box-shadow: 0 18px 38px rgba(103, 103, 190, 0.16);
+  box-shadow: 0 14px 30px rgba(103, 103, 190, 0.14);
 }
 
 .modern-dimension-surface {
@@ -1138,17 +1239,17 @@ const handleSyncAllToConsult = () => {
   height: 100%;
   min-height: 0;
   border: 1px solid rgba(214, 223, 245, 0.9);
-  border-radius: 22px;
-  padding: 18px 18px 16px;
+  border-radius: 18px;
+  padding: 14px 14px 0;
   overflow: hidden;
   display: flex;
   flex-direction: column;
-  box-shadow: 0 14px 30px rgba(15, 23, 42, 0.07);
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.06);
   transition: box-shadow 0.28s ease, transform 0.28s ease;
 }
 
 .modern-dimension-card:hover .modern-dimension-surface {
-  box-shadow: 0 18px 34px rgba(15, 23, 42, 0.1);
+  box-shadow: 0 14px 28px rgba(15, 23, 42, 0.09);
 }
 
 .modern-dimension-header,
@@ -1160,26 +1261,26 @@ const handleSyncAllToConsult = () => {
 }
 
 .modern-dimension-header {
-  gap: 12px;
+  gap: 10px;
   align-items: center;
-  min-height: 50px;
-  margin-bottom: 12px;
+  min-height: 48px;
+  margin-bottom: 8px;
 }
 
 .modern-dimension-heading {
   justify-content: flex-start;
-  gap: 12px;
+  gap: 10px;
   min-width: 0;
 }
 
 .modern-dimension-icon {
-  width: 42px;
-  height: 42px;
-  border-radius: 14px;
+  width: 40px;
+  height: 40px;
+  border-radius: 999px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  font-size: 24px;
+  font-size: 22px;
   flex-shrink: 0;
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.4);
 }
@@ -1189,8 +1290,8 @@ const handleSyncAllToConsult = () => {
 }
 
 .modern-dimension-name {
-  margin: 0 0 4px;
-  font-size: 18px;
+  margin: 0 0 3px;
+  font-size: 19px;
   line-height: 1.25;
   font-weight: 700;
 }
@@ -1198,14 +1299,14 @@ const handleSyncAllToConsult = () => {
 .modern-dimension-subtitle {
   margin: 0;
   color: #6b7280;
-  font-size: 13px;
+  font-size: 14px;
   line-height: 1.4;
   font-weight: 600;
 }
 
 .modern-dimension-mark {
-  width: 34px;
-  height: 34px;
+  width: 38px;
+  height: 38px;
   border-radius: 999px;
   border: 1px solid;
   background: rgba(255, 255, 255, 0.72);
@@ -1218,30 +1319,35 @@ const handleSyncAllToConsult = () => {
 
 .modern-dimension-body {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
-  gap: 18px;
+  gap: 12px;
   flex: 1;
   min-height: 0;
+  position: relative;
+  overflow: hidden;
 }
 
 .modern-dimension-copy {
   display: flex;
   flex-direction: column;
   justify-content: flex-start;
-  gap: 12px;
+  gap: 10px;
   min-width: 0;
-  flex: 1;
+  width: 55%;
+  flex: 0 0 55%;
   min-height: 0;
+  position: relative;
+  z-index: 1;
 }
 
 .modern-dimension-description {
   margin: 0;
   color: #5f6b7d;
-  font-size: 13px;
-  line-height: 1.68;
-  min-height: 90px;
-  max-height: 90px;
+  font-size: 14px;
+  line-height: 1.6;
+  min-height: 74px;
+  max-height: 74px;
   overflow: hidden;
   display: -webkit-box;
   -webkit-box-orient: vertical;
@@ -1252,57 +1358,59 @@ const handleSyncAllToConsult = () => {
 .modern-tag-list {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
-  margin-top: 4px;
-  min-height: 62px;
+  gap: 7px;
+  margin-top: 0;
+  min-height: 28px;
   align-content: flex-start;
 }
 
 .modern-tag {
   display: inline-flex;
   align-items: center;
-  min-height: 26px;
-  padding: 0 10px;
+  min-height: 22px;
+  padding: 0 8px;
   border-radius: 999px;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 700;
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.28);
 }
 
 .modern-dimension-visual {
-  width: 142px;
-  min-width: 142px;
-  height: 104px;
+  width: 190px;
+  min-width: 190px;
+  height: 132px;
   display: flex;
   align-items: center;
   justify-content: center;
-  position: relative;
-  align-self: center;
+  position: absolute;
+  right: -4px;
+  bottom: -2px;
   overflow: hidden;
 }
 
 .modern-dimension-image {
-  width: 142px;
-  height: 104px;
+  width: 190px;
+  height: 132px;
   object-fit: contain;
   object-position: center center;
-  filter: drop-shadow(0 14px 28px rgba(15, 23, 42, 0.12));
+  filter: drop-shadow(0 12px 22px rgba(15, 23, 42, 0.12));
 }
 
 .modern-dimension-footer {
-  margin-top: auto;
-  min-height: 48px;
-  padding-top: 12px;
+  margin: auto -14px 0;
+  min-height: 52px;
+  padding: 10px 14px;
   border-top: 1px solid rgba(214, 221, 241, 0.68);
-  gap: 12px;
+  gap: 10px;
+  background: rgba(255, 255, 255, 0.38);
 }
 
 .modern-dimension-status {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: 7px;
   color: #667085;
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 600;
 }
 
@@ -1311,8 +1419,8 @@ const handleSyncAllToConsult = () => {
 }
 
 .modern-dimension-status-dot {
-  width: 18px;
-  height: 18px;
+  width: 16px;
+  height: 16px;
   border-radius: 999px;
   border: 1.5px solid currentColor;
   position: relative;
@@ -1332,13 +1440,31 @@ const handleSyncAllToConsult = () => {
 }
 
 .dimension-consult-button {
-  width: 112px;
-  min-width: 112px;
-  height: 34px;
+  width: 118px;
+  min-width: 118px;
+  height: 36px;
   border: none;
   border-radius: 12px;
+  font-size: 14px;
   background: linear-gradient(135deg, #7c3aed 0%, #5b67ff 100%);
   box-shadow: 0 10px 22px rgba(108, 92, 231, 0.24);
+}
+
+.modern-dimension-card.wide .modern-dimension-copy {
+  width: 50%;
+  flex-basis: 50%;
+}
+
+.modern-dimension-card.wide .modern-dimension-visual {
+  width: 260px;
+  min-width: 260px;
+  height: 150px;
+  right: 18px;
+}
+
+.modern-dimension-card.wide .modern-dimension-image {
+  width: 260px;
+  height: 150px;
 }
 
 .dimension-consult-button:hover,
@@ -1373,7 +1499,7 @@ const handleSyncAllToConsult = () => {
 
 .tips-header h3 {
   margin: 0;
-  font-size: 22px;
+  font-size: 24px;
   font-weight: 800;
   color: #1f2937;
   font-family: 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
@@ -1382,7 +1508,7 @@ const handleSyncAllToConsult = () => {
 .tips-header p {
   margin: 8px 0 0;
   color: #667085;
-  font-size: 14px;
+  font-size: 15px;
   line-height: 1.7;
 }
 
@@ -1400,7 +1526,7 @@ const handleSyncAllToConsult = () => {
   min-height: 128px;
   padding: 18px 16px 16px 44px;
   position: relative;
-  font-size: 14px;
+  font-size: 15px;
   color: #667085;
   line-height: 1.68;
   border: 1px solid rgba(224, 231, 255, 0.96);
@@ -1496,7 +1622,7 @@ const handleSyncAllToConsult = () => {
   }
 
   .video-wrapper {
-    min-height: 360px;
+    min-height: 0;
   }
 
   .tips-list {
@@ -1589,7 +1715,6 @@ const handleSyncAllToConsult = () => {
     gap: 14px;
   }
 
-  .guide-action-button,
   .consult-primary-button,
   .consult-secondary-button {
     width: 100%;
@@ -1601,7 +1726,7 @@ const handleSyncAllToConsult = () => {
   }
 
   .hero-desc {
-    font-size: 14px;
+    font-size: 15px;
   }
 
   .hero-actions {
@@ -1626,7 +1751,7 @@ const handleSyncAllToConsult = () => {
   }
 
   .video-wrapper {
-    height: 260px;
+    height: auto;
     border-radius: 14px;
   }
 

@@ -177,13 +177,13 @@ function truncateText(text: string, length: number): string {
   border-radius: 999px;
   background: rgba(91, 103, 255, 0.1);
   color: #5b67ff;
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 700;
 }
 
 .job-title {
   margin: 0;
-  font-size: 16px;
+  font-size: 20px;
   line-height: 1.3;
   font-weight: 700;
   color: #172033;
@@ -196,7 +196,7 @@ function truncateText(text: string, length: number): string {
   gap: 6px;
   margin-top: 6px;
   color: #68758d;
-  font-size: 12px;
+  font-size: 14px;
 }
 
 .row-icon {
@@ -256,11 +256,11 @@ function truncateText(text: string, length: number): string {
 
 .score-band span {
   color: #67748e;
-  font-size: 11px;
+  font-size: 13px;
 }
 
 .score-band strong {
-  font-size: 16px;
+  font-size: 20px;
   color: #5b67ff;
   letter-spacing: -0.03em;
 }
@@ -280,7 +280,7 @@ function truncateText(text: string, length: number): string {
   gap: 4px;
   padding: 4px 8px;
   border-radius: 999px;
-  font-size: 11px;
+  font-size: 13px;
   font-weight: 600;
 }
 
@@ -310,7 +310,7 @@ function truncateText(text: string, length: number): string {
   flex: 1;
   margin: 10px 0 0;
   color: #69778f;
-  font-size: 12px;
+  font-size: 14px;
   line-height: 1.6;
   display: -webkit-box;
   -webkit-line-clamp: 2;
@@ -330,7 +330,7 @@ function truncateText(text: string, length: number): string {
 .assess-btn {
   height: 34px;
   border-radius: 10px;
-  font-size: 12px;
+  font-size: 14px;
   font-weight: 700;
   cursor: pointer;
   transition: all 0.2s ease;
@@ -367,7 +367,7 @@ function truncateText(text: string, length: number): string {
   }
 
   .job-title {
-    font-size: 15px;
+    font-size: 18px;
   }
 
   .card-footer {

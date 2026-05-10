@@ -1,20 +1,32 @@
 <template>
   <div class="profile-page">
-    <el-page-header @back="goBack">
-      <template #content>
-        <h2>个人信息</h2>
-      </template>
-    </el-page-header>
+    <div class="page-shell">
+      <el-page-header @back="goBack">
+        <template #content>
+          <h2>个人信息</h2>
+        </template>
+      </el-page-header>
 
-    <el-card class="profile-card" shadow="never">
-      <!-- 头像上传区 -->
-      <div class="avatar-section">
-        <div class="avatar-left">
-          <el-avatar :size="120" :src="userForm.avatar || defaultAvatar" class="user-avatar"/>
+      <section class="profile-hero">
+        <div class="avatar-wrap">
+          <el-avatar :size="104" :src="userForm.avatar || defaultAvatar" class="user-avatar" />
         </div>
 
-        <div class="avatar-actions">
-          <div class="avatar-top">
+        <div class="hero-content">
+          <div class="hero-title-row">
+            <div>
+              <p class="eyebrow">{{ isHR ? '招聘方资料' : '候选人档案' }}</p>
+              <h3>{{ userForm.nickname || userForm.username || '未设置昵称' }}</h3>
+            </div>
+            <el-tag v-if="isHR" type="warning" effect="light" class="role-tag">
+              <el-icon><UserFilled /></el-icon>
+              HR 招聘方
+            </el-tag>
+          </div>
+          <p class="hero-desc">
+            {{ isHR ? '完善工作联系方式，便于进行岗位管理与候选人沟通。' : '完善基础资料后，可在投递和评估报告展示中保持一致、清晰的身份信息。' }}
+          </p>
+          <div class="avatar-actions">
             <el-upload
               action="#"
               :show-file-list="false"
@@ -24,101 +36,95 @@
             >
               <el-button type="primary" size="small">更换头像</el-button>
             </el-upload>
-            <!-- HR 角色标识 -->
-            <el-tag v-if="isHR" type="warning" size="small" class="role-tag">
-              <el-icon style="margin-right:4px"><UserFilled /></el-icon>HR 招聘官
-            </el-tag>
-            <el-tag v-else type="success" size="small" class="role-tag">
-              <el-icon style="margin-right:4px"><User /></el-icon>求职候选人
-            </el-tag>
+            <span class="avatar-tip">支持 JPG、PNG，大小不超过 2MB</span>
           </div>
-          <p class="avatar-tip">支持 JPG、PNG，建议尺寸 120×120</p>
         </div>
+      </section>
+
+      <el-card class="profile-card" shadow="never">
+        <div class="card-heading">
+          <h3>基础资料</h3>
+          <p>{{ isHR ? '用于招聘管理端展示和工作联系。' : '用于系统内展示、投递联系与评估报告身份展示。' }}</p>
+        </div>
+
+        <el-form :model="userForm" label-position="top" ref="userFormRef" class="form-section">
+          <div class="form-grid">
+            <el-form-item label="用户名" prop="username">
+              <el-input v-model="userForm.username" disabled />
+            </el-form-item>
+
+            <el-form-item label="显示昵称" prop="nickname">
+              <el-input v-model="userForm.nickname" placeholder="用于系统内展示" maxlength="20" />
+            </el-form-item>
+
+            <el-form-item label="真实姓名" prop="realName">
+              <el-input v-model="userForm.realName" :placeholder="isHR ? '请输入真实姓名' : '用于正式投递（可选）'" />
+            </el-form-item>
+
+            <el-form-item label="邮箱" prop="email">
+              <el-input v-model="userForm.email" :placeholder="isHR ? '工作邮箱' : '用于登录和通知'" />
+            </el-form-item>
+
+            <el-form-item label="电话" prop="phone">
+              <el-input v-model="userForm.phone" :placeholder="isHR ? '工作联系电话' : '用于 HR 联系（可选）'" />
+            </el-form-item>
+          </div>
+
+          <el-form-item :label="isHR ? '个人简介' : '自我介绍'">
+            <el-input
+              type="textarea"
+              v-model="userForm.bio"
+              :rows="4"
+              :placeholder="isHR ? '介绍您的招聘方向或公司背景' : '简要说明教育经历、求职方向或主要技能'"
+              maxlength="200"
+              show-word-limit
+            />
+          </el-form-item>
+
+          <el-form-item v-if="!isHR" label="投递隐私">
+            <el-radio-group v-model="userForm.deliveryPrivacy" class="privacy-radio-group">
+              <el-radio :label="1">实名展示</el-radio>
+              <el-radio :label="2">昵称展示</el-radio>
+              <el-radio :label="3">匿名编号</el-radio>
+            </el-radio-group>
+            <div class="privacy-tip">
+              该设置仅影响投递与报告查看时的身份展示，不改变账号保存的真实资料。
+            </div>
+          </el-form-item>
+
+          <el-form-item v-if="isHR">
+            <div class="hr-role-info">
+              <el-icon color="#e6a23c" :size="16"><Warning /></el-icon>
+              <span>当前账号可进行岗位管理、候选人邀请和评估报告查看。</span>
+            </div>
+          </el-form-item>
+
+          <el-form-item class="action-row">
+            <el-button type="primary" @click="saveProfile" :loading="loading">保存修改</el-button>
+            <el-button @click="goBack">取消</el-button>
+          </el-form-item>
+        </el-form>
+      </el-card>
+
+      <div class="footer-tip">
+        所有信息仅用于系统内评估、投递与联系展示。
       </div>
-
-      <!-- 基本信息表单 -->
-      <el-form :model="userForm" label-width="120px" ref="userFormRef" class="form-section">
-        <el-form-item label="用户名" prop="username">
-          <el-input v-model="userForm.username" disabled />
-        </el-form-item>
-
-        <el-form-item label="显示昵称" prop="nickname">
-          <el-input v-model="userForm.nickname" :placeholder="isHR ? '用于系统内展示' : '用于系统内展示'" maxlength="20" />
-        </el-form-item>
-
-        <el-form-item label="真实姓名" prop="realName">
-          <el-input v-model="userForm.realName" :placeholder="isHR ? '您的真实姓名' : '用于正式投递（可选）'" />
-        </el-form-item>
-
-        <el-form-item label="邮箱" prop="email">
-          <el-input v-model="userForm.email" :placeholder="isHR ? '工作邮箱' : '用于登录和通知'" />
-        </el-form-item>
-
-        <el-form-item label="电话" prop="phone">
-          <el-input v-model="userForm.phone" :placeholder="isHR ? '工作联系电话' : '用于HR联系（可选）'" />
-        </el-form-item>
-
-        <el-form-item :label="isHR ? '个人简介' : '自我介绍'">
-          <el-input
-            type="textarea"
-            v-model="userForm.bio"
-            :rows="3"
-            :placeholder="isHR ? '介绍您的招聘方向或公司文化，例如：专注技术人才招募，倡导开放协作的团队文化' : '一句话介绍自己，例如：3年前端开发经验，热爱挑战'"
-            maxlength="200"
-            show-word-limit
-          />
-        </el-form-item>
-
-        <!-- 仅候选人：投递隐私设置 -->
-        <el-form-item v-if="!isHR" label="投递隐私">
-          <el-radio-group v-model="userForm.deliveryPrivacy">
-            <el-radio :label="1">实名（姓名 + 联系方式）</el-radio>
-            <el-radio :label="2">昵称（仅显示 {{ userForm.nickname || '昵称' }}）</el-radio>
-            <el-radio :label="3">匿名（显示编号，如 #C12345）</el-radio>
-          </el-radio-group>
-          <div class="privacy-tip">
-            设置后，投递报告时HR将看到对应信息。您随时可修改。
-          </div>
-        </el-form-item>
-
-        <!-- 仅HR：角色说明 -->
-        <el-form-item v-if="isHR" label="账号角色">
-          <div class="hr-role-info">
-            <el-icon color="#e6a23c" :size="16"><Warning /></el-icon>
-            <span>您的账号具有 <strong>HR招聘官</strong> 权限，可发布岗位、邀请候选人并查看评估报告。</span>
-          </div>
-        </el-form-item>
-
-        <el-form-item>
-          <el-button type="primary" @click="saveProfile" :loading="loading">保存修改</el-button>
-          <el-button @click="goBack">取消</el-button>
-        </el-form-item>
-      </el-form>
-    </el-card>
-
-    <!-- 底部提示 -->
-    <div class="footer-tip">
-      <p>所有信息仅用于系统内评估与投递，严格保护您的隐私。</p>
     </div>
   </div>
 </template>
-
-
 
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue'
 import { useUserStore } from '@/stores/user'
 import { useRouter } from 'vue-router'
-import { ElMessage, ElMessageBox } from 'element-plus'
-import { UserFilled, User, Warning } from '@element-plus/icons-vue'
+import { ElMessage } from 'element-plus'
+import { UserFilled, Warning } from '@element-plus/icons-vue'
 import request from '@/utils/request'
 
-// 路由 & Store
 const userStore = useUserStore()
 const router = useRouter()
 const isHR = computed(() => userStore.isHR)
 
-// 表单数据
 const userFormRef = ref(null)
 const loading = ref(false)
 const userForm = ref({
@@ -132,10 +138,8 @@ const userForm = ref({
   deliveryPrivacy: userStore.profile?.deliveryPrivacy || 2
 })
 
-// 默认头像
 const defaultAvatar = 'https://cube.elemecdn.com/0/88/03b0d39583f48206768a7534e55bcpng.png'
 
-// 从后端获取用户信息
 const fetchUserProfile = async () => {
   try {
     if (!userStore.token) {
@@ -145,7 +149,7 @@ const fetchUserProfile = async () => {
     }
 
     const response = await request.get('/user/profile')
-    
+
     if (response.data?.code === 200 && response.data?.data) {
       const profile = response.data.data
       userForm.value = {
@@ -169,7 +173,6 @@ const fetchUserProfile = async () => {
   }
 }
 
-// 头像上传前校验
 const beforeAvatarUpload = (file: File) => {
   const isImage = file.type.startsWith('image/')
   const isLt2M = file.size / 1024 / 1024 < 2
@@ -183,40 +186,30 @@ const beforeAvatarUpload = (file: File) => {
   return isImage && isLt2M
 }
 
-// 处理头像上传（调用后端上传接口）
 const handleAvatarUpload = async (param: any) => {
-  const file = param.file;
-  const formData = new FormData();
-  formData.append('file', file);
-  
+  const file = param.file
+  const formData = new FormData()
+  formData.append('file', file)
+
   try {
     const response = await request.post('/user/avatar', formData, {
       headers: { 'Content-Type': 'multipart/form-data' }
-    });
-    
+    })
+
     if (response.data?.code === 200 && response.data?.data?.avatar) {
-      userForm.value.avatar = response.data.data.avatar;
-      // 立即保存到数据库
-      await saveProfile();
-      ElMessage.success('头像上传成功');
+      userForm.value.avatar = response.data.data.avatar
+      await saveProfile()
+      ElMessage.success('头像上传成功')
     } else {
-      ElMessage.error(response.data?.message || '头像上传失败');
+      ElMessage.error(response.data?.message || '头像上传失败')
     }
   } catch (error: any) {
-    console.error('头像上传错误:', error);
-    ElMessage.error('头像上传失败');
+    console.error('头像上传错误:', error)
+    ElMessage.error('头像上传失败')
   }
-};
+}
 
-// 保存个人信息
 const saveProfile = async () => {
-  console.log('准备保存的数据:', {
-    avatar: userForm.value.avatar, // 确保有值且不为空
-    nickname: userForm.value.nickname,
-    real_name: userForm.value.realName,
-    // ... 其他字段
-  });
-  
   if (!userStore.token) {
     ElMessage.error('登录已过期，请重新登录')
     router.push('/login')
@@ -234,9 +227,8 @@ const saveProfile = async () => {
       avatar: userForm.value.avatar,
       delivery_privacy: userForm.value.deliveryPrivacy
     })
-    
+
     if (response.data?.code === 200) {
-      // 更新 Pinia store
       userStore.updateUserInfo({
         nickname: userForm.value.nickname,
         realName: userForm.value.realName,
@@ -264,245 +256,241 @@ const saveProfile = async () => {
   }
 }
 
-// 返回上一页
 const goBack = () => {
   router.back()
 }
 
-// 删除所有评估数据
-const deleteAllData = () => {
-  ElMessageBox.confirm('确定删除所有评估数据吗？此操作不可逆！', '警告', {
-    type: 'warning'
-  }).then(async () => {
-    try {
-      const response = await request.delete('/user/assessments')
-      
-      if (response.data?.code === 200) {
-        ElMessage.success(response.data?.message || '数据已删除')
-      } else {
-        ElMessage.error(response.data?.message || '删除失败')
-      }
-    } catch (error: any) {
-      console.error('删除错误:', error)
-      ElMessage.error('删除失败')
-    }
-  }).catch(() => {})
-}
-
-// 组件挂载时获取用户信息
 onMounted(() => {
   fetchUserProfile()
 })
 </script>
 
-
 <style scoped>
 .profile-page {
-  min-height: 100vh;
-  padding: 40px 20px;
-  background: linear-gradient(180deg, #f5f7fa 0%, #fafbfc 100%);
+  min-height: 100%;
+  width: 100%;
+  background: transparent;
 }
 
-/* 卡片 */
-.profile-card {
-  max-width: 760px;
-  margin: 30px auto;
-  padding: 40px;
-  border-radius: 12px;
-  background: #fff;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
-  border: 1px solid #e4e7ed;
-  transition: all 0.3s ease;
+.page-shell {
+  max-width: 1000px;
+  margin: 0 auto;
 }
 
-.profile-card:hover {
-  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.1);
+.el-page-header {
+  margin-bottom: 20px;
 }
 
-/* 头像区域 */
-.avatar-section {
+.el-page-header h2 {
+  margin: 0;
+  font-weight: 700;
+  font-size: 24px;
+  color: #1f2a44;
+}
+
+.profile-hero {
   display: flex;
   align-items: center;
-  gap: 30px;
-  padding-bottom: 25px;
-  border-bottom: 1px solid #e4e7ed;
-  margin-bottom: 30px;
+  gap: 24px;
+  padding: 28px;
+  margin-bottom: 20px;
+  border: 1px solid #e5eaf3;
+  border-radius: 18px;
+  background: linear-gradient(135deg, #ffffff 0%, #f7f9ff 100%);
+  box-shadow: 0 12px 30px rgba(31, 42, 68, 0.07);
 }
 
-/* 头像 */
+.avatar-wrap {
+  flex: 0 0 auto;
+  padding: 6px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #5b8cff, #8b5cf6);
+}
+
 .user-avatar {
-  border: 3px solid #409eff;
-  box-shadow: 0 4px 12px rgba(64, 158, 255, 0.15);
-  transition: all 0.3s ease;
+  display: block;
+  border: 4px solid #fff;
+  box-shadow: 0 10px 20px rgba(64, 101, 255, 0.16);
 }
 
-.user-avatar:hover {
-  box-shadow: 0 6px 16px rgba(64, 158, 255, 0.25);
+.hero-content {
+  flex: 1;
+  min-width: 0;
 }
 
-/* 头像操作 */
+.hero-title-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.eyebrow {
+  margin: 0 0 6px;
+  color: #64748b;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.hero-content h3 {
+  margin: 0;
+  color: #1f2a44;
+  font-size: 24px;
+  font-weight: 700;
+}
+
+.hero-desc {
+  max-width: 620px;
+  margin: 10px 0 18px;
+  color: #5f6b85;
+  line-height: 1.7;
+  font-size: 14px;
+}
+
 .avatar-actions {
   display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.avatar-top {
-  display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
+  flex-wrap: wrap;
 }
 
 .role-tag {
-  font-size: 12px;
-  padding: 0 8px;
-}
-
-.avatar-left {
-  display: flex;
+  gap: 4px;
   align-items: center;
 }
 
 .avatar-tip {
-  color: #909399;
-  font-size: 12px;
+  color: #64748b;
+  font-size: 13px;
 }
 
-/* 表单 */
-.form-section {
-  max-width: 620px;
+.profile-card {
+  border: 1px solid #e5eaf3;
+  border-radius: 18px;
+  background: #fff;
+  box-shadow: 0 10px 28px rgba(31, 42, 68, 0.06);
+  overflow: hidden;
 }
 
-/* 每个表单间距 */
-.el-form-item {
+.profile-card :deep(.el-card__body) {
+  padding: 26px 28px 8px;
+}
+
+.card-heading {
   margin-bottom: 22px;
 }
 
-/* 输入框样式统一 */
-:deep(.el-input__wrapper) {
-  border-radius: 8px;
-  border: 1px solid #e4e7ed;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.04);
-  transition: all 0.3s ease;
+.card-heading h3 {
+  margin: 0 0 6px;
+  color: #1f2a44;
+  font-size: 18px;
+  font-weight: 700;
 }
 
-:deep(.el-input__wrapper:hover) {
-  border-color: #bfcfe7;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+.card-heading p {
+  margin: 0;
+  color: #6b7280;
+  font-size: 13px;
+  line-height: 1.7;
 }
 
-:deep(.el-input__wrapper.is-focus) {
-  border-color: #409eff;
-  box-shadow: 0 2px 12px rgba(64, 158, 255, 0.15);
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 2px 18px;
 }
 
-:deep(.el-textarea__inner) {
-  border-radius: 8px;
-}
-
-/* 表单提示 */
-.form-tip {
-  color: #909399;
-  font-size: 12px;
-  margin-left: 6px;
-}
-
-/* 隐私说明 */
 .privacy-tip {
-  color: #909399;
-  font-size: 12px;
+  width: 100%;
+  color: #58627a;
+  font-size: 13px;
   margin-top: 8px;
-  line-height: 1.6;
-  padding: 8px 12px;
-  background: #f5f7fa;
-  border-radius: 4px;
+  line-height: 1.7;
+  padding: 10px 12px;
+  background: #f5f7ff;
+  border: 1px solid #e0e7ff;
+  border-radius: 10px;
 }
 
-/* 按钮区域 */
-.el-form-item:last-child {
-  margin-top: 30px;
+.privacy-radio-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+}
+
+.action-row {
+  margin-top: 22px;
   padding-top: 20px;
-  border-top: 1px solid #e4e7ed;
+  border-top: 1px solid #edf2f8;
 }
 
-/* 底部提示 */
-.footer-tip {
-  text-align: center;
-  color: #909399;
-  font-size: 12px;
-  margin-top: 30px;
+:deep(.el-input__wrapper),
+:deep(.el-textarea__inner) {
+  border-radius: 10px;
 }
 
-/* header */
-.el-page-header {
-  max-width: 760px;
-  margin: 0 auto;
-}
-
-.el-page-header h2 {
+:deep(.el-form-item__label) {
+  color: #334155;
   font-weight: 600;
-  font-size: 20px;
-  color: #2c3e50;
 }
 
-/* 按钮样式统一 */
 :deep(.el-button--primary) {
-  background-color: #409eff;
-  border-color: #409eff;
-  transition: all 0.3s ease;
+  background-color: #4f7cff;
+  border-color: #4f7cff;
 }
 
 :deep(.el-button--primary:hover) {
-  background-color: #66b1ff;
-  border-color: #66b1ff;
-  box-shadow: 0 4px 12px rgba(64, 158, 255, 0.25);
+  background-color: #3f6df0;
+  border-color: #3f6df0;
 }
 
-:deep(.el-button--primary:active) {
-  background-color: #0a7ce4;
-  border-color: #0a7ce4;
-}
-
-/* 默认按钮 */
-:deep(.el-button:not(.is-disabled)) {
-  transition: all 0.3s ease;
-}
-
-:deep(.el-button:hover:not(.is-disabled)) {
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.1);
-}
-
-/* 单选框 */
 :deep(.el-radio__label) {
-  color: #2c3e50;
+  color: #334155;
 }
 
-:deep(.el-radio.is-checked .el-radio__inner) {
-  border-color: #409eff;
-  background-color: #409eff;
-}
-
-/* HR角色信息提示 */
 .hr-role-info {
   display: flex;
   align-items: flex-start;
   gap: 8px;
-  padding: 10px 14px;
+  width: 100%;
+  padding: 12px 14px;
   background: #fdf6ec;
   border: 1px solid #f5dab1;
-  border-radius: 6px;
+  border-radius: 10px;
   color: #606266;
   font-size: 13px;
   line-height: 1.6;
 }
 
-.hr-role-info strong {
-  color: #e6a23c;
+.footer-tip {
+  text-align: center;
+  color: #64748b;
+  font-size: 13px;
+  margin-top: 22px;
 }
 
-/* 标签 */
 :deep(.el-tag) {
-  border-radius: 4px;
+  border-radius: 999px;
 }
 
+@media (max-width: 768px) {
+  .profile-hero {
+    flex-direction: column;
+    align-items: flex-start;
+    padding: 22px 18px;
+  }
+
+  .hero-title-row {
+    width: 100%;
+    flex-direction: column;
+  }
+
+  .form-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .profile-card :deep(.el-card__body) {
+    padding: 22px 18px 6px;
+  }
+}
 </style>

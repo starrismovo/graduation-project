@@ -166,8 +166,8 @@ onMounted(() => {
     <!-- 页面头部 -->
     <div class="page-hero">
       <div class="hero-content">
-        <h1 class="hero-title">探索岗位，先看详情再进入面试</h1>
-        <p class="hero-desc">从 {{ total.toLocaleString() }} 个真实职位中，先确认岗位信息，再决定加入面试 Hub 或直接发起 AI 面试</p>
+        <h1 class="hero-title">岗位中心</h1>
+        <p class="hero-desc">从 {{ total.toLocaleString() }} 个真实职位中，先确认岗位信息，再决定加入面试中心或直接面试</p>
         
         <!-- 搜索栏 -->
         <div class="search-box">
@@ -326,13 +326,29 @@ onMounted(() => {
 
 /* ===== 顶部 Hero ===== */
 .page-hero {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  position: relative;
   padding: 56px 32px 64px;
   color: #fff;
   box-shadow: 0 4px 20px rgba(102, 126, 234, 0.15);
+  overflow: hidden;
+  background:
+    linear-gradient(135deg, rgba(82, 105, 226, 0.7) 0%, rgba(115, 75, 162, 0.68) 100%),
+    url('/岗位.jpg') center / cover no-repeat;
+}
+
+.page-hero::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(circle at 50% 28%, rgba(255, 255, 255, 0.16), transparent 34%),
+    linear-gradient(180deg, rgba(29, 41, 85, 0.12), rgba(53, 36, 93, 0.2));
+  pointer-events: none;
 }
 
 .hero-content {
+  position: relative;
+  z-index: 1;
   max-width: 760px;
   margin: 0 auto;
   text-align: center;
@@ -549,7 +565,7 @@ onMounted(() => {
 /* ===== 卡片网格 ===== */
 .job-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 28px 24px;
   padding: 40px 32px;
   max-width: 1420px;
@@ -645,9 +661,9 @@ onMounted(() => {
   }
 }
 
-@media (min-width: 1200px) {
+@media (max-width: 1100px) {
   .job-grid {
-    grid-template-columns: repeat(auto-fit, minmax(335px, 1fr));
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 26px 22px;
     padding: 36px 28px;
   }
@@ -661,7 +677,7 @@ onMounted(() => {
     margin-top: -20px;
   }
   .job-grid {
-    grid-template-columns: repeat(4, 1fr);
+    grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 30px 24px;
     padding: 40px 32px;
   }
@@ -669,7 +685,7 @@ onMounted(() => {
 
 @media (min-width: 1600px) {
   .job-grid {
-    grid-template-columns: repeat(4, 1fr);
+    grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 32px 28px;
     padding: 48px 40px;
   }

@@ -37,7 +37,8 @@ from schemas.assessment import (
     AnalyzeResponseResponse,
     SaveSessionRequest,
     SaveSessionResponse,
-    SaveAssessmentResultRequest  # 新增
+    SaveAssessmentResultRequest,  # 新增
+    PsychologyDetailResponse,
 )
 from typing import List, Optional, Dict, Any
 from datetime import datetime
@@ -59,6 +60,7 @@ from services.agent_scoring_fusion import (
 )
 from services.job_requirement_service import matching_engine
 from services.report_agent import report_agent
+from services.psychology_detail_service import build_psychology_detail
 from models.assessment import EvaluationResult
 import uuid
 
@@ -772,6 +774,31 @@ async def get_report(record_id: int, db: Session = Depends(get_db)):
     )
     
     return AssessmentReportResponse(data=report)
+
+
+@router.get("/psychology-detail/latest/{candidate_id}", response_model=PsychologyDetailResponse)
+async def get_latest_psychology_detail(candidate_id: str, db: Session = Depends(get_db)):
+    """
+    获取候选人最新已完成评估会话的心理解读详情。
+
+    该接口只读取已有 AssessmentRecord / EvaluationResult，
+    不参与人格计算、匹配计算或评估主流程。
+    """
+    candidate = resolve_candidate_user(candidate_id, db)
+    data = build_psychology_detail(db, candidate_id=candidate.id)
+    return PsychologyDetailResponse(data=data)
+
+
+@router.get("/psychology-detail/{assessment_record_id}", response_model=PsychologyDetailResponse)
+async def get_psychology_detail(assessment_record_id: int, db: Session = Depends(get_db)):
+    """
+    获取指定 AssessmentSession 对应的心理解读详情。
+
+    该接口作为 EvaluationResult 的可解释性链路扩展，
+    用于心理解读页展示和页面内气泡式咨询回复。
+    """
+    data = build_psychology_detail(db, assessment_record_id=assessment_record_id)
+    return PsychologyDetailResponse(data=data)
 
 
 # ============ HR 候选人管理端点 ============

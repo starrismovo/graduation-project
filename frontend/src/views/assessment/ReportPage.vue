@@ -16,20 +16,6 @@
 
     <div v-if="reportData" class="report-content">
       <div class="report-layout">
-        <aside class="report-sidenav">
-          <div class="sidenav-title">报告导航</div>
-          <button
-            v-for="item in sectionMenu"
-            :key="item.key"
-            class="sidenav-item"
-            :class="{ active: activeSection === item.key }"
-            @click="scrollToSection(item.key)"
-          >
-            <span class="sidenav-index">{{ item.no }}</span>
-            <span>{{ item.label }}</span>
-          </button>
-        </aside>
-
         <div class="report-main">
           <section id="section-overview" class="report-section">
             <div class="section-header">
@@ -314,7 +300,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import RadarChart from '@/components/RadarChart.vue'
@@ -334,17 +320,6 @@ const router = useRouter()
 
 const loading = ref(false)
 const reportData = ref<AssessmentReport | null>(null)
-
-const sectionMenu = [
-  { key: 'overview', label: '报告概览', no: '1' },
-  { key: 'psychology', label: '人格分析', no: '2' },
-  { key: 'career', label: '职业建议', no: '3' },
-  { key: 'details', label: '特质对照', no: '4' },
-  { key: 'actions', label: '行动建议', no: '5' }
-]
-
-const activeSection = ref('overview')
-const scrollContainer = ref<HTMLElement | Window>(window)
 
 const personalityTraits = computed<TraitScore[]>(() => reportData.value?.personality_trait || [])
 const reportSections = computed(() => reportData.value?.report_sections)
@@ -565,55 +540,7 @@ async function loadReport() {
   }
 }
 
-function scrollToSection(key: string) {
-  const el = document.getElementById(`section-${key}`)
-  if (!el) return
-
-  const container = scrollContainer.value
-  const targetOffset = 90
-
-  if (container === window) {
-    const top = el.getBoundingClientRect().top + window.scrollY - targetOffset
-    window.scrollTo({ top, behavior: 'smooth' })
-  } else {
-    const containerEl = container as HTMLElement
-    const containerRect = containerEl.getBoundingClientRect()
-    const elementRect = el.getBoundingClientRect()
-    const top = containerEl.scrollTop + (elementRect.top - containerRect.top) - targetOffset
-    containerEl.scrollTo({ top, behavior: 'smooth' })
-  }
-
-  activeSection.value = key
-}
-
-function updateActiveSectionByScroll() {
-  const keys = sectionMenu.map((item) => item.key)
-  const offset = 130
-  const container = scrollContainer.value
-  const containerTop = container === window ? 0 : (container as HTMLElement).getBoundingClientRect().top
-
-  for (let i = keys.length - 1; i >= 0; i -= 1) {
-    const el = document.getElementById(`section-${keys[i]}`)
-    if (el && el.getBoundingClientRect().top - containerTop <= offset) {
-      activeSection.value = keys[i]
-      return
-    }
-  }
-
-  activeSection.value = 'overview'
-}
-
-onMounted(async () => {
-  await loadReport()
-  await nextTick()
-  scrollContainer.value = (document.querySelector('.app-main') as HTMLElement) || window
-  scrollContainer.value.addEventListener('scroll', updateActiveSectionByScroll as EventListener, { passive: true })
-  updateActiveSectionByScroll()
-})
-
-onBeforeUnmount(() => {
-  scrollContainer.value.removeEventListener('scroll', updateActiveSectionByScroll as EventListener)
-})
+onMounted(loadReport)
 </script>
 
 <style scoped>
@@ -681,73 +608,7 @@ onBeforeUnmount(() => {
 }
 
 .report-layout {
-  display: grid;
-  grid-template-columns: 214px minmax(0, 1fr);
-  gap: 24px;
-  align-items: start;
-}
-
-.report-sidenav {
-  position: sticky;
-  top: 86px;
-  padding: 18px 14px;
-  border-radius: 20px;
-  background: rgba(255, 255, 255, 0.82);
-  backdrop-filter: blur(16px);
-  border: 1px solid rgba(221, 229, 242, 0.9);
-  box-shadow: 0 18px 36px rgba(31, 51, 92, 0.08);
-}
-
-.sidenav-title {
-  padding: 0 10px 10px;
-  color: #9aa8bd;
-  font-size: 12px;
-  letter-spacing: 0.08em;
-}
-
-.sidenav-item {
-  width: 100%;
-  border: 0;
-  background: transparent;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 12px 10px;
-  border-radius: 14px;
-  color: #5c6b86;
-  font-size: 14px;
-  font-weight: 700;
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
-
-.sidenav-item + .sidenav-item {
-  margin-top: 6px;
-}
-
-.sidenav-item:hover {
-  background: #f3f7ff;
-  color: #3258d1;
-}
-
-.sidenav-item.active {
-  background: linear-gradient(135deg, #eaf1ff 0%, #edf5ff 100%);
-  color: #2450d6;
-  box-shadow: inset 0 0 0 1px #d8e5ff;
-}
-
-.sidenav-index {
-  width: 24px;
-  height: 24px;
-  flex-shrink: 0;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 999px;
-  background: #edf2ff;
-  color: #3158d3;
-  font-size: 12px;
-  font-weight: 800;
+  display: block;
 }
 
 .report-main {
@@ -1555,16 +1416,6 @@ onBeforeUnmount(() => {
   .career-layout,
   .match-overview-card {
     grid-template-columns: 1fr;
-  }
-}
-
-@media (max-width: 1080px) {
-  .report-layout {
-    grid-template-columns: 1fr;
-  }
-
-  .report-sidenav {
-    position: static;
   }
 }
 

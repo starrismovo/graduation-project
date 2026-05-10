@@ -139,6 +139,64 @@ class ReportSections(BaseModel):
     development_actions: List[DevelopmentActionItem] = Field(default_factory=list)
 
 
+class PsychologyOverview(BaseModel):
+    """心理解读页总体概览"""
+    summary: str
+    score: float
+    highlighted_traits: List[str] = Field(default_factory=list)
+    growth_advice: str
+    updated_at: Optional[datetime] = None
+
+
+class PsychologyTraitCard(BaseModel):
+    """心理解读页大五人格维度卡片"""
+    trait_key: str
+    trait_name: str
+    english: str
+    score: Optional[float] = None
+    job_requirement: Optional[float] = None
+    match_status: str = "balanced"
+    summary: str
+    tags: List[str] = Field(default_factory=list)
+    advice: str
+    bubble_message: str
+
+
+class PsychologyActionGuide(BaseModel):
+    """心理解读页行动建议"""
+    title: str
+    description: str
+
+
+class PsychologySourceTrace(BaseModel):
+    """心理解读页可回溯来源"""
+    assessment_record_id: int
+    evaluation_result_id: Optional[str] = None
+    candidate_id: int
+    job_id: int
+    source_fields: List[str] = Field(default_factory=list)
+
+
+class PsychologyDetail(BaseModel):
+    """心理解读页详情数据"""
+    assessment_id: int
+    evaluation_result_id: Optional[str] = None
+    candidate_id: int
+    job_id: int
+    job_title: str
+    overview: PsychologyOverview
+    trait_cards: List[PsychologyTraitCard] = Field(default_factory=list)
+    action_guides: List[PsychologyActionGuide] = Field(default_factory=list)
+    source_trace: PsychologySourceTrace
+
+
+class PsychologyDetailResponse(BaseModel):
+    """心理解读页响应"""
+    code: int = 200
+    message: str = "success"
+    data: PsychologyDetail
+
+
 class AssessmentReport(BaseModel):
     """完整的评估报告"""
     id: int

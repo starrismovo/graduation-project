@@ -210,6 +210,27 @@ export const fetchReportDetail = async (recordId: string | number) => {
   }
 }
 
+/**
+ * 获取心理解读详情
+ * @param options.recordId 指定评估记录ID
+ * @param options.candidateId 未指定评估记录时，读取候选人最新已完成评估
+ */
+export const fetchPsychologyDetail = async (options: {
+  recordId?: string | number
+  candidateId?: string | number
+}) => {
+  try {
+    const url = options.recordId
+      ? `/assessment/psychology-detail/${options.recordId}`
+      : `/assessment/psychology-detail/latest/${options.candidateId}`
+    const response = await request.get(url)
+    return response.data?.data || response.data || null
+  } catch (error) {
+    console.error('获取心理解读详情失败:', error)
+    throw error
+  }
+}
+
 export const fetchNotificationSummary = async () => {
   try {
     const response = await request.get('/user/notifications/summary')

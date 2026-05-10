@@ -2,6 +2,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
+import { ArrowLeft, Briefcase, CollectionTag, Location, OfficeBuilding } from '@element-plus/icons-vue'
 import { addHubJob, hasHubJob } from '@/utils/interviewHub'
 import { getJobDetail } from '@/utils/request'
 
@@ -228,7 +229,7 @@ onMounted(async () => {
     <div class="detail-shell" v-if="jobDetail">
       <div class="detail-header">
         <div>
-          <p class="eyebrow">Job Detail</p>
+          <p class="eyebrow">Role Insight</p>
           <div class="title-row">
             <button class="back-icon-btn" type="button" aria-label="返回岗位列表" @click="router.push('/home/jobs')">
               <el-icon><ArrowLeft /></el-icon>
@@ -236,10 +237,10 @@ onMounted(async () => {
             <h1>{{ jobDetail.name }}</h1>
           </div>
           <div class="headline-meta">
-            <span>{{ jobDetail.company }}</span>
-            <span>{{ jobDetail.city }}</span>
-            <span>{{ salaryText }}</span>
-            <span>{{ jobDetail.category }}</span>
+            <span><el-icon><OfficeBuilding /></el-icon>{{ jobDetail.company }}</span>
+            <span><el-icon><Location /></el-icon>{{ jobDetail.city }}</span>
+            <span><el-icon><Briefcase /></el-icon>{{ salaryText }}</span>
+            <span><el-icon><CollectionTag /></el-icon>{{ jobDetail.category }}</span>
           </div>
         </div>
       </div>
@@ -247,13 +248,13 @@ onMounted(async () => {
       <div class="summary-panel">
         <div class="summary-copy">
           <h2>先确认岗位，再决定进入哪条面试链路</h2>
-          <p>你可以先把岗位加入 Hub，稍后统一管理；也可以从这里直接进入 AI 面试间，跳过 Hub 立即开始。</p>
+          <p>你可以先把岗位加入面试中心，稍后统一管理；也可以从这里直接进入 AI 面试间，即刻开始。</p>
         </div>
 
         <div class="summary-actions">
-          <el-button type="primary" size="large" @click="startInterview">直接开始AI面试</el-button>
-          <el-button size="large" plain :disabled="alreadyInHub || hubSaving" @click="saveToHub">
-            {{ alreadyInHub ? '已在面试 Hub 中' : '加入我的面试 Hub' }}
+          <el-button class="action-btn primary-action" type="primary" size="large" @click="startInterview">直接开始AI面试</el-button>
+          <el-button class="action-btn secondary-action" size="large" plain :disabled="alreadyInHub || hubSaving" @click="saveToHub">
+            {{ alreadyInHub ? '已在面试中心中' : '加入我的面试中心' }}
           </el-button>
         </div>
       </div>
@@ -270,7 +271,7 @@ onMounted(async () => {
           <template #header>
             <div class="card-title">岗位画像</div>
           </template>
-          <div class="overview-list">
+          <div class="overview-list overview-grid">
             <div class="overview-item">
               <span class="overview-label">岗位名称</span>
               <strong>{{ jobDetail.name }}</strong>
@@ -378,11 +379,11 @@ onMounted(async () => {
 <style scoped>
 .job-detail-page {
   min-height: calc(100vh - 60px);
-  padding: 28px;
+  padding: 24px 28px 32px;
   background:
-    radial-gradient(circle at top left, rgba(93, 124, 255, 0.14), transparent 28%),
-    radial-gradient(circle at bottom right, rgba(255, 165, 0, 0.08), transparent 35%),
-    linear-gradient(180deg, #f7f9fc 0%, #eef3f9 100%);
+    radial-gradient(circle at top left, rgba(93, 124, 255, 0.16), transparent 28%),
+    radial-gradient(circle at top right, rgba(124, 77, 255, 0.1), transparent 24%),
+    linear-gradient(180deg, #f7f9ff 0%, #eef4ff 100%);
 }
 
 .detail-shell {
@@ -392,6 +393,7 @@ onMounted(async () => {
 
 .detail-header {
   margin-bottom: 24px;
+  padding: 8px 4px 0;
 }
 
 .title-row {
@@ -404,22 +406,25 @@ onMounted(async () => {
 .back-icon-btn {
   width: 44px;
   height: 44px;
-  border: 1px solid #d9dee8;
-  border-radius: 0;
-  background: #f3f5fa;
-  color: #6b7280;
+  border: 1px solid rgba(210, 221, 255, 0.95);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.9);
+  color: #5b67ff;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  transition: all 0.18s ease;
+  transition: all 0.22s ease;
   flex-shrink: 0;
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.06);
 }
 
 .back-icon-btn:hover {
-  border-color: #c9d2e3;
-  background: #e9edf6;
-  color: #374151;
+  border-color: #c7d2fe;
+  background: #ffffff;
+  color: #4338ca;
+  transform: translateY(-1px);
+  box-shadow: 0 14px 26px rgba(91, 103, 255, 0.14);
 }
 
 .back-icon-btn :deep(.el-icon) {
@@ -428,17 +433,24 @@ onMounted(async () => {
 
 .eyebrow {
   margin: 0 0 8px;
-  text-transform: uppercase;
-  letter-spacing: 0.16em;
+  display: inline-flex;
+  align-items: center;
+  min-height: 32px;
+  padding: 0 14px;
+  border-radius: 999px;
+  letter-spacing: 0.1em;
   font-size: 13px;
-  color: #6b7280;
+  font-weight: 700;
+  color: #5b67ff;
+  background: rgba(91, 103, 255, 0.12);
 }
 
 .detail-header h1 {
   margin: 0;
-  font-size: 38px;
-  line-height: 1.1;
-  color: #111827;
+  font-size: 40px;
+  line-height: 1.08;
+  color: #172133;
+  letter-spacing: -0.04em;
 }
 
 .headline-meta {
@@ -448,11 +460,20 @@ onMounted(async () => {
 }
 
 .headline-meta span {
-  padding: 8px 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 14px;
   border-radius: 999px;
-  background: rgba(17, 24, 39, 0.06);
-  color: #374151;
+  background: rgba(255, 255, 255, 0.84);
+  color: #475569;
   font-size: 14px;
+  border: 1px solid rgba(223, 230, 250, 0.95);
+  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.04);
+}
+
+.headline-meta span :deep(.el-icon) {
+  color: #5b67ff;
 }
 
 .summary-panel {
@@ -461,10 +482,12 @@ onMounted(async () => {
   gap: 24px;
   padding: 26px 28px;
   margin-bottom: 24px;
-  border-radius: 24px;
-  background: linear-gradient(135deg, #111827 0%, #23314f 100%);
+  border-radius: 28px;
+  background:
+    radial-gradient(circle at right top, rgba(255, 255, 255, 0.14), transparent 28%),
+    linear-gradient(135deg, #7c89c5 100%, #243b7a 46%, #6a48ff 100%);
   color: #fff;
-  box-shadow: 0 24px 50px rgba(17, 24, 39, 0.18);
+  box-shadow: 0 24px 50px rgba(36, 59, 122, 0.2);
 }
 
 .summary-copy h2 {
@@ -484,6 +507,47 @@ onMounted(async () => {
   flex-direction: column;
   gap: 12px;
   min-width: 220px;
+  justify-content: center;
+}
+
+.summary-actions :deep(.el-button),
+.job-detail-page > div[style] :deep(.el-button) {
+  height: 48px;
+  border-radius: 16px;
+  font-size: 15px;
+  font-weight: 700;
+  transition: transform 0.22s ease, box-shadow 0.22s ease, border-color 0.22s ease;
+}
+
+.summary-actions :deep(.el-button:hover),
+.job-detail-page > div[style] :deep(.el-button:hover) {
+  transform: translateY(-1px);
+}
+
+.summary-actions :deep(.primary-action),
+.job-detail-page :deep(.primary-action) {
+  border: none;
+  background: linear-gradient(90deg, #4da0ff 0%, #6d4bff 100%);
+  box-shadow: 0 14px 30px rgba(84, 104, 255, 0.3);
+}
+
+.summary-actions :deep(.primary-action:hover),
+.job-detail-page :deep(.primary-action:hover) {
+  background: linear-gradient(90deg, #4697f6 0%, #6343f0 100%);
+  box-shadow: 0 18px 34px rgba(84, 104, 255, 0.35);
+}
+
+.summary-actions :deep(.secondary-action) {
+  border-color: rgba(183, 201, 255, 0.9);
+  background: rgba(255, 255, 255, 0.96);
+  color: #24324a;
+  box-shadow: 0 12px 24px rgba(15, 23, 42, 0.08);
+}
+
+.summary-actions :deep(.secondary-action:hover) {
+  border-color: #8faeff;
+  background: #ffffff;
+  color: #172133;
 }
 
 .content-grid {
@@ -493,8 +557,20 @@ onMounted(async () => {
 }
 
 .detail-card {
-  border-radius: 22px;
-  border: 1px solid rgba(0, 0, 0, 0.05);
+  border-radius: 24px;
+  border: 1px solid rgba(223, 230, 250, 0.95);
+  background: rgba(255, 255, 255, 0.88);
+  box-shadow: 0 18px 42px rgba(15, 23, 42, 0.08);
+}
+
+.detail-card :deep(.el-card__header) {
+  padding: 20px 24px 14px;
+  border-bottom: 1px solid rgba(235, 240, 251, 0.95);
+  background: linear-gradient(180deg, rgba(248, 250, 255, 0.9), rgba(255, 255, 255, 0.72));
+}
+
+.detail-card :deep(.el-card__body) {
+  padding: 22px 24px 24px;
 }
 
 .traits-card {
@@ -502,9 +578,9 @@ onMounted(async () => {
 }
 
 .card-title {
-  font-size: 18px;
+  font-size: 19px;
   font-weight: 700;
-  color: #111827;
+  color: #172133;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -526,16 +602,32 @@ onMounted(async () => {
   gap: 16px;
 }
 
+.overview-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
 .overview-item {
   display: flex;
-  justify-content: space-between;
-  gap: 16px;
-  padding-bottom: 12px;
-  border-bottom: 1px solid #edf2f7;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 112px;
+  padding: 18px;
+  border-radius: 18px;
+  border: 1px solid rgba(234, 238, 251, 0.95);
+  background: linear-gradient(180deg, rgba(250, 251, 255, 0.98), rgba(245, 248, 255, 0.98));
 }
 
 .overview-label {
   color: #667085;
+  font-size: 13px;
+}
+
+.overview-item strong {
+  font-size: 17px;
+  line-height: 1.5;
+  color: #172133;
 }
 
 /* ===== 大五人格特质样式 ===== */
@@ -545,8 +637,8 @@ onMounted(async () => {
 
 .traits-intro {
   padding: 16px 20px;
-  background: linear-gradient(135deg, rgba(107, 127, 255, 0.08) 0%, rgba(255, 165, 0, 0.08) 100%);
-  border-radius: 16px;
+  background: linear-gradient(135deg, rgba(107, 127, 255, 0.08) 0%, rgba(124, 77, 255, 0.06) 100%);
+  border-radius: 18px;
   margin-bottom: 24px;
   border-left: 4px solid #6B7FFF;
 }
@@ -566,18 +658,18 @@ onMounted(async () => {
 }
 
 .trait-card-container {
-  background: #fff;
-  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.92);
+  border-radius: 20px;
   overflow: hidden;
-  border: 1px solid #edf2f7;
+  border: 1px solid rgba(234, 238, 251, 0.95);
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+  box-shadow: 0 10px 26px rgba(15, 23, 42, 0.06);
 }
 
 .trait-card-container:hover {
-  border-color: #d9dee8;
-  box-shadow: 0 12px 24px rgba(0, 0, 0, 0.12);
-  transform: translateY(-4px);
+  border-color: #d9e1fb;
+  box-shadow: 0 18px 36px rgba(84, 104, 255, 0.12);
+  transform: translateY(-3px);
 }
 
 .trait-header {
@@ -586,7 +678,7 @@ onMounted(async () => {
   align-items: center;
   gap: 14px;
   border-top: 4px solid;
-  background: linear-gradient(135deg, #f8fafc 0%, #f0f4f8 100%);
+  background: linear-gradient(135deg, rgba(248, 250, 255, 0.95) 0%, rgba(240, 244, 255, 0.9) 100%);
 }
 
 .trait-icon {
@@ -636,7 +728,7 @@ onMounted(async () => {
 
 .trait-score-badge {
   padding: 5px 10px;
-  background: transparent;
+  background: rgba(255, 255, 255, 0.72);
   border-radius: 20px;
   font-size: 15px;
   font-weight: 700;
@@ -671,7 +763,7 @@ onMounted(async () => {
 .score-bar-wrapper {
   width: 100%;
   height: 8px;
-  background: #edf2f7;
+  background: #edf2ff;
   border-radius: 4px;
   overflow: hidden;
 }
@@ -685,8 +777,8 @@ onMounted(async () => {
 
 .trait-importance {
   padding: 14px 16px;
-  background: #f8fafc;
-  border-radius: 10px;
+  background: linear-gradient(180deg, rgba(248, 250, 255, 0.96), rgba(243, 246, 255, 0.96));
+  border-radius: 14px;
   border-left: 3px solid #e5e7eb;
 }
 
@@ -703,9 +795,9 @@ onMounted(async () => {
 
 .summary-box {
   padding: 20px;
-  background: linear-gradient(135deg, #f0f4f8 0%, #eef3f9 100%);
-  border-radius: 16px;
-  border: 1px solid #e5e7eb;
+  background: linear-gradient(135deg, #f5f8ff 0%, #eef3ff 100%);
+  border-radius: 18px;
+  border: 1px solid rgba(223, 230, 250, 0.95);
 }
 
 .summary-box h4 {
@@ -739,6 +831,7 @@ onMounted(async () => {
   }
 
   .content-grid,
+  .overview-grid,
   .trait-cards-grid {
     grid-template-columns: 1fr;
   }
@@ -751,7 +844,7 @@ onMounted(async () => {
 
 @media (max-width: 640px) {
   .job-detail-page {
-    padding: 20px;
+    padding: 18px 14px 24px;
   }
 
   .detail-header h1 {
@@ -759,7 +852,7 @@ onMounted(async () => {
   }
 
   .summary-panel {
-    padding: 22px;
+    padding: 22px 20px;
   }
 
   .trait-header {

@@ -559,8 +559,19 @@ watch(
 .hero-bg {
   position: absolute;
   inset: 0;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background:
+    linear-gradient(135deg, rgba(82, 105, 226, 0.72) 0%, rgba(115, 75, 162, 0.7) 100%),
+    url('/面试.jpg') center / cover no-repeat;
   opacity: 1;
+}
+.hero-bg::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(circle at 22% 28%, rgba(255, 255, 255, 0.16), transparent 32%),
+    linear-gradient(180deg, rgba(26, 37, 82, 0.08), rgba(48, 34, 91, 0.22));
+  pointer-events: none;
 }
 .hero-content {
   position: relative;
