@@ -95,6 +95,17 @@ export interface AssessmentDetails {
   overall_impression?: string
 }
 
+export type HRFeedbackResult = 'recommended' | 'hold' | 'not_matched'
+
+export interface HRFeedback {
+  feedback_status: 'pending' | 'sent'
+  feedback_result?: HRFeedbackResult | null
+  hr_feedback?: string | null
+  feedback_visible_to_candidate: boolean
+  feedback_by?: number | null
+  feedback_at?: string | null
+}
+
 /**
  * 完整评估报告
  */
@@ -113,6 +124,7 @@ export interface AssessmentReport {
   recommendations?: string[]
   report_sections?: ReportSections
   assessement_details?: AssessmentDetails
+  hr_feedback?: HRFeedback | null
 }
 
 /**

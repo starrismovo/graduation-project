@@ -183,10 +183,10 @@ const maxJobCount = computed(() => Math.max(...jobChartData.value.map(d => d.cou
 
 // 匹配分数分布
 const scoreDistribution = ref([
-  { label: '优秀 (≥80)', color: '#67c23a', count: 0, pct: 0 },
-  { label: '良好 (60-79)', color: '#409eff', count: 0, pct: 0 },
-  { label: '一般 (40-59)', color: '#e6a23c', count: 0, pct: 0 },
-  { label: '较差 (<40)', color: '#f56c6c', count: 0, pct: 0 },
+  { label: '优秀 (≥80)', color: '#10b981', count: 0, pct: 0 },
+  { label: '良好 (60-79)', color: '#667eea', count: 0, pct: 0 },
+  { label: '一般 (40-59)', color: '#f59e0b', count: 0, pct: 0 },
+  { label: '较差 (<40)', color: '#ef4444', count: 0, pct: 0 },
 ])
 
 // 各岗位汇总表
@@ -302,8 +302,8 @@ function truncate(str: string, len: number) {
 
 <style scoped>
 .analytics-view {
-  max-width: 1400px;
-  margin: 0 auto;
+  max-width: 100%;
+  padding: 0;
 }
 
 /* ========== 头部 ========== */
@@ -311,49 +311,59 @@ function truncate(str: string, len: number) {
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
-  margin-bottom: 28px;
+  gap: 16px;
+  margin-bottom: 24px;
 }
 
 .page-title {
-  font-size: 26px;
+  margin: 0 0 8px;
+  font-size: 28px;
   font-weight: 700;
-  color: #1a1a1a;
-  margin: 0 0 6px;
-  letter-spacing: -0.5px;
+  color: #0f172a;
+  letter-spacing: -0.03em;
 }
 
 .page-subtitle {
-  font-size: 14px;
-  color: #6b7280;
   margin: 0;
+  font-size: 14px;
+  line-height: 1.6;
+  color: #64748b;
+  max-width: 620px;
 }
 
 /* ========== KPI ========== */
 .kpi-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 20px;
-  margin-bottom: 28px;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 16px;
+  margin-bottom: 24px;
 }
 
 .kpi-card {
   display: flex;
   align-items: center;
-  gap: 16px;
-  padding: 20px 24px;
+  gap: 14px;
+  padding: 18px 20px;
   border-radius: 14px;
-  color: #fff;
+  background: white;
+  border: 1px solid #e2e8f0;
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.04);
+  transition: all 0.2s ease;
 }
 
-.kpi-card.blue   { background: linear-gradient(135deg, #667eea, #764ba2); }
-.kpi-card.purple { background: linear-gradient(135deg, #a855f7, #6366f1); }
-.kpi-card.green  { background: linear-gradient(135deg, #10b981, #059669); }
-.kpi-card.orange { background: linear-gradient(135deg, #f59e0b, #d97706); }
+.kpi-card:hover {
+  box-shadow: 0 12px 24px rgba(15, 23, 42, 0.06);
+  transform: translateY(-1px);
+}
+
+.kpi-card.blue   { border-left: 4px solid #667eea; }
+.kpi-card.purple { border-left: 4px solid #a855f7; }
+.kpi-card.green  { border-left: 4px solid #10b981; }
+.kpi-card.orange { border-left: 4px solid #f59e0b; }
 
 .kpi-icon {
   width: 44px;
   height: 44px;
-  background: rgba(255,255,255,0.2);
   border-radius: 12px;
   display: flex;
   align-items: center;
@@ -361,41 +371,57 @@ function truncate(str: string, len: number) {
   flex-shrink: 0;
 }
 
-.kpi-icon svg { width: 24px; height: 24px; stroke: #fff; }
+.kpi-card.blue .kpi-icon { background: rgba(102, 126, 234, 0.1); }
+.kpi-card.purple .kpi-icon { background: rgba(168, 85, 247, 0.1); }
+.kpi-card.green .kpi-icon { background: rgba(16, 185, 129, 0.1); }
+.kpi-card.orange .kpi-icon { background: rgba(245, 158, 11, 0.1); }
+
+.kpi-icon svg {
+  width: 24px;
+  height: 24px;
+  stroke-width: 2;
+}
+
+.kpi-card.blue .kpi-icon svg { stroke: #667eea; }
+.kpi-card.purple .kpi-icon svg { stroke: #a855f7; }
+.kpi-card.green .kpi-icon svg { stroke: #10b981; }
+.kpi-card.orange .kpi-icon svg { stroke: #f59e0b; }
 
 .kpi-label {
-  font-size: 13px;
-  opacity: 0.85;
+  font-size: 12px;
+  color: #64748b;
   margin-bottom: 4px;
+  font-weight: 500;
 }
 
 .kpi-value {
-  font-size: 32px;
+  font-size: 28px;
   font-weight: 700;
-  letter-spacing: -1px;
+  letter-spacing: -0.03em;
   line-height: 1;
+  color: #0f172a;
 }
 
 /* ========== 双列布局 ========== */
 .main-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 24px;
-  margin-bottom: 28px;
+  grid-template-columns: 1.2fr 1fr;
+  gap: 20px;
+  margin-bottom: 24px;
 }
 
-@media (max-width: 900px) {
+@media (max-width: 1000px) {
   .main-grid { grid-template-columns: 1fr; }
 }
 
 /* ========== 通用卡片 ========== */
 .chart-card,
 .detail-card {
-  background: #fff;
+  background: white;
   border-radius: 14px;
-  border: 1px solid #f0f0f0;
-  box-shadow: 0 1px 4px rgba(0,0,0,0.04);
-  padding: 24px;
+  border: 1px solid #e2e8f0;
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.04);
+  padding: 22px;
 }
 
 .detail-card { margin-bottom: 0; }
@@ -404,65 +430,68 @@ function truncate(str: string, len: number) {
 
 .card-title {
   font-size: 16px;
-  font-weight: 600;
-  color: #1f2937;
+  font-weight: 700;
+  color: #0f172a;
   margin: 0;
+  letter-spacing: -0.02em;
 }
 
 .chart-empty {
   text-align: center;
-  padding: 48px 0;
-  color: #9ca3af;
-  font-size: 14px;
+  padding: 40px 20px;
+  color: #94a3b8;
+  font-size: 13px;
 }
 
 /* ========== 柱状图 ========== */
-.bar-chart { display: flex; flex-direction: column; gap: 12px; }
+.bar-chart { display: flex; flex-direction: column; gap: 14px; }
 
-.bar-row { display: flex; align-items: center; gap: 10px; }
+.bar-row { display: flex; align-items: center; gap: 12px; }
 
 .bar-label {
-  width: 100px;
+  width: 110px;
   font-size: 13px;
-  color: #374151;
+  color: #475569;
   text-align: right;
   flex-shrink: 0;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  font-weight: 500;
 }
 
 .bar-track {
   flex: 1;
-  height: 10px;
-  background: #f3f4f6;
-  border-radius: 5px;
+  height: 8px;
+  background: #f1f5f9;
+  border-radius: 4px;
   overflow: hidden;
 }
 
 .bar-fill {
   height: 100%;
-  background: linear-gradient(90deg, #667eea, #764ba2);
-  border-radius: 5px;
+  background: #667eea;
+  border-radius: 4px;
   transition: width 0.4s ease;
 }
 
 .bar-count {
-  width: 28px;
+  width: 32px;
   font-size: 13px;
-  color: #6b7280;
+  font-weight: 600;
+  color: #0f172a;
   text-align: right;
 }
 
 /* ========== 分布 ========== */
-.donut-section { display: flex; flex-direction: column; gap: 16px; }
+.donut-section { display: flex; flex-direction: column; gap: 18px; }
 
-.donut-legend { display: flex; flex-direction: column; gap: 6px; }
+.donut-legend { display: flex; flex-direction: column; gap: 8px; }
 
 .legend-item {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
   font-size: 13px;
 }
 
@@ -473,40 +502,41 @@ function truncate(str: string, len: number) {
   flex-shrink: 0;
 }
 
-.legend-label { color: #374151; flex: 1; }
-.legend-value { font-weight: 500; color: #1f2937; }
-.legend-pct { color: #9ca3af; }
+.legend-label { color: #475569; flex: 1; font-weight: 500; }
+.legend-value { font-weight: 700; color: #0f172a; }
+.legend-pct { color: #94a3b8; font-size: 12px; }
 
-.dist-bars { display: flex; flex-direction: column; gap: 10px; margin-top: 8px; }
+.dist-bars { display: flex; flex-direction: column; gap: 12px; margin-top: 12px; }
 
-.dist-row { display: flex; align-items: center; gap: 8px; }
+.dist-row { display: flex; align-items: center; gap: 10px; }
 
 .dist-name {
-  width: 90px;
+  width: 100px;
   font-size: 12px;
-  font-weight: 500;
+  font-weight: 600;
   text-align: right;
   flex-shrink: 0;
 }
 
 .dist-track {
   flex: 1;
-  height: 12px;
-  background: #f3f4f6;
-  border-radius: 6px;
+  height: 10px;
+  background: #f1f5f9;
+  border-radius: 5px;
   overflow: hidden;
 }
 
 .dist-fill {
   height: 100%;
-  border-radius: 6px;
+  border-radius: 5px;
   transition: width 0.4s ease;
 }
 
 .dist-pct {
-  width: 36px;
+  width: 40px;
   font-size: 12px;
-  color: #6b7280;
+  font-weight: 600;
+  color: #0f172a;
   text-align: right;
 }
 
@@ -521,7 +551,7 @@ function truncate(str: string, len: number) {
 .inline-bar {
   flex: 1;
   height: 6px;
-  background: #f3f4f6;
+  background: #f1f5f9;
   border-radius: 3px;
   overflow: hidden;
 }
@@ -530,7 +560,7 @@ function truncate(str: string, len: number) {
   height: 100%;
   border-radius: 3px;
 }
-.inline-fill.high { background: #67c23a; }
-.inline-fill.medium { background: #409eff; }
-.inline-fill.low { background: #f56c6c; }
+.inline-fill.high { background: #10b981; }
+.inline-fill.medium { background: #667eea; }
+.inline-fill.low { background: #f59e0b; }
 </style>

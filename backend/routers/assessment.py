@@ -17,7 +17,7 @@ from models.assessment import (
 from models.hr_agent import TraitScore
 from models.job import Job
 from models.job_requirement import JobSkillRequirement, JobPersonalityFramework
-from models.user import User
+from models.user import User, UserType
 from schemas.assessment import (
     PortraitResponse,
     HistoryResponse,
@@ -38,6 +38,8 @@ from schemas.assessment import (
     SaveSessionRequest,
     SaveSessionResponse,
     SaveAssessmentResultRequest,  # 新增
+    HRFeedback,
+    HRFeedbackUpdateRequest,
     PsychologyDetailResponse,
 )
 from typing import List, Optional, Dict, Any
@@ -756,6 +758,17 @@ async def get_report(record_id: int, db: Session = Depends(get_db)):
         model_version=model_version
     )
     
+    visible_feedback = None
+    if record.feedback_status == "sent" and record.feedback_visible_to_candidate:
+        visible_feedback = HRFeedback(
+            feedback_status=record.feedback_status,
+            feedback_result=record.feedback_result,
+            hr_feedback=record.hr_feedback,
+            feedback_visible_to_candidate=record.feedback_visible_to_candidate,
+            feedback_by=record.feedback_by,
+            feedback_at=record.feedback_at,
+        )
+
     report = AssessmentReport(
         id=record.id,
         candidate_id=str(record.candidate_id),
@@ -770,6 +783,7 @@ async def get_report(record_id: int, db: Session = Depends(get_db)):
         match_analysis=match_analysis,
         recommendations=recommendations,
         report_sections=report_sections,
+        hr_feedback=visible_feedback,
         assessement_details=details  # 注意 typo 保持与前端一致
     )
     
@@ -842,6 +856,12 @@ async def get_hr_candidates(
             "match_score": record.match_score,
             "assessment_status": record.assessment_status.value if record.assessment_status else "pending",
             "assessment_mode": record.assessment_mode,
+            "feedback_status": record.feedback_status,
+            "feedback_result": record.feedback_result,
+            "hr_feedback": record.hr_feedback,
+            "feedback_visible_to_candidate": record.feedback_visible_to_candidate,
+            "feedback_by": record.feedback_by,
+            "feedback_at": record.feedback_at.isoformat() if record.feedback_at else None,
             "created_at": record.created_at.isoformat() if record.created_at else None,
             "total_rounds": record.total_rounds,
             "duration_minutes": record.duration_minutes,
@@ -855,6 +875,56 @@ async def get_hr_candidates(
 
 
 # ============ Save Assessment Result (新增端点) ============
+
+@router.patch("/records/{record_id}/feedback", response_model=StandardResponse)
+async def update_hr_feedback(
+    record_id: int,
+    data: HRFeedbackUpdateRequest,
+    db: Session = Depends(get_db),
+):
+    """
+    HR submits feedback for one AssessmentSession.
+
+    The feedback is stored on AssessmentRecord so it remains isolated by
+    candidate-job evaluation session and does not participate in scoring.
+    """
+    record = db.query(AssessmentRecord).filter(
+        AssessmentRecord.id == record_id,
+        AssessmentRecord.is_deleted == False,
+    ).first()
+    if not record:
+        raise HTTPException(status_code=404, detail="评估记录不存在")
+
+    if data.feedback_by is not None:
+        hr = db.query(User).filter(User.id == data.feedback_by).first()
+        if not hr or (hr.user_type != UserType.HR and not hr.is_hr):
+            raise HTTPException(status_code=403, detail="仅 HR 可提交反馈")
+
+    record.feedback_status = "sent"
+    record.feedback_result = data.feedback_result
+    record.hr_feedback = data.hr_feedback.strip()
+    record.feedback_visible_to_candidate = data.feedback_visible_to_candidate
+    record.feedback_by = data.feedback_by
+    record.feedback_at = datetime.utcnow()
+    record.updated_at = datetime.utcnow()
+
+    db.commit()
+    db.refresh(record)
+
+    return StandardResponse(
+        code=200,
+        message="success",
+        data={
+            "record_id": record.id,
+            "feedback_status": record.feedback_status,
+            "feedback_result": record.feedback_result,
+            "hr_feedback": record.hr_feedback,
+            "feedback_visible_to_candidate": record.feedback_visible_to_candidate,
+            "feedback_by": record.feedback_by,
+            "feedback_at": record.feedback_at.isoformat() if record.feedback_at else None,
+        },
+    )
+
 
 @router.post("/save-result", response_model=StandardResponse)
 async def save_assessment_result(

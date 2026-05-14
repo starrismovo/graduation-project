@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <div class="report-container" v-loading="loading">
     <div class="report-header">
       <el-button type="text" @click="goBack">
@@ -22,7 +22,7 @@
               <span class="section-badge">1</span>
               <div>
                 <h3>评估基本信息</h3>
-                <p>展示当前 AssessmentSession 对应的岗位、时间、模式与角色数量。</p>
+                <p>展示当前对应的岗位、时间、模式与角色数量。</p>
               </div>
             </div>
 
@@ -96,9 +96,36 @@
             </div>
           </section>
 
-          <section id="section-psychology" class="report-section">
+          <section class="report-section">
             <div class="section-header">
               <span class="section-badge">3</span>
+              <div>
+                <h3>HR反馈</h3>
+                <p>展示 HR 基于当前评估会话、人岗匹配结果与心理特质解释形成的复核意见。</p>
+              </div>
+            </div>
+
+            <div v-if="reportData.hr_feedback?.feedback_status === 'sent'" class="hr-feedback-card">
+              <div class="feedback-head">
+                <el-tag :type="feedbackTagType" effect="dark">{{ feedbackResultLabel }}</el-tag>
+                <span v-if="reportData.hr_feedback.feedback_at" class="feedback-time">
+                  {{ formatTime(reportData.hr_feedback.feedback_at) }}
+                </span>
+              </div>
+              <p>{{ reportData.hr_feedback.hr_feedback }}</p>
+            </div>
+
+            <div v-else class="hr-feedback-card empty-feedback">
+              <div class="feedback-head">
+                <el-tag type="info">暂未反馈</el-tag>
+              </div>
+              <p>HR 尚未对本次 AssessmentSession 提交反馈。系统已保留评估报告与人岗匹配结果，后续反馈将展示在此处。</p>
+            </div>
+          </section>
+
+          <section id="section-psychology" class="report-section">
+            <div class="section-header">
+              <span class="section-badge">4</span>
               <div>
                 <h3>大五人格分析</h3>
                 <p>报告从大五人格模型解释候选人在目标岗位中的稳定优势、潜在风险与发展方向。</p>
@@ -140,7 +167,7 @@
 
           <section id="section-career" class="report-section">
             <div class="section-header">
-              <span class="section-badge">4</span>
+              <span class="section-badge">5</span>
               <div>
                 <h3>职业建议</h3>
                 <p>从推荐岗位方向与谨慎投递方向两个层面给出可执行建议。</p>
@@ -188,10 +215,10 @@
 
           <section id="section-details" class="report-section">
             <div class="section-header">
-              <span class="section-badge">5</span>
+              <span class="section-badge">6</span>
               <div>
                 <h3>人格特质与岗位需求对照</h3>
-                <p>将个人 TraitScores 与岗位期望进行对照，形成更细粒度的解释。</p>
+                <p>将个人特质与岗位期望对照</p>
               </div>
             </div>
 
@@ -232,10 +259,10 @@
 
           <section class="report-section dual-section">
             <div class="section-header">
-              <span class="section-badge">6</span>
+              <span class="section-badge">7</span>
               <div>
                 <h3>人格维度解读</h3>
-                <p>以卡片方式概括每个大五维度在当前 Job Instance 中的含义。</p>
+                <p>以卡片方式概括每个大五维度在当前评估中的含义。</p>
               </div>
             </div>
 
@@ -263,7 +290,7 @@
 
           <section id="section-actions" class="report-section">
             <div class="section-header">
-              <span class="section-badge">7</span>
+              <span class="section-badge">8</span>
               <div>
                 <h3>发展行动建议</h3>
                 <p>按照近期、中期与持续三个层次形成更便于落地执行的优化路径。</p>
@@ -352,6 +379,21 @@ const matchDimensions = computed<MatchDimension[]>(() => {
 
 const overviewSummary = computed(() => {
   return reportSections.value?.overview_summary || reportData.value?.conversation_summary || '当前报告已形成基础评估结论，可结合人格分析与职业建议进一步理解匹配原因。'
+})
+
+const feedbackResultLabel = computed(() => {
+  const result = reportData.value?.hr_feedback?.feedback_result
+  if (result === 'recommended') return '建议推进'
+  if (result === 'not_matched') return '暂不匹配'
+  return '暂缓观察'
+})
+
+const feedbackTagType = computed<'success' | 'warning' | 'danger' | 'info'>(() => {
+  const result = reportData.value?.hr_feedback?.feedback_result
+  if (result === 'recommended') return 'success'
+  if (result === 'not_matched') return 'danger'
+  if (result === 'hold') return 'warning'
+  return 'info'
 })
 
 const personalitySummary = computed(() => {
@@ -879,6 +921,37 @@ onMounted(loadReport)
   color: #72829c;
   font-size: 12px;
   line-height: 1.7;
+}
+
+.hr-feedback-card {
+  border-radius: 20px;
+  border: 1px solid #dbeafe;
+  background: linear-gradient(180deg, #f8fbff 0%, #ffffff 100%);
+  padding: 18px;
+}
+
+.feedback-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.feedback-time {
+  color: #7b89a0;
+  font-size: 12px;
+}
+
+.hr-feedback-card p {
+  margin: 0;
+  color: #42526b;
+  font-size: 14px;
+  line-height: 1.9;
+}
+
+.empty-feedback {
+  border-color: #e6edf7;
+  background: #fbfdff;
 }
 
 .psychology-panel {

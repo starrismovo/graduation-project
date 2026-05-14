@@ -8,6 +8,7 @@ const BASE = '/assessment/immersive'
 export interface AgentExecutePayload {
   operation: 'next_question' | 'analyze_response' | 'analyze_and_next'
   candidate_id: string | number
+  assessment_id?: number
   candidate_name?: string
   role_id?: string
   conversation_depth?: number
@@ -85,6 +86,8 @@ export async function updateProgress(data: {
 export async function saveSession(data: {
   candidate_id: string
   assessment_id?: number
+  job_id?: number
+  job_title?: string
   messages: any[]
   scores: Record<string, number>
   patterns?: any[]
@@ -140,6 +143,8 @@ export interface LocalProgress {
   selectedJobId: number | null
   assessmentId?: number
   jobTitle?: string
+  interviewState?: any
+  latestDecision?: any
   startTime: number
   elapsedTime: number
   timestamp: number

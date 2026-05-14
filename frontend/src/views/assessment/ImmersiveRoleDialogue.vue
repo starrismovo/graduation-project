@@ -765,6 +765,8 @@ interface Message {
   content: string
   time: string
   tags?: string[]
+  focusArea?: string
+  agentRole?: string
   responseTime?: number
   aiFeedback?: string
 }
@@ -915,6 +917,14 @@ const reportRecordId = ref<number | null>(null)
 const interviewState = ref<any>(null)       // 后端面试状态快照
 const latestDecision = ref<any>(null)       // DecisionAgent 最新决策
 const shouldEndInterview = ref(false)       // DecisionAgent 建议结束
+
+function getCurrentAgentRoleId() {
+  return (
+    interviewState.value?.current_role ||
+    latestDecision.value?.suggested_role ||
+    'hr'
+  )
+}
 
 // ==================== 统计数据 ====================
 const respondedCount = ref(0)
@@ -1456,7 +1466,9 @@ async function generateNextQuestion() {
     role: 'ai',
     content: question.content,
     time: nowTime(),
-    tags: question.tags
+    tags: question.tags,
+    focusArea: question.focusArea,
+    agentRole: question.agentRole,
   })
   
   isTyping.value = false
@@ -1519,7 +1531,9 @@ async function submitMessage() {
         role: 'ai',
         content: result.nextQuestion.content,
         time: nowTime(),
-        tags: result.nextQuestion.tags
+        tags: result.nextQuestion.tags,
+        focusArea: result.nextQuestion.focusArea,
+        agentRole: result.nextQuestion.agentRole,
       })
       isTyping.value = false
       currentPhase.value = result.nextQuestion.phase || '多轮面试中'
@@ -1559,13 +1573,16 @@ async function analyzeResponse(content: string) {
 
     const data = await analyzeInterviewResponse({
       candidate_id: cid,
+      assessment_id: backendAssessmentId.value ?? undefined,
       candidate_name: candidateInfo.value.name || '',
-      role_id: 'hr',
+      role_id: getCurrentAgentRoleId(),
       candidate_response: content,
       conversation_depth: respondedCount.value,
       history: messages.value.slice(-5).map(m => ({
         role: m.role === 'candidate' ? 'candidate' : 'assistant',
-        content: m.content
+        content: m.content,
+        focus_area: m.focusArea,
+        agent_role: m.agentRole,
       })),
       target_position: selectedJobTitle.value || undefined,
       resume_info: Object.keys(resumePayload).length > 0 ? resumePayload : undefined,
@@ -1642,13 +1659,16 @@ async function analyzeAndFetchNext(content: string) {
 
     const data = await analyzeAndGetNextQuestion({
       candidate_id: cid,
+      assessment_id: backendAssessmentId.value ?? undefined,
       candidate_name: candidateInfo.value.name || '',
-      role_id: 'hr',
+      role_id: getCurrentAgentRoleId(),
       candidate_response: content,
       conversation_depth: respondedCount.value,
       history: messages.value.slice(-6).map(m => ({
         role: m.role === 'candidate' ? 'candidate' : 'assistant',
-        content: m.content
+        content: m.content,
+        focus_area: m.focusArea,
+        agent_role: m.agentRole,
       })),
       target_position: selectedJobTitle.value || undefined,
       resume_info: Object.keys(resumePayload).length > 0 ? resumePayload : undefined,
@@ -1666,6 +1686,9 @@ async function analyzeAndFetchNext(content: string) {
       if (analysis.interview_state) {
         interviewState.value = analysis.interview_state
       }
+      if (nextQ?.interview_state) {
+        interviewState.value = nextQ.interview_state
+      }
 
       return {
         analysis: {
@@ -1678,6 +1701,9 @@ async function analyzeAndFetchNext(content: string) {
           content: nextQ.question || nextQ.content || '',
           tags: nextQ.tags || [],
           context: nextQ.context || null,
+          interviewState: nextQ.interview_state || null,
+          focusArea: nextQ.focus_area || null,
+          agentRole: nextQ.interview_state?.current_role || getCurrentAgentRoleId(),
           phase: nextQ.phase || nextQ.interview_state?.current_role || '多轮面试'
         } : null,
         shouldEnd: !!data.data.should_end
@@ -1719,12 +1745,15 @@ async function fetchNextQuestion() {
 
     const data = await getNextQuestion({
       candidate_id: cid,
+      assessment_id: backendAssessmentId.value ?? undefined,
       candidate_name: candidateInfo.value.name || '',
-      role_id: 'hr',
+      role_id: getCurrentAgentRoleId(),
       conversation_depth: respondedCount.value,
       history: messages.value.map(m => ({
         role: m.role === 'candidate' ? 'candidate' : 'assistant',
-        content: m.content
+        content: m.content,
+        focus_area: m.focusArea,
+        agent_role: m.agentRole,
       })),
       target_position: selectedJobTitle.value || undefined,
       resume_info: Object.keys(resumePayload).length > 0 ? resumePayload : undefined,
@@ -1740,6 +1769,8 @@ async function fetchNextQuestion() {
         content: question.question || question.content,
         tags: question.tags || [],
         context: question.context,
+        focusArea: question.focus_area || null,
+        agentRole: question.interview_state?.current_role || getCurrentAgentRoleId(),
         phase: question.phase || question.interview_state?.current_role || '多轮面试'
       }
     }
@@ -2042,6 +2073,8 @@ function getProgressSnapshot(): LocalProgress {
     selectedJobId: selectedJobId.value,
     assessmentId: backendAssessmentId.value ?? undefined,
     jobTitle: selectedJobTitle.value,
+    interviewState: interviewState.value,
+    latestDecision: latestDecision.value,
     startTime: startTime.value,
     elapsedTime: elapsedTime.value,
     timestamp: Date.now(),
@@ -2109,6 +2142,8 @@ function restoreFromLocal(progress: LocalProgress) {
   selectedJobId.value = progress.selectedJobId
   backendAssessmentId.value = progress.assessmentId ?? null
   selectedJobTitle.value = progress.jobTitle || ''
+  interviewState.value = progress.interviewState || null
+  latestDecision.value = progress.latestDecision || null
 
   // 恢复计时
   if (progress.currentStep >= 3 && progress.startTime) {

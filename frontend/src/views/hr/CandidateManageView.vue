@@ -139,6 +139,14 @@
                     查看报告
                   </el-button>
                   <el-button
+                    v-if="row.assessment_status === 'completed'"
+                    link
+                    type="success"
+                    @click="openFeedbackDialog(row)"
+                  >
+                    {{ row.feedback_status === 'sent' ? '修改反馈' : '填写反馈' }}
+                  </el-button>
+                  <el-button
                     v-else
                     link
                     type="warning"
@@ -282,6 +290,42 @@
         <el-button type="primary" :loading="inviteLoading" @click="submitInvitation">发送邀请</el-button>
       </template>
     </el-dialog>
+
+    <el-dialog v-model="showFeedbackDialog" title="填写 HR 反馈" width="560px">
+      <div v-if="feedbackCandidate" class="feedback-dialog-body">
+        <div class="dialog-summary">
+          <div><span>候选人：</span>{{ feedbackCandidate.candidate_name || '未知候选人' }}</div>
+          <div><span>岗位实例：</span>{{ feedbackCandidate.job_title || selectedJob?.name || '--' }}</div>
+          <div><span>人岗匹配度：</span>{{ feedbackCandidate.match_score ?? 0 }}%</div>
+        </div>
+        <el-form label-position="top">
+          <el-form-item label="反馈结论">
+            <el-radio-group v-model="feedbackForm.feedback_result">
+              <el-radio-button label="recommended">建议推进</el-radio-button>
+              <el-radio-button label="hold">暂缓观察</el-radio-button>
+              <el-radio-button label="not_matched">暂不匹配</el-radio-button>
+            </el-radio-group>
+          </el-form-item>
+          <el-form-item label="反馈说明">
+            <el-input
+              v-model="feedbackForm.hr_feedback"
+              type="textarea"
+              :rows="6"
+              maxlength="1200"
+              show-word-limit
+              placeholder="请围绕人格特质、场景人格表现、岗位匹配依据和后续建议填写反馈。"
+            />
+          </el-form-item>
+          <el-checkbox v-model="feedbackForm.feedback_visible_to_candidate">
+            候选人可在评估报告中查看该反馈
+          </el-checkbox>
+        </el-form>
+      </div>
+      <template #footer>
+        <el-button @click="showFeedbackDialog = false">取消</el-button>
+        <el-button type="primary" :loading="feedbackLoading" @click="submitFeedback">提交反馈</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -293,7 +337,7 @@ import { Refresh } from '@element-plus/icons-vue'
 import { useUserStore } from '@/stores/user'
 import { getHRJobList, getHRRecommendedCandidates } from '@/api/job'
 import { getHRInvitations, sendInvitation } from '@/api/invitation'
-import request from '@/utils/request'
+import request, { updateAssessmentFeedback } from '@/utils/request'
 
 const router = useRouter()
 const userStore = useUserStore()
@@ -313,6 +357,15 @@ const showInviteDialog = ref(false)
 const inviteCandidate = ref<any | null>(null)
 const inviteMessage = ref('')
 const inviteLoading = ref(false)
+
+const showFeedbackDialog = ref(false)
+const feedbackCandidate = ref<any | null>(null)
+const feedbackLoading = ref(false)
+const feedbackForm = ref({
+  feedback_result: 'hold' as 'recommended' | 'hold' | 'not_matched',
+  hr_feedback: '',
+  feedback_visible_to_candidate: true,
+})
 
 const hrId = computed(() => userStore.userId || userStore.profile?.id || '')
 
@@ -575,6 +628,54 @@ async function submitInvitation() {
   }
 }
 
+function openFeedbackDialog(row: any) {
+  feedbackCandidate.value = row
+  feedbackForm.value = {
+    feedback_result: row.feedback_result || 'hold',
+    hr_feedback: row.hr_feedback || buildDefaultFeedback(row),
+    feedback_visible_to_candidate: row.feedback_visible_to_candidate !== false,
+  }
+  showFeedbackDialog.value = true
+}
+
+function buildDefaultFeedback(row: any) {
+  const score = Number(row.match_score || 0)
+  if (score >= 80) {
+    return `该候选人与“${row.job_title || selectedJob.value?.name || '当前岗位'}”岗位实例的人岗匹配度较高，建议结合其人格特质优势与面试表现继续推进后续沟通。`
+  }
+  if (score >= 60) {
+    return `该候选人与“${row.job_title || selectedJob.value?.name || '当前岗位'}”岗位实例存在一定匹配基础，建议重点复核场景人格中的岗位关键维度，并补充观察相关项目证据。`
+  }
+  return `该候选人与“${row.job_title || selectedJob.value?.name || '当前岗位'}”岗位实例的当前匹配度有限，建议候选人优先提升报告中指出的薄弱维度后再参与相近岗位评估。`
+}
+
+async function submitFeedback() {
+  if (!feedbackCandidate.value?.record_id) {
+    ElMessage.warning('当前记录缺少评估 ID，无法提交反馈')
+    return
+  }
+  if (!feedbackForm.value.hr_feedback.trim()) {
+    ElMessage.warning('请填写反馈说明')
+    return
+  }
+
+  feedbackLoading.value = true
+  try {
+    await updateAssessmentFeedback(feedbackCandidate.value.record_id, {
+      ...feedbackForm.value,
+      hr_feedback: feedbackForm.value.hr_feedback.trim(),
+      feedback_by: hrId.value || null,
+    })
+    ElMessage.success('HR 反馈已保存，候选人可在评估报告中查看')
+    showFeedbackDialog.value = false
+    await loadCandidates()
+  } catch (error: any) {
+    ElMessage.error('反馈保存失败：' + getErrorMessage(error))
+  } finally {
+    feedbackLoading.value = false
+  }
+}
+
 function isAlreadyInvited(candidateId: number | string) {
   const numericId = Number(candidateId)
   if (Number.isNaN(numericId) || !selectedJobId.value) return false
@@ -677,11 +778,11 @@ function getRecommendReason(score: number, sourceJobName?: string) {
 
 <style scoped>
 .candidate-workbench {
-  max-width: 1400px;
-  margin: 0 auto;
+  max-width: 100%;
   display: flex;
   flex-direction: column;
   gap: 20px;
+  padding: 0;
 }
 
 .page-header,
@@ -1139,6 +1240,12 @@ function getRecommendReason(score: number, sourceJobName?: string) {
   gap: 16px;
 }
 
+.feedback-dialog-body {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
 .dialog-summary {
   display: grid;
   gap: 8px;
@@ -1153,7 +1260,7 @@ function getRecommendReason(score: number, sourceJobName?: string) {
   color: #64748b;
 }
 
-@media (max-width: 1200px) {
+@media (max-width: 1300px) {
   .ops-kpi-row,
   .stats-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));

@@ -95,6 +95,24 @@ class AssessmentDetails(BaseModel):
     model_version: Optional[str] = None
 
 
+class HRFeedback(BaseModel):
+    """HR feedback bound to one AssessmentSession."""
+    feedback_status: str = "pending"
+    feedback_result: Optional[str] = None
+    hr_feedback: Optional[str] = None
+    feedback_visible_to_candidate: bool = True
+    feedback_by: Optional[int] = None
+    feedback_at: Optional[datetime] = None
+
+
+class HRFeedbackUpdateRequest(BaseModel):
+    """HR feedback update request."""
+    feedback_result: str = Field(..., pattern="^(recommended|hold|not_matched)$")
+    hr_feedback: str = Field(..., min_length=2, max_length=1200)
+    feedback_visible_to_candidate: bool = True
+    feedback_by: Optional[int] = None
+
+
 class MatchDimension(BaseModel):
     """结构化匹配维度"""
     label: str
@@ -214,6 +232,7 @@ class AssessmentReport(BaseModel):
     recommendations: Optional[List[str]] = None
     report_sections: Optional[ReportSections] = None
     assessement_details: Optional[AssessmentDetails] = None
+    hr_feedback: Optional[HRFeedback] = None
     
     class Config:
         from_attributes = True

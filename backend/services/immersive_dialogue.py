@@ -33,7 +33,7 @@ import asyncio
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
-from models.assessment import AssessmentRecord
+from models.assessment import AssessmentRecord, AssessmentStatus
 from models.hr_agent import Scenario, InterviewResponse, TraitScore
 from prompts.immersive_roles import (
     HR_SYSTEM_PROMPT,
@@ -103,7 +103,7 @@ ROLE_CONFIG = {
 class ImmersiveDialogueService:
     """沉浸式对话服务主类 - 三 Agent 协同架构"""
     
-    # 类级别的面试状态缓存（按 candidate_id 存储）
+    # 类级别的面试状态缓存（按 AssessmentSession 维度存储）
     _interview_states: Dict[str, AdaptiveInterviewState] = {}
     # 类级别的最新决策缓存
     _latest_decisions: Dict[str, Dict[str, Any]] = {}
@@ -117,9 +117,35 @@ class ImmersiveDialogueService:
         self.decision_agent = DecisionAgent(self.llm_client)
         self.assessment_record = None
 
-    def _get_or_create_state(self, candidate_id: str, job_info: Optional[Dict[str, Any]] = None) -> AdaptiveInterviewState:
+    def _build_session_key(
+        self,
+        candidate_id: str,
+        assessment_id: Optional[int] = None,
+        job_info: Optional[Dict[str, Any]] = None,
+    ) -> str:
+        """构建 AssessmentSession 级别的状态隔离键。"""
+        if assessment_id:
+            return f"assessment:{assessment_id}"
+
+        job_id = (job_info or {}).get("id")
+        if job_id:
+            return f"candidate:{candidate_id}:job:{job_id}"
+
+        job_title = (job_info or {}).get("title") or (job_info or {}).get("name")
+        if job_title:
+            return f"candidate:{candidate_id}:job_title:{job_title}"
+
+        return f"candidate:{candidate_id}:ad_hoc"
+
+    def _get_or_create_state(
+        self,
+        candidate_id: str,
+        job_info: Optional[Dict[str, Any]] = None,
+        assessment_id: Optional[int] = None,
+    ) -> AdaptiveInterviewState:
         """获取或创建面试状态"""
-        if candidate_id not in self._interview_states:
+        session_key = self._build_session_key(candidate_id, assessment_id, job_info)
+        if session_key not in self._interview_states:
             state = AdaptiveInterviewState()
             # 初始化岗位需求技能
             if job_info:
@@ -132,8 +158,8 @@ class ImmersiveDialogueService:
                         if name:
                             clean_skills.append(name)
                     state.init_required_skills(clean_skills)
-            self._interview_states[candidate_id] = state
-        return self._interview_states[candidate_id]
+            self._interview_states[session_key] = state
+        return self._interview_states[session_key]
     
     # ==================== 核心对话流程 ====================
     
@@ -147,6 +173,7 @@ class ImmersiveDialogueService:
         target_position: Optional[str] = None,
         job_info: Optional[Dict[str, Any]] = None,
         resume_info: Optional[Dict[str, Any]] = None,
+        assessment_id: Optional[int] = None,
         **kwargs
     ) -> Dict[str, Any]:
         """
@@ -180,12 +207,13 @@ class ImmersiveDialogueService:
                 resume_info = self._load_resume_info(id, resume_info)
 
             # ===== 获取面试状态 =====
-            interview_state = self._get_or_create_state(id, job_info)
+            session_key = self._build_session_key(id, assessment_id, job_info)
+            interview_state = self._get_or_create_state(id, job_info, assessment_id)
             
             # 同步角色信息
             role_id = current_role.value
             # 如果 DecisionAgent 建议切换角色，使用建议角色
-            latest_decision = self._latest_decisions.get(id, {})
+            latest_decision = self._latest_decisions.get(session_key, {})
             suggested_role = latest_decision.get("suggested_role")
             if suggested_role and suggested_role != role_id:
                 try:
@@ -252,6 +280,7 @@ class ImmersiveDialogueService:
         target_position: Optional[str] = None,
         job_info: Optional[Dict[str, Any]] = None,
         resume_info: Optional[Dict[str, Any]] = None,
+        assessment_id: Optional[int] = None,
         **kwargs
     ) -> Dict[str, Any]:
         """
@@ -284,7 +313,8 @@ class ImmersiveDialogueService:
                 resume_info = self._load_resume_info(id, resume_info)
 
             # ===== 获取面试状态 =====
-            interview_state = self._get_or_create_state(id, job_info)
+            session_key = self._build_session_key(id, assessment_id, job_info)
+            interview_state = self._get_or_create_state(id, job_info, assessment_id)
             state_context = interview_state.to_context_dict()
 
             # 提取上一个问题
@@ -326,7 +356,7 @@ class ImmersiveDialogueService:
             )
 
             # ===== Step 4: 缓存决策供下轮使用 =====
-            self._latest_decisions[id] = decision
+            self._latest_decisions[session_key] = decision
 
             # 构建返回结果（保持向后兼容）
             result = eval_result.copy()
@@ -677,8 +707,8 @@ class ImmersiveDialogueService:
     
     async def save_assessment_session(
         self,
-        id: str,
-        assessment_id: int,
+        candidate_id: str,
+        assessment_id: Optional[int],
         messages: List[Dict[str, str]],
         scores: Dict[str, float],
         patterns: List[Dict[str, Any]],
@@ -686,33 +716,69 @@ class ImmersiveDialogueService:
         conversation_depth: int,
         total_rounds: int,
         highlights: List[str],
+        job_id: Optional[int] = None,
+        job_title: Optional[str] = None,
         **kwargs
     ) -> Dict[str, Any]:
         """保存评估会话"""
         
         try:
             # 计算总体评分
-            overall_score = sum(scores.values()) / len(scores) if scores else 0
+            average_score = sum(scores.values()) / len(scores) if scores else 0
+            overall_score = average_score * 10 if average_score <= 10 else average_score
             
-            # 创建评估记录
-            assessment = AssessmentRecord(
-                id=int(id),
-                assessment_type="immersive_dialogue",
-                session_data={
-                    "messages": messages,
-                    "conversation_depth": conversation_depth,
-                    "total_rounds": total_rounds,
-                    "duration_seconds": duration_seconds,
-                    "patterns": patterns
+            summary_parts = []
+            if highlights:
+                summary_parts.append("\n".join(highlights))
+            summary_parts.append(f"完成{total_rounds}轮沉浸式多Agent面试")
+            if patterns:
+                summary_parts.append(f"识别行为模式{len(patterns)}项")
+
+            roles_participated = sorted({
+                str(message.get("role"))
+                for message in messages
+                if message.get("role") and message.get("role") != "candidate"
+            })
+
+            assessment = None
+            if assessment_id:
+                assessment = self.db.query(AssessmentRecord).filter(
+                    AssessmentRecord.id == int(assessment_id)
+                ).first()
+
+            if assessment is None:
+                if not job_id:
+                    return {
+                        "success": False,
+                        "error": "缺少 job_id，无法创建新的 AssessmentSession",
+                    }
+                assessment = AssessmentRecord(
+                    candidate_id=int(candidate_id),
+                    job_id=int(job_id),
+                    job_title=job_title or "未知岗位",
+                    assessment_mode="immersive",
+                    assessment_status=AssessmentStatus.PENDING,
+                    created_at=datetime.utcnow(),
+                )
+                self.db.add(assessment)
+
+            assessment.total_rounds = total_rounds
+            assessment.duration_minutes = duration_seconds / 60 if duration_seconds else 0
+            assessment.conversation_depth = conversation_depth
+            assessment.roles_participated = roles_participated
+            assessment.conversation_summary = "\n".join(summary_parts)
+            assessment.overall_impression = json.dumps(
+                {
+                    "scores": scores,
+                    "patterns": patterns,
+                    "message_count": len(messages),
                 },
-                scores=scores,
-                overall_score=overall_score,
-                summary="\n".join(highlights),
-                created_at=datetime.utcnow()
+                ensure_ascii=False,
             )
-            
-            self.db.add(assessment)
+            assessment.match_score = overall_score
+            assessment.updated_at = datetime.utcnow()
             self.db.commit()
+            self.db.refresh(assessment)
             
             return {
                 "success": True,

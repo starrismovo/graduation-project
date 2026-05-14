@@ -55,6 +55,14 @@ class AssessmentRecord(Base):
     conversation_depth = Column(Float, nullable=True)  # 对话深度评分（0-10）
     roles_participated = Column(JSON, nullable=True)  # 参与的角色列表 ["hr", "tech_lead", "product"]
     overall_impression = Column(Text, nullable=True)  # 整体印象
+
+    # ===== HR Feedback / HR反馈闭环 =====
+    feedback_status = Column(String(30), default="pending", nullable=False, index=True)  # pending/sent
+    feedback_result = Column(String(30), nullable=True)  # recommended/hold/not_matched
+    hr_feedback = Column(Text, nullable=True)
+    feedback_visible_to_candidate = Column(Boolean, default=True, nullable=False)
+    feedback_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    feedback_at = Column(DateTime, nullable=True)
     
     # ===== 时间戳 =====
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
@@ -73,6 +81,9 @@ class AssessmentRecord(Base):
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "assessment_status": self.assessment_status.value if self.assessment_status else None,
             "assessment_mode": self.assessment_mode,
+            "feedback_status": self.feedback_status,
+            "feedback_result": self.feedback_result,
+            "feedback_at": self.feedback_at.isoformat() if self.feedback_at else None,
             "is_deleted": self.is_deleted,
         }
 

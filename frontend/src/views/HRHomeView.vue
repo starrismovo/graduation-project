@@ -429,7 +429,7 @@ onMounted(() => {
               <h4>快捷入口</h4>
               <el-button class="action-btn" type="primary" plain block @click="activeTab = 'candidates'">查看所有候选人报告</el-button>
               <el-button class="action-btn" type="warning" plain block @click="handleOpenJobManage">进入岗位管理页</el-button>
-              <el-button class="action-btn" type="success" plain block>人才池管理</el-button>
+              
               <el-button class="action-btn" type="info" plain block>数据分析中心</el-button>
             </div>
 
@@ -615,34 +615,45 @@ onMounted(() => {
 
 <style scoped>
 .hr-home {
+  --hr-primary: #2563eb;
+  --hr-border: rgba(214, 223, 240, 0.92);
+  --hr-surface: rgba(255, 255, 255, 0.92);
+  --hr-shadow: 0 18px 42px rgba(15, 23, 42, 0.08);
   min-height: 100%;
   background: transparent;
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: 22px;
 }
 
 .page-header {
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
-  gap: 16px;
-  background: #ffffff;
-  border-radius: 12px;
-  padding: 20px 24px;
-  box-shadow: 0 8px 24px rgba(18, 28, 45, 0.08);
+  gap: 20px;
+  padding: 28px 30px;
+  border-radius: 24px;
+  border: 1px solid var(--hr-border);
+  background:
+    radial-gradient(circle at top right, rgba(37, 99, 235, 0.12), transparent 26%),
+    linear-gradient(135deg, rgba(239, 246, 255, 0.96), rgba(255, 255, 255, 0.94));
+  box-shadow: var(--hr-shadow);
 }
 
 .page-header h2 {
-  margin: 0 0 6px 0;
-  font-size: 22px;
-  color: #1f2937;
+  margin: 0 0 10px 0;
+  font-size: 30px;
+  line-height: 1.15;
+  color: #0f172a;
+  letter-spacing: -0.03em;
 }
 
 .page-header p {
   margin: 0;
-  color: #6b7280;
-  font-size: 13px;
+  max-width: 720px;
+  color: #526071;
+  font-size: 15px;
+  line-height: 1.75;
 }
 
 .header-actions {
@@ -651,48 +662,84 @@ onMounted(() => {
   flex-wrap: wrap;
 }
 
+.page-header :deep(.el-button) {
+  min-height: 42px;
+  padding: 0 16px;
+  border-radius: 12px;
+  font-weight: 600;
+}
+
 .kpi-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 16px;
+  gap: 18px;
 }
 
 .kpi-card {
-  background: #ffffff;
-  border-radius: 12px;
-  padding: 16px;
-  box-shadow: 0 6px 18px rgba(18, 28, 45, 0.08);
+  position: relative;
+  overflow: hidden;
+  min-height: 148px;
+  padding: 20px 20px 18px;
+  border-radius: 20px;
+  border: 1px solid var(--hr-border);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(248, 251, 255, 0.96));
+  box-shadow: 0 14px 34px rgba(15, 23, 42, 0.06);
+}
+
+.kpi-card::before {
+  content: '';
+  position: absolute;
+  inset: 0 auto auto 0;
+  width: 100%;
+  height: 4px;
+  background: linear-gradient(90deg, #2563eb, #60a5fa);
+}
+
+.kpi-card:nth-child(2)::before {
+  background: linear-gradient(90deg, #0f766e, #34d399);
+}
+
+.kpi-card:nth-child(3)::before {
+  background: linear-gradient(90deg, #1d4ed8, #38bdf8);
+}
+
+.kpi-card:nth-child(4)::before {
+  background: linear-gradient(90deg, #d97706, #f59e0b);
 }
 
 .kpi-label {
-  font-size: 12px;
-  color: #6b7280;
+  font-size: 13px;
+  color: #64748b;
+  font-weight: 700;
+  letter-spacing: 0.04em;
 }
 
 .kpi-value {
-  font-size: 26px;
-  font-weight: 700;
-  margin-top: 8px;
-  color: #111827;
+  margin-top: 16px;
+  font-size: 34px;
+  line-height: 1;
+  font-weight: 800;
+  color: #0f172a;
 }
 
 .kpi-foot {
-  margin-top: 6px;
-  font-size: 12px;
-  color: #9ca3af;
+  margin-top: 12px;
+  font-size: 13px;
+  color: #7c8aa0;
 }
 
 .dashboard-layout {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 320px;
-  gap: 20px;
+  gap: 22px;
 }
 
 .dashboard-main {
-  background: #ffffff;
-  border-radius: 12px;
-  padding: 20px;
-  box-shadow: 0 8px 24px rgba(18, 28, 45, 0.08);
+  border-radius: 24px;
+  border: 1px solid var(--hr-border);
+  padding: 22px;
+  background: var(--hr-surface);
+  box-shadow: var(--hr-shadow);
 }
 
 .section-header {
@@ -700,34 +747,47 @@ onMounted(() => {
   justify-content: space-between;
   align-items: flex-start;
   gap: 16px;
-  margin-bottom: 16px;
+  margin-bottom: 18px;
 }
 
 .section-header h3 {
   margin: 0;
-  font-size: 18px;
-  color: #1f2937;
+  font-size: 22px;
+  color: #0f172a;
 }
 
 .section-hint {
-  color: #9ca3af;
-  font-size: 12px;
+  display: inline-flex;
+  margin-top: 8px;
+  color: #7c8aa0;
+  font-size: 13px;
+  line-height: 1.7;
 }
 
 .job-spotlight-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-  gap: 16px;
+  gap: 18px;
 }
 
 .spotlight-card {
-  border: 1px solid #e5eefc;
-  border-radius: 14px;
+  border: 1px solid rgba(214, 223, 240, 0.95);
+  border-radius: 20px;
   padding: 18px;
-  background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+  background:
+    radial-gradient(circle at top right, rgba(37, 99, 235, 0.08), transparent 22%),
+    linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
   display: flex;
   flex-direction: column;
   gap: 16px;
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.05);
+  transition: transform 0.24s ease, box-shadow 0.24s ease, border-color 0.24s ease;
+}
+
+.spotlight-card:hover {
+  transform: translateY(-2px);
+  border-color: rgba(147, 197, 253, 0.95);
+  box-shadow: 0 16px 30px rgba(37, 99, 235, 0.1);
 }
 
 .spotlight-header {
@@ -739,20 +799,22 @@ onMounted(() => {
 
 .spotlight-header h4 {
   margin: 0;
-  font-size: 16px;
-  color: #111827;
+  font-size: 18px;
+  line-height: 1.4;
+  color: #0f172a;
 }
 
 .spotlight-header p {
   margin: 6px 0 0;
-  font-size: 12px;
-  color: #6b7280;
+  font-size: 13px;
+  color: #64748b;
 }
 
 .status-pill {
-  padding: 4px 10px;
+  padding: 5px 11px;
   border-radius: 999px;
   font-size: 12px;
+  font-weight: 700;
   color: #1d4ed8;
   background: #dbeafe;
   white-space: nowrap;
@@ -770,9 +832,9 @@ onMounted(() => {
 }
 
 .spotlight-metric {
-  padding: 10px 12px;
-  border-radius: 12px;
-  background: #eff6ff;
+  padding: 12px;
+  border-radius: 14px;
+  background: rgba(239, 246, 255, 0.92);
 }
 
 .spotlight-metric span {
@@ -783,8 +845,8 @@ onMounted(() => {
 }
 
 .spotlight-metric strong {
-  font-size: 16px;
-  color: #111827;
+  font-size: 17px;
+  color: #0f172a;
 }
 
 .spotlight-metric strong.warning {
@@ -801,6 +863,7 @@ onMounted(() => {
   display: flex;
   justify-content: space-between;
   font-size: 13px;
+  font-weight: 600;
   color: #374151;
 }
 
@@ -813,20 +876,63 @@ onMounted(() => {
 .dashboard-side {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 18px;
 }
 
 .side-card {
-  background: #ffffff;
-  border-radius: 12px;
-  padding: 16px;
-  box-shadow: 0 6px 18px rgba(18, 28, 45, 0.08);
+  border-radius: 16px; /* 稍微收紧圆角，和系统圆角统一 */
+  border: none; /* 去掉生硬边框，用阴影和背景区分 */
+  padding: 20px; 
+  background: linear-gradient(145deg, #f9faff, #eef1ff); /* 轻微渐变，更柔和 */
+  box-shadow: 0 8px 24px rgba(79, 70, 229, 0.08); /* 蓝紫色系轻柔阴影 */
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.side-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 12px 28px rgba(79, 70, 229, 0.12);
 }
 
 .side-card h4 {
-  margin: 0 0 12px 0;
+  margin: 0 0 16px 0;
+  font-size: 17px;
+  font-weight: 600;
+  color: #1e1e2f; 
+}
+
+.side-card .action-btn {
+  margin-bottom: 12px; /* 增加按钮间距 */
+  font-weight: 500;
+  border-radius: 12px; /* 圆角按钮 */
+  height: 42px; /* 高度统一 */
   font-size: 14px;
-  color: #111827;
+  box-shadow: none; /* 去掉默认阴影 */
+  transition: all 0.2s ease;
+}
+
+.side-card .action-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(79, 70, 229, 0.1);
+}
+
+/* 不同类型按钮渐变色优化 */
+.side-card .el-button--primary {
+  background: linear-gradient(90deg, #4f46e5, #6366f1);
+  color: #fff;
+  border: none;
+}
+
+.side-card .el-button--warning {
+  background: linear-gradient(90deg, #facc15, #fcd34d);
+  color: #1f2937;
+  border: none;
+}
+
+
+.side-card .el-button--info {
+  background: linear-gradient(90deg, #0ea5e9, #3b82f6);
+  color: #fff;
+  border: none;
 }
 
 .overview-item {
@@ -849,6 +955,11 @@ onMounted(() => {
   border-bottom: 1px solid #f3f4f6;
   cursor: pointer;
   text-align: left;
+  transition: transform 0.2s ease;
+}
+
+.priority-item:hover {
+  transform: translateX(2px);
 }
 
 .priority-item:last-child {
@@ -856,15 +967,15 @@ onMounted(() => {
 }
 
 .priority-name {
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 600;
-  color: #111827;
+  color: #0f172a;
 }
 
 .priority-meta {
   margin-top: 4px;
   font-size: 12px;
-  color: #9ca3af;
+  color: #7c8aa0;
 }
 
 .priority-badge {
@@ -884,14 +995,15 @@ onMounted(() => {
   display: flex;
   justify-content: space-between;
   gap: 12px;
-  padding: 8px 0;
+  padding: 10px 0;
   font-size: 13px;
-  color: #6b7280;
+  color: #64748b;
 }
 
 .insight-item strong {
-  color: #111827;
+  color: #0f172a;
   text-align: right;
+  max-width: 55%;
 }
 
 /* .action-btn {
@@ -901,8 +1013,8 @@ onMounted(() => {
 
 .empty-state {
   text-align: center;
-  color: #9ca3af;
-  font-size: 12px;
+  color: #94a3b8;
+  font-size: 13px;
 }
 
 .large-empty {
@@ -920,13 +1032,13 @@ onMounted(() => {
 }
 
 .recent-title {
-  font-size: 13px;
-  color: #111827;
+  font-size: 14px;
+  color: #0f172a;
 }
 
 .recent-meta {
   font-size: 12px;
-  color: #9ca3af;
+  color: #7c8aa0;
   margin-top: 4px;
 }
 
@@ -944,6 +1056,11 @@ onMounted(() => {
   .page-header {
     flex-direction: column;
     align-items: flex-start;
+    padding: 22px 18px;
+  }
+
+  .page-header h2 {
+    font-size: 25px;
   }
 
   .kpi-grid {
@@ -958,6 +1075,14 @@ onMounted(() => {
   .spotlight-metrics {
     grid-template-columns: 1fr;
   }
+
+  .candidate-toolbar {
+    padding: 16px;
+  }
+
+  .candidate-count {
+    margin-left: 0;
+  }
 }
 
 /* ==================== 候选人管理 Tab ==================== */
@@ -966,17 +1091,29 @@ onMounted(() => {
 }
 
 .hr-tabs :deep(.el-tabs__header) {
-  background: #ffffff;
-  border-radius: 12px 12px 0 0;
-  padding: 0 20px;
-  box-shadow: 0 4px 12px rgba(18, 28, 45, 0.06);
+  background: rgba(255, 255, 255, 0.88);
+  border: 1px solid var(--hr-border);
+  border-radius: 20px;
+  padding: 4px 14px;
+  box-shadow: 0 10px 28px rgba(15, 23, 42, 0.06);
   margin-bottom: 20px;
 }
 
 .hr-tabs :deep(.el-tabs__item) {
   font-size: 15px;
-  height: 48px;
-  line-height: 48px;
+  height: 46px;
+  line-height: 46px;
+  font-weight: 600;
+}
+
+.hr-tabs :deep(.el-tabs__active-bar) {
+  height: 3px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #2563eb, #60a5fa);
+}
+
+.hr-tabs :deep(.el-tabs__nav-wrap::after) {
+  display: none;
 }
 
 .candidate-toolbar {
@@ -984,16 +1121,19 @@ onMounted(() => {
   align-items: center;
   gap: 12px;
   margin-bottom: 16px;
-  padding: 16px 20px;
-  background: #ffffff;
-  border-radius: 12px;
-  box-shadow: 0 4px 12px rgba(18, 28, 45, 0.06);
+  flex-wrap: wrap;
+  padding: 18px 20px;
+  background: rgba(255, 255, 255, 0.9);
+  border: 1px solid var(--hr-border);
+  border-radius: 18px;
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.05);
 }
 
 .candidate-count {
   margin-left: auto;
-  color: #6b7280;
+  color: #64748b;
   font-size: 13px;
+  font-weight: 600;
 }
 
 .candidate-name-cell {
@@ -1015,6 +1155,23 @@ onMounted(() => {
   text-align: right;
 }
 
+.hr-tabs :deep(.el-table) {
+  border-radius: 18px;
+  overflow: hidden;
+  border: 1px solid var(--hr-border);
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.05);
+}
+
+.hr-tabs :deep(.el-table th.el-table__cell) {
+  background: #f8fbff;
+  color: #526071;
+  font-weight: 700;
+}
+
+.hr-tabs :deep(.el-table__row:hover > td.el-table__cell) {
+  background: #f8fbff !important;
+}
+
 /* ==================== 报告预览弹窗 ==================== */
 .report-loading {
   text-align: center;
@@ -1025,6 +1182,7 @@ onMounted(() => {
 .report-preview {
   max-height: 65vh;
   overflow-y: auto;
+  padding-right: 4px;
 }
 
 .report-section {
@@ -1039,15 +1197,15 @@ onMounted(() => {
 
 .report-section h4 {
   margin: 0 0 12px;
-  font-size: 15px;
-  color: #1f2937;
+  font-size: 16px;
+  color: #0f172a;
 }
 
 .report-info-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 8px;
-  font-size: 13px;
+  font-size: 14px;
   color: #374151;
 }
 
@@ -1081,7 +1239,7 @@ onMounted(() => {
 
 .trait-label {
   min-width: 80px;
-  font-size: 13px;
+  font-size: 14px;
   color: #374151;
   text-transform: capitalize;
 }
@@ -1093,7 +1251,7 @@ onMounted(() => {
 
 .report-list li {
   margin-bottom: 6px;
-  font-size: 13px;
+  font-size: 14px;
   line-height: 1.6;
 }
 
@@ -1103,7 +1261,7 @@ onMounted(() => {
 
 .report-empty {
   text-align: center;
-  color: #9ca3af;
+  color: #94a3b8;
   padding: 40px 0;
 }
 </style>

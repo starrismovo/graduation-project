@@ -412,19 +412,27 @@ const getMatchClass = (rate: number) => {
 
 <style scoped>
 .job-management-dashboard {
-  max-width: 1400px;
-  margin: 0 auto;
+  max-width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
 }
 
 /* ========== 页面头部 ========== */
 .dashboard-header {
-  margin-bottom: 32px;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  margin-bottom: 24px;
 }
 
 .header-content {
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
+  gap: 16px;
+  width: 100%;
 }
 
 .title-section {
@@ -432,22 +440,26 @@ const getMatchClass = (rate: number) => {
 }
 
 .page-title {
+  margin: 0 0 8px;
   font-size: 28px;
   font-weight: 700;
-  color: #1a1a1a;
-  margin-bottom: 8px;
-  letter-spacing: -0.5px;
+  color: #0f172a;
+  letter-spacing: -0.03em;
 }
 
 .page-subtitle {
+  margin: 0;
+  max-width: 620px;
   font-size: 14px;
-  color: #6b7280;
-  line-height: 1.5;
+  color: #64748b;
+  line-height: 1.6;
 }
 
 .header-actions {
   display: flex;
   gap: 12px;
+  flex-wrap: wrap;
+  flex-shrink: 0;
 }
 
 .btn-primary,
@@ -455,24 +467,25 @@ const getMatchClass = (rate: number) => {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 10px 20px;
+  min-height: 40px;
+  padding: 0 16px;
   border: none;
-  border-radius: 8px;
+  border-radius: 10px;
   font-size: 14px;
-  font-weight: 500;
+  font-weight: 600;
   cursor: pointer;
   transition: all 0.2s ease;
   outline: none;
 }
 
 .btn-primary {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: linear-gradient(135deg, #2563eb 0%, #3b82f6 100%);
   color: white;
-  box-shadow: 0 2px 4px rgba(102, 126, 234, 0.2);
+  box-shadow: 0 10px 24px rgba(37, 99, 235, 0.22);
 }
 
 .btn-primary:hover {
-  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+  box-shadow: 0 14px 28px rgba(37, 99, 235, 0.26);
   transform: translateY(-1px);
 }
 
@@ -483,8 +496,8 @@ const getMatchClass = (rate: number) => {
 }
 
 .btn-secondary:hover {
-  background: #f9fafb;
-  border-color: #d1d5db;
+  background: #f8fbff;
+  border-color: #bfdbfe;
 }
 
 .btn-icon {
@@ -495,46 +508,36 @@ const getMatchClass = (rate: number) => {
 /* ========== 统计卡片 ========== */
 .stats-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-  gap: 24px;
-  margin-bottom: 32px;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 16px;
+  margin-bottom: 24px;
 }
 
 .stat-card {
   background: white;
-  border-radius: 12px;
-  padding: 24px;
+  border-radius: 14px;
+  border: 1px solid #e2e8f0;
+  padding: 18px 20px;
   display: flex;
-  gap: 20px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+  gap: 14px;
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.04);
   transition: all 0.2s ease;
-  animation: fadeInUp 0.4s ease;
-}
-
-.stat-card:nth-child(1) { animation-delay: 0.05s; }
-.stat-card:nth-child(2) { animation-delay: 0.1s; }
-.stat-card:nth-child(3) { animation-delay: 0.15s; }
-.stat-card:nth-child(4) { animation-delay: 0.2s; }
-
-@keyframes fadeInUp {
-  from {
-    opacity: 0;
-    transform: translateY(20px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+  align-items: flex-start;
 }
 
 .stat-card:hover {
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-  transform: translateY(-2px);
+  box-shadow: 0 12px 24px rgba(15, 23, 42, 0.06);
+  transform: translateY(-1px);
 }
 
+.stat-card.stat-primary { border-left: 4px solid #667eea; }
+.stat-card.stat-info { border-left: 4px solid #06b6d4; }
+.stat-card.stat-success { border-left: 4px solid #10b981; }
+.stat-card.stat-warning { border-left: 4px solid #f59e0b; }
+
 .stat-icon-wrapper {
-  width: 56px;
-  height: 56px;
+  width: 44px;
+  height: 44px;
   border-radius: 12px;
   display: flex;
   align-items: center;
@@ -542,97 +545,70 @@ const getMatchClass = (rate: number) => {
   flex-shrink: 0;
 }
 
-.stat-icon-wrapper.primary {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-}
-
-.stat-icon-wrapper.info {
-  background: linear-gradient(135deg, #06b6d4 0%, #3b82f6 100%);
-}
-
-.stat-icon-wrapper.success {
-  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
-}
-
-.stat-icon-wrapper.warning {
-  background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
-}
+.stat-icon-wrapper.primary { background: rgba(102, 126, 234, 0.1); }
+.stat-icon-wrapper.info { background: rgba(6, 182, 212, 0.1); }
+.stat-icon-wrapper.success { background: rgba(16, 185, 129, 0.1); }
+.stat-icon-wrapper.warning { background: rgba(245, 158, 11, 0.1); }
 
 .stat-icon {
-  width: 28px;
-  height: 28px;
-  color: white;
+  width: 24px;
+  height: 24px;
   stroke-width: 2;
 }
+
+.stat-card.stat-primary .stat-icon { stroke: #667eea; }
+.stat-card.stat-info .stat-icon { stroke: #06b6d4; }
+.stat-card.stat-success .stat-icon { stroke: #10b981; }
+.stat-card.stat-warning .stat-icon { stroke: #f59e0b; }
 
 .stat-content {
   flex: 1;
 }
 
 .stat-label {
-  font-size: 13px;
-  color: #6b7280;
-  margin-bottom: 8px;
-  font-weight: 500;
+  font-size: 12px;
+  color: #64748b;
+  margin-bottom: 4px;
+  font-weight: 600;
 }
 
 .stat-value {
-  font-size: 32px;
+  font-size: 28px;
   font-weight: 700;
-  color: #1a1a1a;
-  margin-bottom: 8px;
-  letter-spacing: -1px;
-}
-
-.stat-trend {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  font-size: 13px;
-  font-weight: 500;
-}
-
-.stat-trend.positive {
-  color: #10b981;
-}
-
-.stat-trend.negative {
-  color: #ef4444;
-}
-
-.trend-icon {
-  width: 16px;
-  height: 16px;
+  color: #0f172a;
+  margin-bottom: 6px;
+  letter-spacing: -0.03em;
 }
 
 .stat-meta {
-  font-size: 13px;
-  color: #f59e0b;
+  font-size: 12px;
+  color: #94a3b8;
   font-weight: 500;
 }
 
 /* ========== 岗位列表 ========== */
 .jobs-section {
   background: white;
-  border-radius: 12px;
-  padding: 24px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
-  animation: fadeInUp 0.4s ease 0.25s both;
+  border: 1px solid #e2e8f0;
+  border-radius: 14px;
+  padding: 22px;
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.04);
 }
 
 .section-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 24px;
-  padding-bottom: 20px;
-  border-bottom: 1px solid #e5e7eb;
+  margin-bottom: 20px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid #f1f5f9;
 }
 
 .section-title {
-  font-size: 18px;
-  font-weight: 600;
-  color: #1a1a1a;
+  font-size: 16px;
+  font-weight: 700;
+  color: #0f172a;
+  letter-spacing: -0.02em;
 }
 
 .section-controls {
@@ -642,7 +618,7 @@ const getMatchClass = (rate: number) => {
 
 .search-box {
   position: relative;
-  width: 280px;
+  width: 260px;
 }
 
 .search-icon {
@@ -650,28 +626,28 @@ const getMatchClass = (rate: number) => {
   left: 12px;
   top: 50%;
   transform: translateY(-50%);
-  width: 18px;
-  height: 18px;
+  width: 16px;
+  height: 16px;
   color: #9ca3af;
   pointer-events: none;
 }
 
 .search-input {
   width: 100%;
-  padding: 10px 12px 10px 40px;
+  padding: 8px 12px 8px 38px;
   border: 1px solid #e5e7eb;
-  border-radius: 8px;
-  font-size: 14px;
+  border-radius: 10px;
+  font-size: 13px;
   color: #1a1a1a;
-  background: #fafbfc;
+  background: white;
   transition: all 0.2s ease;
   outline: none;
 }
 
 .search-input:focus {
-  border-color: #667eea;
+  border-color: #60a5fa;
   background: white;
-  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.08);
 }
 
 .search-input::placeholder {
@@ -683,14 +659,14 @@ const getMatchClass = (rate: number) => {
 }
 
 :deep(.sort-select .el-input__wrapper) {
-  border-radius: 8px;
-  background: #fafbfc;
-  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  background: #f8fbff;
+  border: 1px solid rgba(214, 223, 240, 0.96);
 }
 
 /* ========== 表格 ========== */
 .jobs-table {
-  margin-top: 20px;
+  margin-top: 16px;
 }
 
 .table-header {
@@ -698,11 +674,11 @@ const getMatchClass = (rate: number) => {
   grid-template-columns: 2fr 1fr 1fr 1.2fr 1fr 1fr;
   gap: 16px;
   padding: 12px 16px;
-  background: #f9fafb;
-  border-radius: 8px;
-  font-size: 13px;
-  font-weight: 600;
-  color: #6b7280;
+  background: #f8fbff;
+  border-radius: 10px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #64748b;
   margin-bottom: 8px;
 }
 
@@ -718,17 +694,18 @@ const getMatchClass = (rate: number) => {
   gap: 16px;
   padding: 16px;
   background: white;
-  border: 1px solid #e5e7eb;
-  border-radius: 8px;
+  border: 1px solid #f1f5f9;
+  border-radius: 12px;
   transition: all 0.2s ease;
   cursor: pointer;
   align-items: center;
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.02);
 }
 
 .table-row:hover {
-  border-color: #667eea;
-  box-shadow: 0 2px 8px rgba(102, 126, 234, 0.1);
-  transform: translateX(4px);
+  border-color: #bfdbfe;
+  box-shadow: 0 8px 16px rgba(37, 99, 235, 0.06);
+  transform: translateY(-1px);
 }
 
 .job-info {
@@ -739,28 +716,28 @@ const getMatchClass = (rate: number) => {
 
 .job-title {
   font-size: 15px;
-  font-weight: 600;
-  color: #1a1a1a;
+  font-weight: 700;
+  color: #0f172a;
 }
 
 .job-meta {
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 13px;
-  color: #6b7280;
+  font-size: 12px;
+  color: #64748b;
 }
 
 .job-separator {
-  color: #d1d5db;
+  color: #e5e7eb;
 }
 
 .status-badge {
   display: inline-block;
-  padding: 4px 12px;
-  border-radius: 6px;
+  padding: 5px 12px;
+  border-radius: 999px;
   font-size: 12px;
-  font-weight: 500;
+  font-weight: 700;
 }
 
 .status-badge.active {
@@ -785,27 +762,27 @@ const getMatchClass = (rate: number) => {
 }
 
 .count-icon {
-  width: 18px;
-  height: 18px;
+  width: 16px;
+  height: 16px;
   color: #667eea;
 }
 
 .count-number {
-  font-size: 15px;
-  font-weight: 600;
-  color: #1a1a1a;
+  font-size: 14px;
+  font-weight: 700;
+  color: #0f172a;
 }
 
 .match-rate {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
 }
 
 .match-bar {
   flex: 1;
   height: 8px;
-  background: #e5e7eb;
+  background: #f1f5f9;
   border-radius: 4px;
   overflow: hidden;
 }
@@ -817,21 +794,21 @@ const getMatchClass = (rate: number) => {
 }
 
 .match-fill.high {
-  background: linear-gradient(90deg, #10b981 0%, #059669 100%);
+  background: #10b981;
 }
 
 .match-fill.medium {
-  background: linear-gradient(90deg, #f59e0b 0%, #d97706 100%);
+  background: #f59e0b;
 }
 
 .match-fill.low {
-  background: linear-gradient(90deg, #ef4444 0%, #dc2626 100%);
+  background: #ef4444;
 }
 
 .match-percentage {
-  font-size: 14px;
-  font-weight: 600;
-  color: #1a1a1a;
+  font-size: 13px;
+  font-weight: 700;
+  color: #0f172a;
   min-width: 40px;
 }
 
@@ -839,18 +816,18 @@ const getMatchClass = (rate: number) => {
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: 14px;
-  color: #6b7280;
+  font-size: 13px;
+  color: #64748b;
 }
 
 .reports-count.highlight {
   color: #f59e0b;
-  font-weight: 600;
+  font-weight: 700;
 }
 
 .reports-icon {
-  width: 18px;
-  height: 18px;
+  width: 16px;
+  height: 16px;
 }
 
 .col-actions {
@@ -864,7 +841,7 @@ const getMatchClass = (rate: number) => {
   height: 32px;
   border: 1px solid #e5e7eb;
   background: white;
-  border-radius: 6px;
+  border-radius: 10px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -880,8 +857,8 @@ const getMatchClass = (rate: number) => {
 }
 
 .action-btn:hover {
-  background: #f9fafb;
-  border-color: #667eea;
+  background: #f8fbff;
+  border-color: #bfdbfe;
 }
 
 .action-btn:hover svg {
@@ -898,14 +875,24 @@ const getMatchClass = (rate: number) => {
 }
 
 /* ========== 响应式设计 ========== */
-@media (max-width: 1200px) {
+.job-management-dashboard {
+  max-width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  padding: 0;
+}
+
+@media (max-width: 1300px) {
   .stats-grid {
     grid-template-columns: repeat(2, 1fr);
   }
+}
 
+@media (max-width: 1000px) {
   .table-header,
   .table-row {
-    grid-template-columns: 2fr 1fr 1fr 1fr 0.8fr 1fr;
+    grid-template-columns: 1.5fr 1fr 1fr 1fr 0.8fr 0.8fr;
   }
 
   .job-meta {
@@ -913,7 +900,7 @@ const getMatchClass = (rate: number) => {
   }
 }
 
-@media (max-width: 768px) {
+@media (max-width: 640px) {
   .header-content {
     flex-direction: column;
     gap: 16px;
@@ -921,6 +908,7 @@ const getMatchClass = (rate: number) => {
 
   .header-actions {
     width: 100%;
+    flex-direction: column;
   }
 
   .btn-primary,
@@ -935,7 +923,7 @@ const getMatchClass = (rate: number) => {
   .section-header {
     flex-direction: column;
     align-items: flex-start;
-    gap: 16px;
+    gap: 12px;
   }
 
   .section-controls {
@@ -972,25 +960,25 @@ const getMatchClass = (rate: number) => {
   .col-status::before {
     content: '状态：';
     color: #6b7280;
-    font-size: 13px;
+    font-size: 12px;
   }
 
   .col-applications::before {
     content: '投递数：';
     color: #6b7280;
-    font-size: 13px;
+    font-size: 12px;
   }
 
   .col-match::before {
     content: '匹配度：';
     color: #6b7280;
-    font-size: 13px;
+    font-size: 12px;
   }
 
   .col-reports::before {
     content: '待处理：';
     color: #6b7280;
-    font-size: 13px;
+    font-size: 12px;
   }
 
   .col-actions {

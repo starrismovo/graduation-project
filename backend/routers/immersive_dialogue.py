@@ -45,6 +45,7 @@ router = APIRouter(prefix="/assessment/immersive", tags=["沉浸式对话"])
 
 class NextQuestionRequest(BaseModel):
     candidate_id: str
+    assessment_id: Optional[int] = None
     role_id: str = "hr"
     role_name: Optional[str] = None
     conversation_depth: int = 0
@@ -56,6 +57,7 @@ class NextQuestionRequest(BaseModel):
 
 class AnalyzeResponseRequest(BaseModel):
     candidate_id: str
+    assessment_id: Optional[int] = None
     candidate_name: Optional[str] = None
     current_speaker: str = "hr"
     candidate_response: str
@@ -70,6 +72,7 @@ class UnifiedAgentRequest(BaseModel):
     """统一三 Agent 执行入口请求模型"""
     operation: Literal["next_question", "analyze_response", "analyze_and_next"]
     candidate_id: str
+    assessment_id: Optional[int] = None
     candidate_name: Optional[str] = None
     role_id: str = "hr"
     conversation_depth: int = 0
@@ -123,6 +126,7 @@ async def _run_next_question(
     job_info: Optional[Dict[str, Any]],
     resume_info: Optional[Dict[str, Any]],
     candidate_name: str = "",
+    assessment_id: Optional[int] = None,
 ) -> Dict[str, Any]:
     return await service.generate_next_question(
         id=candidate_id,
@@ -133,6 +137,7 @@ async def _run_next_question(
         target_position=target_position,
         job_info=job_info,
         resume_info=resume_info,
+        assessment_id=assessment_id,
     )
 
 
@@ -148,6 +153,7 @@ async def _run_analyze_response(
     job_info: Optional[Dict[str, Any]],
     resume_info: Optional[Dict[str, Any]],
     candidate_name: str,
+    assessment_id: Optional[int] = None,
 ) -> Dict[str, Any]:
     return await service.analyze_candidate_response(
         id=candidate_id,
@@ -159,6 +165,7 @@ async def _run_analyze_response(
         target_position=target_position,
         job_info=job_info,
         resume_info=resume_info,
+        assessment_id=assessment_id,
     )
 
 
@@ -182,6 +189,7 @@ async def _run_unified_agent(
             job_info=request.job_info,
             resume_info=request.resume_info,
             candidate_name=request.candidate_name or "",
+            assessment_id=request.assessment_id,
         )
         return {
             "operation": request.operation,
@@ -204,6 +212,7 @@ async def _run_unified_agent(
         job_info=request.job_info,
         resume_info=request.resume_info,
         candidate_name=candidate_name,
+        assessment_id=request.assessment_id,
     )
 
     should_end = analysis.get("decision", {}).get("should_end", False)
@@ -228,6 +237,7 @@ async def _run_unified_agent(
             job_info=request.job_info,
             resume_info=request.resume_info,
             candidate_name=request.candidate_name or "",
+            assessment_id=request.assessment_id,
         )
 
     return {
@@ -295,6 +305,7 @@ async def get_next_question(
             job_info=request.job_info,
             resume_info=request.resume_info,
             candidate_name="",
+            assessment_id=request.assessment_id,
         )
         
         return {
@@ -350,6 +361,7 @@ async def analyze_candidate_response(
             job_info=request.job_info,
             resume_info=request.resume_info,
             candidate_name=request.candidate_name or "候选人",
+            assessment_id=request.assessment_id,
         )
         
         return {
@@ -369,6 +381,7 @@ async def analyze_candidate_response(
 class AnalyzeAndNextRequest(BaseModel):
     """合并请求：分析回答并生成下一个问题"""
     candidate_id: str
+    assessment_id: Optional[int] = None
     candidate_name: Optional[str] = None
     current_speaker: str = "hr"
     candidate_response: str
@@ -403,6 +416,7 @@ async def analyze_and_generate_next(
             UnifiedAgentRequest(
                 operation="analyze_and_next",
                 candidate_id=request.candidate_id,
+                assessment_id=request.assessment_id,
                 candidate_name=request.candidate_name,
                 role_id=request.current_speaker,
                 conversation_depth=request.conversation_depth,
@@ -464,6 +478,8 @@ async def save_assessment_session(
         result = await service.save_assessment_session(
             candidate_id=request_data.get("candidate_id"),
             assessment_id=request_data.get("assessment_id"),
+            job_id=request_data.get("job_id"),
+            job_title=request_data.get("job_title"),
             messages=request_data.get("messages", []),
             scores=request_data.get("scores", {}),
             patterns=request_data.get("patterns", []),
@@ -603,9 +619,9 @@ async def get_candidate_sessions(
         from models.assessment import AssessmentRecord
         
         sessions = db.query(AssessmentRecord).filter(
-            AssessmentRecord.candidate_id == candidate_id,
-            AssessmentRecord.assessment_type == "immersive_dialogue"
-        ).all()
+            AssessmentRecord.candidate_id == int(candidate_id),
+            AssessmentRecord.assessment_mode == "immersive"
+        ).order_by(AssessmentRecord.created_at.desc()).all()
         
         return {
             "code": 200,
@@ -613,8 +629,11 @@ async def get_candidate_sessions(
                 {
                     "id": s.id,
                     "created_at": s.created_at.isoformat() if s.created_at else None,
-                    "overall_score": s.overall_score,
-                    "summary": s.summary
+                    "job_id": s.job_id,
+                    "job_title": s.job_title,
+                    "match_score": s.match_score,
+                    "assessment_status": s.assessment_status.value if s.assessment_status else None,
+                    "summary": s.conversation_summary
                 }
                 for s in sessions
             ],
@@ -643,16 +662,30 @@ async def get_session_details(
         if not session:
             raise HTTPException(status_code=404, detail="会话不存在")
         
+        detail_payload = {}
+        if session.overall_impression:
+            try:
+                detail_payload = json.loads(session.overall_impression)
+            except Exception:
+                detail_payload = {"overall_impression": session.overall_impression}
+
         return {
             "code": 200,
             "data": {
                 "id": session.id,
                 "candidate_id": session.candidate_id,
+                "job_id": session.job_id,
+                "job_title": session.job_title,
                 "created_at": session.created_at.isoformat() if session.created_at else None,
-                "scores": session.scores,
-                "overall_score": session.overall_score,
-                "summary": session.summary,
-                "session_data": session.session_data
+                "match_score": session.match_score,
+                "assessment_status": session.assessment_status.value if session.assessment_status else None,
+                "assessment_mode": session.assessment_mode,
+                "total_rounds": session.total_rounds,
+                "duration_minutes": session.duration_minutes,
+                "conversation_depth": session.conversation_depth,
+                "roles_participated": session.roles_participated,
+                "summary": session.conversation_summary,
+                "session_data": detail_payload
             },
             "message": "会话详情获取成功"
         }
@@ -782,10 +815,20 @@ async def update_assessment_progress(
             if request_data.get("match_score") is not None:
                 record.match_score = request_data["match_score"]
         else:
+            job_id = request_data.get("job_id")
+            if not job_id:
+                return {
+                    "code": 200,
+                    "data": {
+                        "assessment_id": None,
+                        "status": status.value if status else None,
+                    },
+                    "message": "未指定岗位实例，跳过后端 AssessmentSession 创建"
+                }
             # 创建新记录
             record = AssessmentRecord(
                 candidate_id=int(candidate_id),
-                job_id=request_data.get("job_id", 0),
+                job_id=int(job_id),
                 job_title=request_data.get("job_title", "未知岗位"),
                 assessment_status=status,
                 assessment_mode="immersive",

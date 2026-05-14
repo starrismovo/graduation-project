@@ -215,6 +215,23 @@ export const fetchReportDetail = async (recordId: string | number) => {
  * @param options.recordId 指定评估记录ID
  * @param options.candidateId 未指定评估记录时，读取候选人最新已完成评估
  */
+export const updateAssessmentFeedback = async (
+  recordId: string | number,
+  data: {
+    feedback_result: 'recommended' | 'hold' | 'not_matched'
+    hr_feedback: string
+    feedback_visible_to_candidate?: boolean
+    feedback_by?: number | string | null
+  }
+) => {
+  const payload = {
+    ...data,
+    feedback_by: data.feedback_by ? Number(data.feedback_by) : null,
+  }
+  const response = await request.patch(`/assessment/records/${recordId}/feedback`, payload)
+  return response.data?.data || response.data || {}
+}
+
 export const fetchPsychologyDetail = async (options: {
   recordId?: string | number
   candidateId?: string | number
