@@ -142,6 +142,15 @@
                   <span class="job-separator">·</span>
                   <span class="job-date">{{ job.salary_min }}k - {{ job.salary_max }}k</span>
                 </div>
+                <div class="job-psych-tags">
+                  <span class="job-psych-label">心理侧重点</span>
+                  <template v-if="getPsychFocusLabels(job).length">
+                    <span v-for="label in getPsychFocusLabels(job)" :key="label" class="job-psych-tag">
+                      {{ label }}
+                    </span>
+                  </template>
+                  <span v-else class="job-psych-empty">暂未配置</span>
+                </div>
               </div>
             </div>
 
@@ -240,6 +249,24 @@
           <span style="margin: 0 8px">-</span>
           <el-input-number v-model.number="editForm.salary_max" :min="0" placeholder="最高" />
         </el-form-item>
+        <el-form-item label="心理侧重点">
+          <div class="psych-focus-panel">
+            <p class="psych-focus-tip">
+              勾选岗位行为特征，系统会在后端转换为岗位心理特质要求。
+            </p>
+            <el-checkbox-group v-model="editForm.psychological_focus" class="psych-focus-options">
+              <el-checkbox
+                v-for="item in psychologicalFocusOptions"
+                :key="item.value"
+                :label="item.value"
+                border
+              >
+                <span class="psych-focus-title">{{ item.label }}</span>
+                <span class="psych-focus-hint">{{ item.hint }}</span>
+              </el-checkbox>
+            </el-checkbox-group>
+          </div>
+        </el-form-item>
       </el-form>
       <template #footer>
         <el-button @click="showEditDialog = false">取消</el-button>
@@ -256,6 +283,30 @@ import { useRouter } from 'vue-router'
 import { getHRJobList, deleteJob, updateJob } from '@/api/job'
 
 const router = useRouter()
+
+const psychologicalFocusOptions = [
+  { value: 'communication', label: '频繁沟通协作', hint: '客户交流、团队推动、跨部门协同' },
+  { value: 'self_drive', label: '自驱与目标管理', hint: '独立推进、结果负责、目标导向' },
+  { value: 'pressure', label: '高压力与稳定应对', hint: '快节奏、高压力、多变化场景' },
+  { value: 'innovation', label: '创新探索与快速学习', hint: '新业务、复杂问题、快速学习' },
+  { value: 'detail', label: '细致稳定与低失误', hint: '流程规范、质量控制、细节敏感' },
+  { value: 'empathy', label: '服务意识与共情能力', hint: '用户服务、组织协作、冲突处理' },
+  { value: 'analysis', label: '独立分析与理性决策', hint: '数据分析、策略判断、理性决策' },
+]
+
+function getPsychFocusLabels(job: any) {
+  const requirements = job?.personality_requirements || {}
+  if (Array.isArray(requirements.focus_labels) && requirements.focus_labels.length) {
+    return requirements.focus_labels.slice(0, 3)
+  }
+  if (Array.isArray(requirements.psychological_focus)) {
+    return requirements.psychological_focus
+      .map((value: string) => psychologicalFocusOptions.find(item => item.value === value)?.label)
+      .filter(Boolean)
+      .slice(0, 3)
+  }
+  return []
+}
 
 // ==================== 数据状态 ====================
 const loading = ref(false)
@@ -326,15 +377,26 @@ const handleCreateJob = () => {
 }
 
 const handleJobClick = (job: any) => {
-  router.push(`/views/position/${job.id}/edit`)
+  router.push({
+    path: '/home/candidates',
+    query: {
+      job_id: String(job.id),
+    },
+  })
 }
 
 const handleViewReports = (job: any) => {
-  router.push(`/home/job-manage`)
-  ElMessage.info(`筛选 "${job.name}" 的候选人`)
+  router.push({
+    path: '/home/candidates',
+    query: {
+      job_id: String(job.id),
+      status: 'completed',
+    },
+  })
 }
 
 const handleEditJob = (job: any) => {
+  const personalityRequirements = job.personality_requirements || {}
   editForm.value = {
     id: job.id,
     name: job.name,
@@ -344,6 +406,9 @@ const handleEditJob = (job: any) => {
     salary_min: job.salary_min,
     salary_max: job.salary_max,
     description: job.description,
+    required_traits: job.required_traits || {},
+    personality_requirements: personalityRequirements,
+    psychological_focus: personalityRequirements.psychological_focus || personalityRequirements.selected_focus || [],
   }
   showEditDialog.value = true
 }
@@ -384,6 +449,11 @@ const submitEdit = async () => {
       city: editForm.value.city,
       salary_min: Number(editForm.value.salary_min) || 0,
       salary_max: Number(editForm.value.salary_max) || 0,
+      required_traits: editForm.value.required_traits || {},
+      personality_requirements: {
+        ...(editForm.value.personality_requirements || {}),
+        psychological_focus: editForm.value.psychological_focus || [],
+      },
     })
     ElMessage.success('岗位信息已更新')
     showEditDialog.value = false
@@ -728,6 +798,34 @@ const getMatchClass = (rate: number) => {
   color: #64748b;
 }
 
+.job-psych-tags {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.job-psych-label {
+  font-size: 12px;
+  color: #64748b;
+}
+
+.job-psych-tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: #eef2ff;
+  color: #4f46e5;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.job-psych-empty {
+  font-size: 12px;
+  color: #94a3b8;
+}
+
 .job-separator {
   color: #e5e7eb;
 }
@@ -975,7 +1073,7 @@ const getMatchClass = (rate: number) => {
     font-size: 12px;
   }
 
-  .col-reports::before {
+.col-reports::before {
     content: '待处理：';
     color: #6b7280;
     font-size: 12px;
@@ -986,5 +1084,47 @@ const getMatchClass = (rate: number) => {
     padding-top: 8px;
     border-top: 1px solid #e5e7eb;
   }
+}
+
+.psych-focus-panel {
+  width: 100%;
+}
+
+.psych-focus-tip {
+  margin: 0 0 10px;
+  font-size: 12px;
+  line-height: 1.6;
+  color: #64748b;
+}
+
+.psych-focus-options {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+}
+
+.psych-focus-options :deep(.el-checkbox.is-bordered) {
+  height: auto;
+  margin-right: 0;
+  padding: 9px 12px;
+  border-radius: 8px;
+}
+
+.psych-focus-options :deep(.el-checkbox__label) {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 3px;
+  line-height: 1.4;
+}
+
+.psych-focus-title {
+  font-size: 13px;
+  color: #1f2937;
+  font-weight: 600;
+}
+
+.psych-focus-hint {
+  font-size: 12px;
+  color: #94a3b8;
 }
 </style>

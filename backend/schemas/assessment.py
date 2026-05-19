@@ -32,6 +32,8 @@ class AssessmentHistoryItem(BaseModel):
     created_at: datetime
     assessment_status: str
     assessment_mode: str
+    evaluation_count: Optional[int] = None
+    is_latest: Optional[bool] = None
     
     class Config:
         from_attributes = True
@@ -348,12 +350,17 @@ class SaveSessionResponse(BaseModel):
 class SaveAssessmentResultRequest(BaseModel):
     """保存评估结果的请求"""
     candidate_id: str
+    assessment_id: Optional[int] = None
     job_id: int
     assessment_mode: str = "immersive"  # immersive or standard
     all_scores: Dict[str, float] = Field(default_factory=dict)
+    score_coverage: Optional[Dict[str, str]] = None
     personality_scores: Optional[Dict[str, float]] = None
+    personality_score_coverage: Optional[Dict[str, str]] = None
     situational_scores: Optional[Dict[str, float]] = None
+    agent_scores: Optional[Dict[str, float]] = None
     candidate_info: Optional[Dict[str, Any]] = None
+    assessment_evidence: Optional[Dict[str, Any]] = None
     
     class Config:
         from_attributes = True

@@ -11,6 +11,7 @@ from typing import Dict, Any, List, Optional
 
 from models.assessment import CandidatePersonalityProfile
 from models.job import Job
+from services.personality_scoring import normalize_big_five_scores
 
 
 class ReportAgent:
@@ -91,6 +92,7 @@ class ReportAgent:
         raw = cls._coerce_dict(getattr(job, "required_traits", None))
         if not raw:
             raw = cls._coerce_dict(getattr(job, "personality_requirements", None))
+            raw = cls._coerce_dict(raw.get("generated_big_five")) or raw
 
         aliases = {
             "外向性": "extraversion",
@@ -109,14 +111,11 @@ class ReportAgent:
         }
 
         requirements: Dict[str, float] = {}
-        for raw_key, raw_value in raw.items():
+        for raw_key, raw_value in normalize_big_five_scores(raw).items():
             key = aliases.get(str(raw_key).strip())
             if not key:
                 continue
-            value = cls._coerce_float(raw_value, 0.0)
-            if str(raw_key).strip() in {"情绪稳定性", "emotional_stability"}:
-                value = 10 - value
-            requirements[key] = max(0.0, min(10.0, value))
+            requirements[key] = max(0.0, min(10.0, cls._coerce_float(raw_value, 0.0)))
         return requirements
 
     @classmethod
@@ -185,11 +184,11 @@ class ReportAgent:
     ) -> Dict[str, List[Dict[str, str]]]:
         job_name = getattr(job, "name", "当前岗位")
         job_text = f"{getattr(job, 'name', '')} {getattr(job, 'category', '')} {getattr(job, 'description', '')}".lower()
-        extraversion = cls._coerce_float(getattr(profile, "trait_extroversion", None), 5.0)
-        agreeableness = cls._coerce_float(getattr(profile, "trait_agreeableness", None), 5.0)
-        conscientiousness = cls._coerce_float(getattr(profile, "trait_conscientiousness", None), 5.0)
-        openness = cls._coerce_float(getattr(profile, "trait_openness", None), 5.0)
-        neuroticism = cls._coerce_float(getattr(profile, "trait_neuroticism", None), 5.0)
+        extraversion = getattr(profile, "trait_extroversion", None)
+        agreeableness = getattr(profile, "trait_agreeableness", None)
+        conscientiousness = getattr(profile, "trait_conscientiousness", None)
+        openness = getattr(profile, "trait_openness", None)
+        neuroticism = getattr(profile, "trait_neuroticism", None)
 
         current_fit = "建议优先尝试"
         aligned_count = sum(1 for item in trait_insights if item["match_status"] == "aligned")
@@ -208,14 +207,14 @@ class ReportAgent:
             }
         ]
 
-        if openness >= 7 and agreeableness >= 6.5:
+        if openness is not None and agreeableness is not None and openness >= 7 and agreeableness >= 6.5:
             recommendations.append({
                 "title": "研究与洞察类岗位",
                 "fit_level": "较为适合",
                 "reason": "开放性与宜人性较高，通常更适合需要用户理解、信息整合与跨角色协同的岗位情境。",
                 "action": "可优先关注用户研究、产品研究、内容策划等强调洞察与沟通的岗位模板。",
             })
-        elif conscientiousness >= 7 and neuroticism <= 5.5:
+        elif conscientiousness is not None and neuroticism is not None and conscientiousness >= 7 and neuroticism <= 5.5:
             recommendations.append({
                 "title": "执行与交付类岗位",
                 "fit_level": "较为适合",
@@ -246,28 +245,28 @@ class ReportAgent:
             })
 
         cautious_recommendations: List[Dict[str, str]] = []
-        if extraversion <= 5 and agreeableness <= 5.5:
+        if extraversion is not None and agreeableness is not None and extraversion <= 5 and agreeableness <= 5.5:
             cautious_recommendations.append({
                 "title": "高频外联与强销售导向岗位",
                 "fit_level": "不建议优先投递",
                 "reason": "当前人格结构在持续陌生沟通、强说服和高频关系推进场景中可能适应成本较高。",
                 "action": "如果确需尝试，建议先通过模拟沟通、案例表达训练与真实外联实践补足证据。",
             })
-        if openness <= 5.5 and "创新" in job_text:
+        if openness is not None and openness <= 5.5 and "创新" in job_text:
             cautious_recommendations.append({
                 "title": "高探索与强创新要求岗位",
                 "fit_level": "不建议优先投递",
                 "reason": "当前开放性表现偏稳健，面对高度模糊和持续探索的岗位情境时，可能需要更长适应周期。",
                 "action": "建议先积累跨领域分析、需求拆解和创新案例，再逐步尝试相关岗位实例。",
             })
-        if conscientiousness <= 5.5 and ("项目" in job_text or "交付" in job_text or "运营" in job_text):
+        if conscientiousness is not None and conscientiousness <= 5.5 and ("项目" in job_text or "交付" in job_text or "运营" in job_text):
             cautious_recommendations.append({
                 "title": "强节奏交付与流程推进岗位",
                 "fit_level": "不建议优先投递",
                 "reason": "当前尽责性表现尚未形成稳定优势，面对多任务并行和严格节点要求时可能压力较大。",
                 "action": "建议先通过项目管理、小型交付任务和周期复盘提升稳定执行能力。",
             })
-        if neuroticism >= 6.5:
+        if neuroticism is not None and neuroticism >= 6.5:
             cautious_recommendations.append({
                 "title": "高压与高不确定性岗位",
                 "fit_level": "不建议优先投递",
@@ -372,35 +371,42 @@ class ReportAgent:
         profile: CandidatePersonalityProfile,
         job: Optional[Job],
         match_breakdown: Dict[str, float],
+        evidence: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
+        evidence = evidence or {}
         trait_insights = self._build_trait_insights(profile, job)
         career_advice = self._build_career_recommendations(profile, job, trait_insights)
         career_recommendations = career_advice["recommended"]
         cautious_career_recommendations = career_advice["cautious"]
         development_actions = self._build_development_actions(trait_insights)
+        weights = match_breakdown.get("weights") or {}
+        hard_skill_gate = match_breakdown.get("hard_skill_gate") or {}
+        gate_reason = str(hard_skill_gate.get("reason") or "").strip()
 
         overview_summary = (
             f"本次评估显示，你与“{getattr(job, 'name', '目标岗位')}”的整体匹配度为"
             f"{round(self._coerce_float(match_breakdown.get('overall_score', 50.0)), 1)}%，"
-            "人格特质能够提供一定支撑，但仍需结合具体岗位情境进行针对性提升。"
+            "该结果由技能匹配、人格匹配与多Agent评估证据综合形成。"
         )
+        if hard_skill_gate.get("applied") and gate_reason:
+            overview_summary += f"由于{gate_reason}，系统触发了硬技能封顶机制。"
         personality_summary = "报告从大五人格视角解释你在当前岗位情境中的稳定优势、潜在风险与发展方向。"
 
         match_dimensions = [
             {
-                "label": "性格匹配",
+                "label": "岗位人格适配",
                 "score": round(self._coerce_float(match_breakdown.get("personality_match", 50.0)), 1),
-                "description": "依据大五人格与岗位心理要求的对齐程度计算。",
+                "description": f"依据候选人大五人格与岗位心理要求区间的适配程度计算，并非人格雷达图的平均分，当前权重约 {round(self._coerce_float(weights.get('personality', 0.35)) * 100)}%。",
             },
             {
                 "label": "技能匹配",
                 "score": round(self._coerce_float(match_breakdown.get("skill_match", 50.0)), 1),
-                "description": "依据岗位技能证据与评估过程中的能力表现综合判断。",
+                "description": f"依据岗位技能证据与评估过程中的能力表现综合判断，当前权重约 {round(self._coerce_float(weights.get('skill', 0.5)) * 100)}%。",
             },
             {
                 "label": "综合匹配",
                 "score": round(self._coerce_float(match_breakdown.get("overall_score", 50.0)), 1),
-                "description": "综合人格、技能与岗位情境得到的整体 Person-Job Matching 结果。",
+                "description": gate_reason if hard_skill_gate.get("applied") else "综合人格、技能与岗位情境得到的整体 Person-Job Matching 结果。",
             },
         ]
 
@@ -408,6 +414,13 @@ class ReportAgent:
             "overview_summary": overview_summary,
             "personality_summary": personality_summary,
             "match_dimensions": match_dimensions,
+            "evidence_summary": {
+                "verified_skills": evidence.get("verified_skills", []),
+                "missing_must_have_skills": evidence.get("missing_must_have_skills", []),
+                "personality_evidence": evidence.get("personality_evidence", {}),
+                "evidence_quote": evidence.get("evidence_quote", []),
+                "hard_skill_gate": hard_skill_gate,
+            },
             "trait_insights": trait_insights,
             "career_recommendations": career_recommendations,
             "cautious_career_recommendations": cautious_career_recommendations,
@@ -423,14 +436,61 @@ class ReportAgent:
         match_breakdown: Dict[str, float],
         matched_skills: List[str],
         missing_skills: List[str],
+        evidence: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
+        evidence = evidence or {}
         strengths = self.generate_analysis("strengths", profile)
         gaps = self.generate_analysis("gaps", profile)
         recommendations = self.generate_recommendations(profile, job)
+        verified_from_evidence = [
+            str(item).strip()
+            for item in (evidence.get("verified_skills") or [])
+            if str(item).strip()
+        ]
+        missing_from_evidence = [
+            str(item).strip()
+            for item in (evidence.get("missing_must_have_skills") or [])
+            if str(item).strip()
+        ]
+        personality_evidence = {
+            str(key): str(value)
+            for key, value in (evidence.get("personality_evidence") or {}).items()
+            if str(value).strip()
+        }
+        evidence_quotes = [
+            str(item).strip()
+            for item in (evidence.get("evidence_quote") or [])
+            if str(item).strip()
+        ]
+        hard_skill_gate = match_breakdown.get("hard_skill_gate") or {}
+        weights = match_breakdown.get("weights") or {}
+
+        all_matched = list(dict.fromkeys([*matched_skills, *verified_from_evidence]))
+        all_missing = list(dict.fromkeys([*missing_skills, *missing_from_evidence]))
+        if all_matched:
+            strengths.insert(0, f"已形成岗位能力证据：{', '.join(all_matched[:5])}")
+        if personality_evidence:
+            trait_names = "、".join(list(personality_evidence.keys())[:4])
+            strengths.append(f"已获得心理特质证据：{trait_names}")
+        if all_missing:
+            gaps.insert(0, f"岗位必备能力仍需补证或存在缺口：{', '.join(all_missing[:5])}")
+        if hard_skill_gate.get("applied"):
+            cap = hard_skill_gate.get("cap")
+            reason = hard_skill_gate.get("reason") or "硬技能证据不足"
+            gaps.insert(0, f"综合匹配度受到硬技能封顶影响：{reason}，当前上限为 {cap}%")
+            recommendations.insert(0, "优先补齐岗位必备技能证据，再综合参考人格匹配结果。")
+        if all_missing:
+            recommendations.insert(0, f"围绕 {', '.join(all_missing[:3])} 补充项目案例、工具使用过程和可量化结果。")
         report_sections = self.build_report_sections(
             profile=profile,
             job=job,
             match_breakdown=match_breakdown,
+            evidence={
+                "verified_skills": all_matched,
+                "missing_must_have_skills": all_missing,
+                "personality_evidence": personality_evidence,
+                "evidence_quote": evidence_quotes,
+            },
         )
 
         detailed_analysis = {
@@ -441,10 +501,19 @@ class ReportAgent:
                 "skill_match": round(float(match_breakdown.get("skill_match", 50.0)), 1),
                 "personality_match": round(float(match_breakdown.get("personality_match", 50.0)), 1),
                 "overall_score": round(float(match_breakdown.get("overall_score", 50.0)), 1),
+                "weights": weights,
+                "hard_skill_gate": hard_skill_gate,
             },
             "skill_evidence": {
-                "matched_skills": matched_skills,
-                "missing_skills": missing_skills,
+                "matched_skills": all_matched,
+                "missing_skills": all_missing,
+            },
+            "personality_evidence": personality_evidence,
+            "evidence_quote": evidence_quotes,
+            "score_explanation": {
+                "summary": report_sections.get("overview_summary"),
+                "weights": weights,
+                "hard_skill_gate": hard_skill_gate,
             },
             "structured_report": report_sections,
         }

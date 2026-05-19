@@ -4,6 +4,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { ref, onMounted, computed } from 'vue'
 import { createJob, deleteJob, getHRJobList } from '../api/job'
 import { Delete, Edit, View, Plus, ArrowRight, User, Document } from '@element-plus/icons-vue'
+import request from '@/utils/request'
 
 const router = useRouter()
 
@@ -22,8 +23,19 @@ const createFormData = ref({
   category: '',
   city: '',
   salary_min: '',
-  salary_max: ''
+  salary_max: '',
+  psychological_focus: [] as string[]
 })
+
+const psychologicalFocusOptions = [
+  { value: 'communication', label: '频繁沟通协作', hint: '适合客户交流、团队推动、跨部门协同' },
+  { value: 'self_drive', label: '自驱与目标管理', hint: '适合目标导向、独立推进、结果负责' },
+  { value: 'pressure', label: '高压力与稳定应对', hint: '适合节奏快、任务压力高、变化较多' },
+  { value: 'innovation', label: '创新探索与快速学习', hint: '适合新业务、复杂问题、快速学习' },
+  { value: 'detail', label: '细致稳定与低失误', hint: '适合流程规范、质量控制、细节敏感' },
+  { value: 'empathy', label: '服务意识与共情能力', hint: '适合用户服务、组织协作、冲突处理' },
+  { value: 'analysis', label: '独立分析与理性决策', hint: '适合数据分析、策略判断、理性决策' },
+]
 
 const stats = ref({
   totalJobs: 0,
@@ -124,6 +136,9 @@ const handleCreateJob = async () => {
       city: createFormData.value.city?.trim() || '未填写',
       salary_min: Number(createFormData.value.salary_min) || 0,
       salary_max: Number(createFormData.value.salary_max) || 0,
+      personality_requirements: {
+        psychological_focus: createFormData.value.psychological_focus,
+      },
       required_traits: {}
     })
     
@@ -150,7 +165,8 @@ const resetCreateForm = () => {
     category: '',
     city: '',
     salary_min: '',
-    salary_max: ''
+    salary_max: '',
+    psychological_focus: []
   }
 }
 
@@ -180,8 +196,13 @@ const handleDeleteJob = async (job: any) => {
 }
 
 const handleViewReport = (job: any) => {
-  // ✅ 修正7：修复模板字符串
-  ElMessage.info(`查看岗位 "${job.name}" 的候选人报告（功能开发中）`)
+  router.push({
+    path: '/home/candidates',
+    query: {
+      job_id: String(job.id),
+      status: 'completed',
+    },
+  })
 }
 
 const handleCreateShortcut = () => {
@@ -190,6 +211,24 @@ const handleCreateShortcut = () => {
 
 const handleOpenJobManage = () => {
   router.push('/home/job-manage')
+}
+
+const handleOpenAnalytics = () => {
+  router.push('/home/analytics')
+}
+
+function getPsychFocusLabels(job: any) {
+  const requirements = job?.personality_requirements || {}
+  if (Array.isArray(requirements.focus_labels) && requirements.focus_labels.length) {
+    return requirements.focus_labels.slice(0, 3)
+  }
+  if (Array.isArray(requirements.psychological_focus)) {
+    return requirements.psychological_focus
+      .map((value: string) => psychologicalFocusOptions.find(item => item.value === value)?.label)
+      .filter(Boolean)
+      .slice(0, 3)
+  }
+  return []
 }
 
 const handleJumpReportQueue = () => {
@@ -228,8 +267,10 @@ async function loadCandidates() {
     if (candidateFilter.value.status) params.append('status', candidateFilter.value.status)
     params.append('limit', '50')
 
-    const res = await fetch(`/assessment/hr/candidates?${params}`)
-    const data = await res.json()
+    const res = await request.get('/assessment/hr/candidates', {
+      params: Object.fromEntries(params.entries()),
+    })
+    const data = res.data
     if (data.code === 200 && data.data) {
       candidateList.value = data.data.items || []
       candidateTotal.value = data.data.total || 0
@@ -252,8 +293,8 @@ async function viewCandidateReport(row: any) {
     showReportDialog.value = true
     selectedReport.value = null
 
-    const res = await fetch(`/assessment/report/${row.record_id}`)
-    const data = await res.json()
+    const res = await request.get(`/assessment/report/${row.record_id}`)
+    const data = res.data
     if (data.code === 200 && data.data) {
       selectedReport.value = data.data
     } else {
@@ -367,8 +408,8 @@ onMounted(() => {
                       <strong :class="{ warning: job.pendingReports > 0 }">{{ job.pendingReports }}</strong>
                     </div>
                     <div class="spotlight-metric">
-                      <span>更新</span>
-                      <strong>{{ new Date(job.updated_at).toLocaleDateString('zh-CN') }}</strong>
+                      <span>心理侧重</span>
+                      <strong>{{ getPsychFocusLabels(job).length || 0 }}</strong>
                     </div>
                   </div>
 
@@ -380,9 +421,30 @@ onMounted(() => {
                     <el-progress :percentage="job.avgMatch" :stroke-width="8" :show-text="false" color="#1d4ed8" />
                   </div>
 
+                  <div class="psych-tags">
+                    <span class="psych-tags-label">心理侧重点</span>
+                    <template v-if="getPsychFocusLabels(job).length">
+                      <el-tag
+                        v-for="label in getPsychFocusLabels(job)"
+                        :key="label"
+                        size="small"
+                        type="info"
+                        effect="plain"
+                      >
+                        {{ label }}
+                      </el-tag>
+                    </template>
+                    <span v-else class="psych-empty">暂未配置</span>
+                  </div>
+
                   <div class="spotlight-actions">
                     <el-button link type="primary" :icon="View" @click="handleViewReport(job)">查看报告</el-button>
                     <el-button link type="warning" :icon="Edit" @click="handleOpenJobManage">管理岗位</el-button>
+                  </div>
+
+                  <div class="spotlight-foot">
+                    <span>更新日期</span>
+                    <strong>{{ new Date(job.updated_at).toLocaleDateString('zh-CN') }}</strong>
                   </div>
                 </article>
               </template>
@@ -430,7 +492,7 @@ onMounted(() => {
               <el-button class="action-btn" type="primary" plain block @click="activeTab = 'candidates'">查看所有候选人报告</el-button>
               <el-button class="action-btn" type="warning" plain block @click="handleOpenJobManage">进入岗位管理页</el-button>
               
-              <el-button class="action-btn" type="info" plain block>数据分析中心</el-button>
+              <el-button class="action-btn" type="info" plain block @click="handleOpenAnalytics">数据分析中心</el-button>
             </div>
 
             <div class="side-card">
@@ -604,6 +666,24 @@ onMounted(() => {
           <span style="margin: 0 10px">-</span>
           <el-input-number v-model.number="createFormData.salary_max" placeholder="最高" />
         </el-form-item>
+        <el-form-item label="心理侧重点">
+          <div class="psych-focus-panel">
+            <p class="psych-focus-tip">
+              选择 2-3 个岗位行为特征，系统将在后端转换为岗位心理特质要求。
+            </p>
+            <el-checkbox-group v-model="createFormData.psychological_focus" class="psych-focus-options">
+              <el-checkbox
+                v-for="item in psychologicalFocusOptions"
+                :key="item.value"
+                :label="item.value"
+                border
+              >
+                <span class="psych-focus-title">{{ item.label }}</span>
+                <span class="psych-focus-hint">{{ item.hint }}</span>
+              </el-checkbox>
+            </el-checkbox-group>
+          </div>
+        </el-form-item>
       </el-form>
       <template #footer>
         <el-button @click="showCreateDialog = false">取消</el-button>
@@ -672,26 +752,31 @@ onMounted(() => {
 .kpi-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 18px;
+  gap: 14px;
+  margin-bottom: 15px;
 }
 
 .kpi-card {
   position: relative;
   overflow: hidden;
-  min-height: 148px;
-  padding: 20px 20px 18px;
-  border-radius: 20px;
+  min-height: 104px;
+  padding: 18px 18px 16px;
+  border-radius: 16px;
   border: 1px solid var(--hr-border);
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(248, 251, 255, 0.96));
-  box-shadow: 0 14px 34px rgba(15, 23, 42, 0.06);
+  box-shadow: 0 8px 22px rgba(15, 23, 42, 0.045);
+  display: grid;
+  grid-template-rows: auto 1fr auto;
 }
 
 .kpi-card::before {
   content: '';
   position: absolute;
-  inset: 0 auto auto 0;
-  width: 100%;
+  left: 24px;
+  top: 20px;
+  width: 34px;
   height: 4px;
+  border-radius: 999px;
   background: linear-gradient(90deg, #2563eb, #60a5fa);
 }
 
@@ -708,24 +793,37 @@ onMounted(() => {
 }
 
 .kpi-label {
+  margin-top: 14px;
   font-size: 13px;
   color: #64748b;
   font-weight: 700;
-  letter-spacing: 0.04em;
 }
 
 .kpi-value {
-  margin-top: 16px;
-  font-size: 34px;
+  margin-top: 10px;
+  font-size: 32px;
   line-height: 1;
   font-weight: 800;
+  letter-spacing: -0.04em;
   color: #0f172a;
 }
 
 .kpi-foot {
   margin-top: 12px;
   font-size: 13px;
-  color: #7c8aa0;
+  color: #94a3b8;
+  font-weight: 500;
+}
+.kpi-card::after {
+  content: '';
+  position: absolute;
+  right: -36px;
+  top: -36px;
+  width: 96px;
+  height: 96px;
+  border-radius: 50%;
+  background: rgba(99, 102, 241, 0.08);
+  pointer-events: none;
 }
 
 .dashboard-layout {
@@ -735,9 +833,9 @@ onMounted(() => {
 }
 
 .dashboard-main {
-  border-radius: 24px;
+  border-radius: 18px;
   border: 1px solid var(--hr-border);
-  padding: 22px;
+  padding: 20px;
   background: var(--hr-surface);
   box-shadow: var(--hr-shadow);
 }
@@ -766,22 +864,33 @@ onMounted(() => {
 
 .job-spotlight-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-  gap: 18px;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 14px;
 }
 
 .spotlight-card {
-  border: 1px solid rgba(214, 223, 240, 0.95);
-  border-radius: 20px;
-  padding: 18px;
+  position: relative;
+  border: 1px solid rgba(191, 219, 254, 0.95);
+  border-radius: 16px;
+  padding: 16px 16px 14px;
   background:
-    radial-gradient(circle at top right, rgba(37, 99, 235, 0.08), transparent 22%),
-    linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+    linear-gradient(90deg, rgba(37, 99, 235, 0.08), transparent 28%),
+    linear-gradient(180deg, #f8fbff 0%, #ffffff 58%, #f8fafc 100%);
   display: flex;
   flex-direction: column;
-  gap: 16px;
-  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.05);
+  gap: 14px;
+  min-width: 0;
+  box-shadow: 0 10px 24px rgba(30, 64, 175, 0.07);
   transition: transform 0.24s ease, box-shadow 0.24s ease, border-color 0.24s ease;
+}
+
+.spotlight-card::before {
+  content: '';
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 4px;
+  border-radius: 16px 0 0 16px;
+  background: linear-gradient(180deg, #2563eb, #38bdf8);
 }
 
 .spotlight-card:hover {
@@ -799,7 +908,7 @@ onMounted(() => {
 
 .spotlight-header h4 {
   margin: 0;
-  font-size: 18px;
+  font-size: 16px;
   line-height: 1.4;
   color: #0f172a;
 }
@@ -828,13 +937,15 @@ onMounted(() => {
 .spotlight-metrics {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 10px;
+  gap: 8px;
 }
 
 .spotlight-metric {
-  padding: 12px;
-  border-radius: 14px;
-  background: rgba(239, 246, 255, 0.92);
+  min-width: 0;
+  padding: 10px;
+  border-radius: 12px;
+  background: rgba(239, 246, 255, 0.74);
+  border: 1px solid rgba(219, 234, 254, 0.9);
 }
 
 .spotlight-metric span {
@@ -845,8 +956,12 @@ onMounted(() => {
 }
 
 .spotlight-metric strong {
-  font-size: 17px;
+  display: block;
+  font-size: 16px;
+  line-height: 1.25;
   color: #0f172a;
+  word-break: keep-all;
+  white-space: nowrap;
 }
 
 .spotlight-metric strong.warning {
@@ -867,10 +982,48 @@ onMounted(() => {
   color: #374151;
 }
 
+.psych-tags {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-height: 54px;
+}
+
+.psych-tags-label {
+  width: 100%;
+  font-size: 12px;
+  color: #64748b;
+}
+
+.psych-empty {
+  font-size: 12px;
+  color: #94a3b8;
+}
+
 .spotlight-actions {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 10px;
+  padding-top: 2px;
+  margin-top: auto;
+}
+
+.spotlight-foot {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(226, 232, 240, 0.9);
+  font-size: 12px;
+  color: #64748b;
+}
+
+.spotlight-foot strong {
+  color: #334155;
+  font-weight: 700;
 }
 
 .dashboard-side {
@@ -1073,7 +1226,16 @@ onMounted(() => {
   }
 
   .spotlight-metrics {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .job-spotlight-grid {
     grid-template-columns: 1fr;
+  }
+
+  .spotlight-actions {
+    flex-wrap: wrap;
+    justify-content: flex-start;
   }
 
   .candidate-toolbar {
@@ -1263,5 +1425,47 @@ onMounted(() => {
   text-align: center;
   color: #94a3b8;
   padding: 40px 0;
+}
+
+.psych-focus-panel {
+  width: 100%;
+}
+
+.psych-focus-tip {
+  margin: 0 0 10px;
+  font-size: 12px;
+  line-height: 1.6;
+  color: #64748b;
+}
+
+.psych-focus-options {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+}
+
+.psych-focus-options :deep(.el-checkbox.is-bordered) {
+  height: auto;
+  margin-right: 0;
+  padding: 9px 12px;
+  border-radius: 8px;
+}
+
+.psych-focus-options :deep(.el-checkbox__label) {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 3px;
+  line-height: 1.4;
+}
+
+.psych-focus-title {
+  font-size: 13px;
+  color: #1f2937;
+  font-weight: 600;
+}
+
+.psych-focus-hint {
+  font-size: 12px;
+  color: #94a3b8;
 }
 </style>

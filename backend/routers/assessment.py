@@ -5,7 +5,7 @@
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
-from sqlalchemy import desc, func
+from sqlalchemy import desc, func, and_
 from database import get_db
 from models.assessment import (
     AssessmentRecord, 
@@ -53,6 +53,7 @@ from services.personality_scoring import (
     resolve_personality_scores,
     calculate_scenario_traits,
     get_trait_comparison,
+    normalize_big_five_scores,
 )
 from services.agent_scoring_fusion import (
     fuse_agent_scores,
@@ -64,6 +65,7 @@ from services.job_requirement_service import matching_engine
 from services.report_agent import report_agent
 from services.psychology_detail_service import build_psychology_detail
 from models.assessment import EvaluationResult
+from routers.user import get_current_user
 import uuid
 
 logger = logging.getLogger(__name__)
@@ -118,6 +120,77 @@ HARD_TECH_KEYWORDS = [
 ]
 
 
+def _get_match_weights(job: Job) -> Dict[str, float]:
+    """Return category-aware final matching weights."""
+    text = f"{getattr(job, 'name', '')} {getattr(job, 'category', '')} {getattr(job, 'description', '')}"
+    category = str(getattr(job, "category", "") or "")
+
+    if _contains_any(text, HARD_TECH_KEYWORDS) or _contains_any(category, ["技术", "开发", "算法", "数据"]):
+        return {"skill": 0.60, "personality": 0.25, "agent": 0.15}
+    if _contains_any(text, ["产品", "SaaS", "需求", "用户", "体验"]):
+        return {"skill": 0.45, "personality": 0.40, "agent": 0.15}
+    if _contains_any(text, ["管理", "经理", "主管", "负责人", "总监"]):
+        return {"skill": 0.35, "personality": 0.45, "agent": 0.20}
+    if _contains_any(text, ["销售", "客户", "商务", "运营", "市场"]):
+        return {"skill": 0.40, "personality": 0.45, "agent": 0.15}
+    return {"skill": 0.50, "personality": 0.35, "agent": 0.15}
+
+
+def _weighted_match_score(skill_match: float, personality_match: float, weights: Dict[str, float]) -> float:
+    base_weight = max(0.01, weights.get("skill", 0.5) + weights.get("personality", 0.35))
+    skill_weight = weights.get("skill", 0.5) / base_weight
+    personality_weight = weights.get("personality", 0.35) / base_weight
+    return round(skill_match * skill_weight + personality_match * personality_weight, 1)
+
+
+def _apply_hard_skill_gate(
+    *,
+    score: float,
+    skill_match: float,
+    missing_skills: List[str],
+    required_skills: List[JobSkillRequirement],
+    job: Job,
+) -> Dict[str, Any]:
+    """Cap final score when must-have job skills are missing."""
+    must_have_total = sum(1 for item in required_skills if item.is_must_have)
+    missing_must_have = list(dict.fromkeys([str(skill) for skill in missing_skills if str(skill).strip()]))
+    job_text = f"{getattr(job, 'name', '')} {getattr(job, 'category', '')} {getattr(job, 'description', '')}"
+    is_hard_tech = _contains_any(job_text, HARD_TECH_KEYWORDS)
+
+    cap = 100.0
+    reasons: List[str] = []
+    recommendation = "recommended"
+
+    if len(missing_must_have) >= 2:
+        cap = min(cap, 50.0)
+        recommendation = "not_matched"
+        reasons.append("缺失多个岗位必备技能")
+    elif len(missing_must_have) == 1:
+        cap = min(cap, 60.0)
+        recommendation = "hold"
+        reasons.append("缺失岗位必备技能")
+
+    if required_skills and skill_match < 30:
+        cap = min(cap, 55.0 if is_hard_tech else 65.0)
+        recommendation = "not_matched" if is_hard_tech else recommendation
+        reasons.append("岗位技能匹配度过低")
+    elif must_have_total and skill_match < 45:
+        cap = min(cap, 70.0)
+        recommendation = "hold" if recommendation == "recommended" else recommendation
+        reasons.append("必备技能证据不足")
+
+    gated_score = round(min(score, cap), 1)
+    return {
+        "score": gated_score,
+        "applied": gated_score < round(score, 1),
+        "cap": cap,
+        "missing_must_have_skills": missing_must_have,
+        "must_have_total": must_have_total,
+        "reasons": reasons,
+        "recommendation": recommendation,
+    }
+
+
 def _coerce_dict(value: Any) -> Dict[str, Any]:
     if isinstance(value, dict):
         return value
@@ -130,10 +203,41 @@ def _coerce_dict(value: Any) -> Dict[str, Any]:
     return {}
 
 
+def _filter_observed_dimensions(
+    scores: Optional[Dict[str, float]],
+    coverage: Optional[Dict[str, str]],
+) -> Dict[str, float]:
+    if not scores:
+        return {}
+    if not coverage:
+        return {
+            str(key): float(value)
+            for key, value in scores.items()
+            if value is not None
+        }
+    observed = {
+        str(key)
+        for key, status in coverage.items()
+        if status == "observed"
+    }
+    return {
+        str(key): float(value)
+        for key, value in scores.items()
+        if str(key) in observed and value is not None
+    }
+
+
+def _extract_generated_big_five(value: Any) -> Dict[str, Any]:
+    raw = _coerce_dict(value)
+    generated = _coerce_dict(raw.get("generated_big_five"))
+    return normalize_big_five_scores(generated or raw)
+
+
 def _normalize_job_traits(job: Job) -> Dict[str, float]:
     raw_traits = _coerce_dict(job.required_traits)
     if not raw_traits:
-        raw_traits = _coerce_dict(getattr(job, "personality_requirements", None))
+        raw_traits = _extract_generated_big_five(getattr(job, "personality_requirements", None))
+    raw_traits = normalize_big_five_scores(raw_traits)
 
     normalized: Dict[str, float] = {}
     for raw_key, raw_value in raw_traits.items():
@@ -301,6 +405,84 @@ def _calculate_recommendation_score(
     }
 
 
+def _format_job_salary(job: Job) -> Optional[str]:
+    if job.salary_min is None or job.salary_max is None:
+        return None
+    return f"{int(job.salary_min)}k-{int(job.salary_max)}k"
+
+
+def _recent_high_score_record(candidate_id: int, db: Session) -> Optional[AssessmentRecord]:
+    recent_records = (
+        db.query(AssessmentRecord)
+        .filter(
+            AssessmentRecord.candidate_id == candidate_id,
+            AssessmentRecord.assessment_status == AssessmentStatus.COMPLETED,
+            AssessmentRecord.is_deleted == False,
+            AssessmentRecord.match_score.isnot(None),
+        )
+        .order_by(desc(AssessmentRecord.created_at), desc(AssessmentRecord.id))
+        .limit(8)
+        .all()
+    )
+    if not recent_records:
+        return None
+    return max(
+        recent_records,
+        key=lambda record: (
+            float(record.match_score or 0),
+            record.created_at or datetime.min,
+            record.id or 0,
+        ),
+    )
+
+
+def _candidate_assessed_job_ids(candidate_id: int, db: Session) -> set[int]:
+    rows = (
+        db.query(AssessmentRecord.job_id)
+        .filter(
+            AssessmentRecord.candidate_id == candidate_id,
+            AssessmentRecord.is_deleted == False,
+        )
+        .distinct()
+        .limit(80)
+        .all()
+    )
+    return {int(row[0]) for row in rows if row[0] is not None}
+
+
+def _apply_excluded_job_ids(query, excluded_job_ids: set[int]):
+    if excluded_job_ids:
+        return query.filter(~Job.id.in_(excluded_job_ids))
+    return query
+
+
+def _load_related_job_pool(
+    source_job: Optional[Job],
+    excluded_job_ids: set[int],
+    db: Session,
+    pool_limit: int = 40,
+) -> List[Job]:
+    jobs_by_id: Dict[int, Job] = {}
+
+    def add_jobs(query, limit: int) -> None:
+        if limit <= 0:
+            return
+        query = _apply_excluded_job_ids(query, excluded_job_ids)
+        for job in query.order_by(desc(Job.id)).limit(limit).all():
+            jobs_by_id.setdefault(int(job.id), job)
+
+    if source_job and source_job.category:
+        add_jobs(db.query(Job).filter(Job.category == source_job.category), pool_limit)
+
+    if source_job and source_job.city and len(jobs_by_id) < pool_limit:
+        add_jobs(db.query(Job).filter(Job.city == source_job.city), pool_limit - len(jobs_by_id))
+
+    if len(jobs_by_id) < min(12, pool_limit):
+        add_jobs(db.query(Job), min(12, pool_limit) - len(jobs_by_id))
+
+    return list(jobs_by_id.values())[:pool_limit]
+
+
 def resolve_candidate_user(candidate_identifier: str, db: Session) -> User:
     """Resolve candidate identifier into a concrete User record."""
     raw = str(candidate_identifier or "").strip()
@@ -309,37 +491,97 @@ def resolve_candidate_user(candidate_identifier: str, db: Session) -> User:
 
     candidate: Optional[User] = None
 
+    def ensure_candidate(user: Optional[User]) -> Optional[User]:
+        if not user:
+            return None
+        if user.user_type != UserType.CANDIDATE or user.is_hr:
+            raise HTTPException(status_code=403, detail="该账号不是候选人，不能进入候选人评估流程")
+        return user
+
     # 1) direct numeric id
     if raw.isdigit():
         candidate = db.query(User).filter(User.id == int(raw)).first()
         if candidate:
-            return candidate
+            return ensure_candidate(candidate)
 
     # 2) common string formats like user_2 / cand_001
     m = re.match(r"^(?:user|candidate|cand)[_-]?(\d+)$", raw, flags=re.IGNORECASE)
     if m:
         candidate = db.query(User).filter(User.id == int(m.group(1))).first()
         if candidate:
-            return candidate
+            return ensure_candidate(candidate)
 
     # 3) username or email
     candidate = db.query(User).filter(User.username == raw).first()
     if candidate:
-        return candidate
+        return ensure_candidate(candidate)
 
     if "@" in raw:
         candidate = db.query(User).filter(User.email == raw).first()
         if candidate:
-            return candidate
+            return ensure_candidate(candidate)
 
     # 4) fallback: trailing digits in custom id
     tail = re.search(r"(\d+)$", raw)
     if tail:
         candidate = db.query(User).filter(User.id == int(tail.group(1))).first()
         if candidate:
-            return candidate
+            return ensure_candidate(candidate)
 
     raise HTTPException(status_code=404, detail=f"候选人不存在: {raw}")
+
+
+def build_personality_summary(profile: Optional[CandidatePersonalityProfile]) -> List[str]:
+    if not profile:
+        return []
+
+    summary: List[str] = []
+    if profile.trait_conscientiousness is not None and profile.trait_conscientiousness >= 7:
+        summary.append("高尽责性")
+    if profile.trait_openness is not None and profile.trait_openness >= 7:
+        summary.append("开放探索")
+    if profile.trait_extroversion is not None and profile.trait_extroversion >= 7:
+        summary.append("沟通主动")
+    if profile.trait_agreeableness is not None and profile.trait_agreeableness >= 7:
+        summary.append("协作友好")
+    if profile.trait_neuroticism is not None and profile.trait_neuroticism <= 4:
+        summary.append("情绪稳定")
+    if profile.trait_neuroticism is not None and profile.trait_neuroticism >= 7:
+        summary.append("压力敏感")
+
+    return summary[:3]
+
+
+def build_hr_candidate_item(
+    record: AssessmentRecord,
+    user: User,
+    evaluation_count: int = 1,
+    profile: Optional[CandidatePersonalityProfile] = None,
+) -> Dict[str, Any]:
+    return {
+        "record_id": record.id,
+        "candidate_id": record.candidate_id,
+        "candidate_name": user.real_name or user.nickname or user.username,
+        "candidate_email": user.email,
+        "candidate_user_type": user.user_type.value if user.user_type else None,
+        "candidate_is_hr": user.is_hr,
+        "job_id": record.job_id,
+        "job_title": record.job_title,
+        "match_score": record.match_score,
+        "assessment_status": record.assessment_status.value if record.assessment_status else "pending",
+        "assessment_mode": record.assessment_mode,
+        "feedback_status": record.feedback_status,
+        "feedback_result": record.feedback_result,
+        "hr_feedback": record.hr_feedback,
+        "feedback_visible_to_candidate": record.feedback_visible_to_candidate,
+        "feedback_by": record.feedback_by,
+        "feedback_at": record.feedback_at.isoformat() if record.feedback_at else None,
+        "created_at": record.created_at.isoformat() if record.created_at else None,
+        "total_rounds": record.total_rounds,
+        "duration_minutes": record.duration_minutes,
+        "evaluation_count": evaluation_count,
+        "personality_summary": build_personality_summary(profile),
+    }
 
 
 # ============ Helper Functions ============
@@ -374,8 +616,8 @@ def calculate_job_match_score(personality_profile: CandidatePersonalityProfile, 
                 gap = max(0.0, required_score - candidate_score)
             else:
                 gap = abs(candidate_score - required_score)
-            # 岗位人格需求表示胜任阈值：正向特质达到要求后不额外扣分，神经质低于要求视为稳定性满足。
-            similarity = max(0.0, 10 - gap)
+            # 岗位人格需求表示胜任阈值：未达到阈值时加大距离惩罚，避免轻微证据不足被解释为高匹配。
+            similarity = max(0.0, 10 - gap * 2.5)
             total_score += similarity
             matched_count += 1
 
@@ -499,6 +741,7 @@ async def get_history(
     candidate_id: str,
     limit: int = Query(10, ge=1, le=50),
     offset: int = Query(0, ge=0),
+    include_all: bool = Query(False, description="是否返回全部 AssessmentSession 历史记录"),
     db: Session = Depends(get_db)
 ):
     """
@@ -511,11 +754,61 @@ async def get_history(
     """
     candidate = resolve_candidate_user(candidate_id, db)
 
-    records = db.query(AssessmentRecord).filter(
-        AssessmentRecord.candidate_id == candidate.id
-    ).order_by(
-        desc(AssessmentRecord.created_at)
-    ).offset(offset).limit(limit).all()
+    count_sq = (
+        db.query(
+            AssessmentRecord.job_id.label("job_id"),
+            func.count(AssessmentRecord.id).label("evaluation_count"),
+        )
+        .filter(
+            AssessmentRecord.candidate_id == candidate.id,
+            AssessmentRecord.is_deleted == False,
+        )
+        .group_by(AssessmentRecord.job_id)
+        .subquery()
+    )
+
+    if include_all:
+        records_with_count = (
+            db.query(AssessmentRecord, count_sq.c.evaluation_count)
+            .outerjoin(count_sq, AssessmentRecord.job_id == count_sq.c.job_id)
+            .filter(
+                AssessmentRecord.candidate_id == candidate.id,
+                AssessmentRecord.is_deleted == False,
+            )
+            .order_by(desc(AssessmentRecord.created_at), desc(AssessmentRecord.id))
+            .offset(offset)
+            .limit(limit)
+            .all()
+        )
+    else:
+        latest_result_sq = (
+            db.query(
+                AssessmentRecord.job_id.label("job_id"),
+                func.max(EvaluationResult.id).label("latest_result_id"),
+            )
+            .join(
+                EvaluationResult,
+                EvaluationResult.assessment_record_id == AssessmentRecord.id,
+            )
+            .filter(
+                AssessmentRecord.candidate_id == candidate.id,
+                AssessmentRecord.assessment_status == AssessmentStatus.COMPLETED,
+                AssessmentRecord.is_deleted == False,
+            )
+            .group_by(AssessmentRecord.job_id)
+            .subquery()
+        )
+
+        records_with_count = (
+            db.query(AssessmentRecord, count_sq.c.evaluation_count)
+            .join(EvaluationResult, EvaluationResult.assessment_record_id == AssessmentRecord.id)
+            .join(latest_result_sq, EvaluationResult.id == latest_result_sq.c.latest_result_id)
+            .outerjoin(count_sq, AssessmentRecord.job_id == count_sq.c.job_id)
+            .order_by(desc(AssessmentRecord.created_at), desc(AssessmentRecord.id))
+            .offset(offset)
+            .limit(limit)
+            .all()
+        )
     
     data = [
         AssessmentHistoryItem(
@@ -525,9 +818,11 @@ async def get_history(
             match_score=record.match_score,
             created_at=record.created_at,
             assessment_status=record.assessment_status.value if record.assessment_status else "pending",
-            assessment_mode=record.assessment_mode
+            assessment_mode=record.assessment_mode,
+            evaluation_count=int(evaluation_count or 1),
+            is_latest=True,
         )
-        for record in records
+        for record, evaluation_count in records_with_count
     ]
     
     return HistoryResponse(data=data)
@@ -552,16 +847,11 @@ async def get_recommended_jobs(
         candidate_id=candidate.id
     ).first()
     
-    # 获取所有岗位
-    jobs = db.query(Job).all()
-    latest_record = db.query(AssessmentRecord).filter(
-        AssessmentRecord.candidate_id == candidate.id,
-        AssessmentRecord.assessment_status == AssessmentStatus.COMPLETED,
-        AssessmentRecord.is_deleted == False
-    ).order_by(desc(AssessmentRecord.created_at)).first()
+    recent_high_score_record = _recent_high_score_record(candidate.id, db)
+    source_record = recent_high_score_record
     source_job = None
-    if latest_record:
-        source_job = db.query(Job).filter(Job.id == latest_record.job_id).first()
+    if source_record:
+        source_job = db.query(Job).filter(Job.id == source_record.job_id).first()
     
     if not profile or not any([
         profile.trait_extroversion,
@@ -571,7 +861,7 @@ async def get_recommended_jobs(
         profile.trait_openness
     ]):
         # 新用户或没有评估，返回热门岗位
-        popular_jobs = jobs[:limit]
+        popular_jobs = db.query(Job).order_by(desc(Job.id)).limit(limit).all()
         data = [
             JobRecommendation(
                 id=job.id,
@@ -580,7 +870,7 @@ async def get_recommended_jobs(
                 company=job.company,
                 city=job.city,
                 category=job.category,
-                salary=f"{int(job.salary_min)}k-{int(job.salary_max)}k",
+                salary=_format_job_salary(job),
                 department=job.category,
                 level="P6",  # 默认级别
                 match_score=75.0,
@@ -591,9 +881,18 @@ async def get_recommended_jobs(
         return RecommendedJobsResponse(data=data)
     
     # 计算匹配度并排序
+    assessed_job_ids = _candidate_assessed_job_ids(candidate.id, db)
+    jobs = _load_related_job_pool(source_job, assessed_job_ids, db, pool_limit=max(limit * 8, 24))
+
     job_scores = []
     for job in jobs:
         result = _calculate_recommendation_score(profile, job, source_job)
+        if source_record and source_record.match_score is not None:
+            result["source_match_score"] = round(float(source_record.match_score), 1)
+            result["recommendation_score"] = round(
+                result["recommendation_score"] * 0.75 + float(source_record.match_score) * 0.25,
+                1,
+            )
         job_scores.append((job, result["recommendation_score"], result))
     
     # 按匹配度降序排序
@@ -626,7 +925,7 @@ async def get_recommended_jobs(
             company=job.company,
             city=job.city,
             category=job.category,
-            salary=f"{int(job.salary_min)}k-{int(job.salary_max)}k",
+            salary=_format_job_salary(job),
             department=job.category,
             level="P6",  # 默认级别
             match_score=score,
@@ -823,49 +1122,115 @@ async def get_hr_candidates(
     status: Optional[str] = Query(None, description="按状态筛选: completed/pending"),
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     """
-    HR 获取所有已评估候选人列表（跨候选人聚合）
-    返回评估记录 + 候选人姓名 + 岗位信息 + 匹配分数
+    HR 获取候选人工作台列表。
+
+    主表按 Candidate + Job Instance 聚合，只展示最新一次 AssessmentSession；
+    历史 AssessmentSession 通过 assessment_history 返回，避免同一候选人在同一岗位
+    多次评估时被误识别为多个候选人。
     """
-    query = db.query(AssessmentRecord, User).join(
+    if not (current_user.is_hr or getattr(current_user, "is_hr_user", False)):
+        raise HTTPException(status_code=403, detail="仅HR可访问")
+
+    base_query = db.query(AssessmentRecord).join(
         User, AssessmentRecord.candidate_id == User.id
+    ).join(
+        Job, AssessmentRecord.job_id == Job.id
+    ).filter(
+        AssessmentRecord.is_deleted == False,
+        Job.creator_id == current_user.id,
+        User.user_type == UserType.CANDIDATE,
+        User.is_hr == False,
     )
 
     if job_id:
-        query = query.filter(AssessmentRecord.job_id == job_id)
+        base_query = base_query.filter(AssessmentRecord.job_id == job_id)
     if status:
         try:
-            query = query.filter(AssessmentRecord.assessment_status == AssessmentStatus(status))
+            base_query = base_query.filter(AssessmentRecord.assessment_status == AssessmentStatus(status))
         except ValueError:
             pass
 
-    total = query.count()
-    records = query.order_by(desc(AssessmentRecord.created_at)).offset(offset).limit(limit).all()
+    latest_record_sq = (
+        base_query.with_entities(
+            AssessmentRecord.candidate_id.label("candidate_id"),
+            AssessmentRecord.job_id.label("job_id"),
+            func.max(AssessmentRecord.id).label("latest_record_id"),
+        )
+        .group_by(AssessmentRecord.candidate_id, AssessmentRecord.job_id)
+        .subquery()
+    )
+
+    count_sq = (
+        db.query(
+            AssessmentRecord.candidate_id.label("candidate_id"),
+            AssessmentRecord.job_id.label("job_id"),
+            func.count(AssessmentRecord.id).label("evaluation_count"),
+        )
+        .join(User, AssessmentRecord.candidate_id == User.id)
+        .join(Job, AssessmentRecord.job_id == Job.id)
+        .filter(
+            AssessmentRecord.is_deleted == False,
+            Job.creator_id == current_user.id,
+            User.user_type == UserType.CANDIDATE,
+            User.is_hr == False,
+        )
+    )
+    if job_id:
+        count_sq = count_sq.filter(AssessmentRecord.job_id == job_id)
+    count_sq = count_sq.group_by(AssessmentRecord.candidate_id, AssessmentRecord.job_id).subquery()
+
+    total = db.query(func.count()).select_from(latest_record_sq).scalar() or 0
+    records = (
+        db.query(AssessmentRecord, User, count_sq.c.evaluation_count, CandidatePersonalityProfile)
+        .join(User, AssessmentRecord.candidate_id == User.id)
+        .join(latest_record_sq, AssessmentRecord.id == latest_record_sq.c.latest_record_id)
+        .outerjoin(CandidatePersonalityProfile, CandidatePersonalityProfile.candidate_id == AssessmentRecord.candidate_id)
+        .outerjoin(
+            count_sq,
+            and_(
+                AssessmentRecord.candidate_id == count_sq.c.candidate_id,
+                AssessmentRecord.job_id == count_sq.c.job_id,
+            ),
+        )
+        .order_by(desc(AssessmentRecord.created_at))
+        .offset(offset)
+        .limit(limit)
+        .all()
+    )
 
     items = []
-    for record, user in records:
-        items.append({
-            "record_id": record.id,
-            "candidate_id": record.candidate_id,
-            "candidate_name": user.real_name or user.nickname or user.username,
-            "candidate_email": user.email,
-            "job_id": record.job_id,
-            "job_title": record.job_title,
-            "match_score": record.match_score,
-            "assessment_status": record.assessment_status.value if record.assessment_status else "pending",
-            "assessment_mode": record.assessment_mode,
-            "feedback_status": record.feedback_status,
-            "feedback_result": record.feedback_result,
-            "hr_feedback": record.hr_feedback,
-            "feedback_visible_to_candidate": record.feedback_visible_to_candidate,
-            "feedback_by": record.feedback_by,
-            "feedback_at": record.feedback_at.isoformat() if record.feedback_at else None,
-            "created_at": record.created_at.isoformat() if record.created_at else None,
-            "total_rounds": record.total_rounds,
-            "duration_minutes": record.duration_minutes,
-        })
+    for record, user, evaluation_count, profile in records:
+        history_records = (
+            db.query(AssessmentRecord)
+            .filter(
+                AssessmentRecord.candidate_id == record.candidate_id,
+                AssessmentRecord.job_id == record.job_id,
+                AssessmentRecord.is_deleted == False,
+            )
+            .order_by(desc(AssessmentRecord.created_at), desc(AssessmentRecord.id))
+            .all()
+        )
+        item = build_hr_candidate_item(record, user, int(evaluation_count or 1), profile)
+        item["assessment_history"] = [
+            {
+                "record_id": history.id,
+                "match_score": history.match_score,
+                "assessment_status": history.assessment_status.value if history.assessment_status else "pending",
+                "assessment_mode": history.assessment_mode,
+                "feedback_status": history.feedback_status,
+                "feedback_result": history.feedback_result,
+                "created_at": history.created_at.isoformat() if history.created_at else None,
+                "total_rounds": history.total_rounds,
+                "duration_minutes": history.duration_minutes,
+                "is_latest": history.id == record.id,
+            }
+            for history in history_records
+        ]
+        items.append(item)
 
     return StandardResponse(
         code=200,
@@ -949,21 +1314,44 @@ async def save_assessment_result(
         
         candidate = resolve_candidate_user(request.candidate_id, db)
         
-        # 1. 创建评估记录
+        # 1. 创建或更新 AssessmentSession
         job = db.query(Job).filter_by(id=request.job_id).first()
         if not job:
             raise HTTPException(status_code=404, detail="岗位不存在")
         
-        record = AssessmentRecord(
-            candidate_id=candidate.id,
-            job_id=request.job_id,
-            job_title=job.name,
-            assessment_mode=request.assessment_mode,
-            assessment_status=AssessmentStatus.COMPLETED,
-            created_at=datetime.now(),
-            updated_at=datetime.now()
-        )
-        db.add(record)
+        record = None
+        if request.assessment_id:
+            record = db.query(AssessmentRecord).filter(
+                AssessmentRecord.id == int(request.assessment_id),
+                AssessmentRecord.candidate_id == candidate.id,
+                AssessmentRecord.job_id == request.job_id,
+                AssessmentRecord.is_deleted == False,
+            ).first()
+
+        if not record:
+            record = db.query(AssessmentRecord).filter(
+                AssessmentRecord.candidate_id == candidate.id,
+                AssessmentRecord.job_id == request.job_id,
+                AssessmentRecord.assessment_status == AssessmentStatus.PENDING,
+                AssessmentRecord.is_deleted == False,
+            ).order_by(desc(AssessmentRecord.updated_at), desc(AssessmentRecord.id)).first()
+
+        if record:
+            record.job_title = job.name
+            record.assessment_mode = request.assessment_mode
+            record.assessment_status = AssessmentStatus.COMPLETED
+            record.updated_at = datetime.now()
+        else:
+            record = AssessmentRecord(
+                candidate_id=candidate.id,
+                job_id=request.job_id,
+                job_title=job.name,
+                assessment_mode=request.assessment_mode,
+                assessment_status=AssessmentStatus.COMPLETED,
+                created_at=datetime.now(),
+                updated_at=datetime.now()
+            )
+            db.add(record)
         db.flush()
         
         logger.info(f"【save-result】评估记录已创建: record_id={record.id}")
@@ -979,17 +1367,30 @@ async def save_assessment_result(
             )
             db.add(personality_profile)
         
+        observed_all_scores = _filter_observed_dimensions(
+            request.all_scores,
+            request.score_coverage,
+        )
+        observed_personality_scores = _filter_observed_dimensions(
+            request.personality_scores,
+            request.personality_score_coverage,
+        ) if request.personality_scores else None
+
         # 后端统一计算/解析五大人格（带模型版本）
         personality_scores, scoring_meta = resolve_personality_scores(
-            request.all_scores,
-            request.personality_scores,
+            observed_all_scores,
+            observed_personality_scores,
         )
+        if request.score_coverage:
+            scoring_meta["score_coverage"] = request.score_coverage
+        if request.personality_score_coverage:
+            scoring_meta["personality_score_coverage"] = request.personality_score_coverage
 
-        personality_profile.trait_extroversion = personality_scores.get("外向性", 5)
-        personality_profile.trait_agreeableness = personality_scores.get("宜人性", 5)
-        personality_profile.trait_conscientiousness = personality_scores.get("尽责性", 5)
-        personality_profile.trait_neuroticism = personality_scores.get("神经质", 5)
-        personality_profile.trait_openness = personality_scores.get("开放性", 5)
+        personality_profile.trait_extroversion = personality_scores.get("外向性")
+        personality_profile.trait_agreeableness = personality_scores.get("宜人性")
+        personality_profile.trait_conscientiousness = personality_scores.get("尽责性")
+        personality_profile.trait_neuroticism = personality_scores.get("神经质")
+        personality_profile.trait_openness = personality_scores.get("开放性")
         personality_profile.latest_assessment_id = record.id
         personality_profile.updated_at = datetime.now()
         
@@ -1010,25 +1411,62 @@ async def save_assessment_result(
             candidate_skills = [str(s).strip() for s in candidate.skills if str(s).strip()]
         elif isinstance(candidate.skills, str):
             candidate_skills = [s.strip() for s in candidate.skills.split(",") if s.strip()]
-        elif request.candidate_info and isinstance(request.candidate_info.get("skills"), list):
+        if not candidate_skills and request.candidate_info and isinstance(request.candidate_info.get("skills"), list):
             candidate_skills = [str(s).strip() for s in request.candidate_info.get("skills", []) if str(s).strip()]
+        elif not candidate_skills and request.candidate_info and isinstance(request.candidate_info.get("skills"), str):
+            candidate_skills = [
+                s.strip()
+                for s in re.split(r"[,，、\s]+", request.candidate_info.get("skills", ""))
+                if s.strip()
+            ]
 
-        if required_skills and candidate_skills:
-            skill_match, matched_skills, missing_skills = matching_engine.calculate_skill_match(
+        def _assessment_skill_score(scores: Dict[str, float]) -> Optional[float]:
+            skill_dimensions = [
+                "专业能力", "技术深度", "问题解决", "逻辑思维",
+                "学习能力", "创新能力", "用户洞察", "战略思维",
+                "沟通能力", "团队协作", "团队合作", "文化契合",
+            ]
+            values: List[float] = []
+            for key in skill_dimensions:
+                try:
+                    value = float(scores.get(key)) if key in scores else None
+                except (TypeError, ValueError):
+                    value = None
+                if value is not None and value > 0:
+                    values.append(value * 10 if value <= 10 else value)
+            if not values:
+                return None
+            return round(max(0.0, min(100.0, sum(values) / len(values))), 1)
+
+        if required_skills:
+            resume_skill_match, matched_skills, missing_skills = matching_engine.calculate_skill_match(
                 candidate_skills,
                 required_skills,
             )
+            assessment_skill_match = _assessment_skill_score(observed_all_scores)
+            if assessment_skill_match is not None:
+                skill_match = round(resume_skill_match * 0.5 + assessment_skill_match * 0.5, 1)
+            else:
+                skill_match = resume_skill_match
         else:
-            skill_match, matched_skills, missing_skills = 50.0, [], []
+            assessment_skill_match = _assessment_skill_score(observed_all_scores)
+            skill_match, matched_skills, missing_skills = assessment_skill_match or 50.0, [], []
 
         candidate_personality = {
-            "openness": (personality_profile.trait_openness or 0) * 10,
-            "conscientiousness": (personality_profile.trait_conscientiousness or 0) * 10,
-            "extraversion": (personality_profile.trait_extroversion or 0) * 10,
-            "agreeableness": (personality_profile.trait_agreeableness or 0) * 10,
-            "neuroticism": (personality_profile.trait_neuroticism or 0) * 10,
+            key: value * 10
+            for key, value in {
+                "openness": personality_profile.trait_openness,
+                "conscientiousness": personality_profile.trait_conscientiousness,
+                "extraversion": personality_profile.trait_extroversion,
+                "agreeableness": personality_profile.trait_agreeableness,
+                "neuroticism": personality_profile.trait_neuroticism,
+            }.items()
+            if value is not None
         }
-        if personality_fw:
+        if not candidate_personality:
+            personality_match = 50.0
+            scoring_meta.setdefault("warnings", []).append("personality_evidence_insufficient")
+        elif personality_fw:
             personality_match = matching_engine.calculate_personality_match(
                 candidate_personality,
                 personality_fw,
@@ -1037,37 +1475,6 @@ async def save_assessment_result(
             # fallback 到现有岗位特质匹配，避免岗位尚未配置人格框架时退化
             personality_match = calculate_job_match_score(personality_profile, job)["personality_match"]
 
-        overall_score = matching_engine.calculate_overall_match(skill_match, personality_match)
-        record.match_score = overall_score
-
-        logger.info(
-            f"【save-result】匹配度已计算: overall={overall_score}, "
-            f"skill={skill_match}, personality={personality_match}"
-        )
-        
-        # ===== 新增：计算场景人格（论文第4.3.3节） =====
-        scenario_traits = None
-        trait_comparison = None
-        
-        # 如果岗位有人格需求配置，则计算场景人格
-        if job.personality_requirements:
-            try:
-                scenario_traits, adjustments = calculate_scenario_traits(
-                    basic_traits=personality_scores,
-                    job_personality_requirements=job.personality_requirements
-                )
-                # 生成特质对比报告
-                trait_comparison = get_trait_comparison(
-                    basic_traits=personality_scores,
-                    scenario_traits=scenario_traits,
-                    job_requirements=job.personality_requirements
-                )
-                logger.info(f"【save-result】场景人格已计算: {scenario_traits}")
-            except Exception as e:
-                logger.warning(f"【save-result】场景人格计算失败: {str(e)}")
-                scenario_traits = None
-                trait_comparison = None
-        
         # ===== 新增：融合Agent评分（论文第4.1.3节） =====
         agent_scores_dict = {}
         fusion_details = None
@@ -1098,9 +1505,59 @@ async def save_assessment_result(
                 fused_score = None
         
         # 如果有Agent融合评分，可以将其作为参考
+        match_weights = _get_match_weights(job)
+        base_overall_score = _weighted_match_score(skill_match, personality_match, match_weights)
         if fused_score is not None:
-            # 可以选择使用融合评分或与现有评分结合
-            logger.info(f"【save-result】使用Agent融合评分作为参考: {fused_score:.1f}")
+            agent_weight = match_weights.get("agent", 0.15)
+            overall_score = round(base_overall_score * (1 - agent_weight) + fused_score * agent_weight, 1)
+            logger.info(
+                f"【save-result】综合分融合Agent评分: base={base_overall_score}, "
+                f"fused={fused_score:.1f}, final={overall_score}"
+            )
+        else:
+            overall_score = base_overall_score
+
+        hard_skill_gate = _apply_hard_skill_gate(
+            score=overall_score,
+            skill_match=skill_match,
+            missing_skills=missing_skills,
+            required_skills=required_skills,
+            job=job,
+        )
+        overall_score = hard_skill_gate["score"]
+        record.match_score = overall_score
+        if hard_skill_gate.get("applied"):
+            record.feedback_result = hard_skill_gate.get("recommendation")
+
+        logger.info(
+            f"【save-result】匹配度已计算: overall={overall_score}, "
+            f"skill={skill_match}, personality={personality_match}, "
+            f"weights={match_weights}, hard_gate={hard_skill_gate}"
+        )
+        
+        # ===== 新增：计算场景人格（论文第4.3.3节） =====
+        scenario_traits = None
+        trait_comparison = None
+        
+        # 如果岗位有人格需求配置，则计算场景人格
+        job_personality_requirements = _extract_generated_big_five(job.personality_requirements)
+        if job_personality_requirements:
+            try:
+                scenario_traits, adjustments = calculate_scenario_traits(
+                    basic_traits=personality_scores,
+                    job_personality_requirements=job_personality_requirements
+                )
+                # 生成特质对比报告
+                trait_comparison = get_trait_comparison(
+                    basic_traits=personality_scores,
+                    scenario_traits=scenario_traits,
+                    job_requirements=job_personality_requirements
+                )
+                logger.info(f"【save-result】场景人格已计算: {scenario_traits}")
+            except Exception as e:
+                logger.warning(f"【save-result】场景人格计算失败: {str(e)}")
+                scenario_traits = None
+                trait_comparison = None
         
         # ===== 新增：创建EvaluationResult（论文第3.5.1节） =====
         evaluation_result = None
@@ -1111,7 +1568,7 @@ async def save_assessment_result(
                 candidate_id=candidate.id,
                 job_id=request.job_id,
                 match_score=overall_score,
-                ability_scores=request.all_scores,  # 能力维度评分
+                ability_scores=observed_all_scores,  # 能力维度评分
                 trait_comparison=trait_comparison,   # 特质对比（基础/场景/需求）
                 agent_scores=fusion_details,         # Agent评分及权重信息
                 strengths=None,  # 稍后填充
@@ -1137,7 +1594,7 @@ async def save_assessment_result(
         }
         
         for trait_name in trait_names:
-            trait_score = personality_scores.get(trait_name, 5)
+            trait_score = personality_scores.get(trait_name)
             if trait_score is not None:
                 trait_desc = PersonalityTraitDescription(
                     assessment_record_id=record.id,
@@ -1151,6 +1608,8 @@ async def save_assessment_result(
         
         logger.info(f"【save-result】特质描述已保存")
         
+        assessment_evidence = request.assessment_evidence or {}
+
         # 5. 通过 ReportAgent 生成分析和建议
         analysis_payload = report_agent.build_match_analysis(
             profile=personality_profile,
@@ -1160,9 +1619,12 @@ async def save_assessment_result(
                 "skill_match": skill_match,
                 "personality_match": personality_match,
                 "overall_score": overall_score,
+                "weights": match_weights,
+                "hard_skill_gate": hard_skill_gate,
             },
             matched_skills=matched_skills,
             missing_skills=missing_skills,
+            evidence=assessment_evidence,
         )
 
         # 6. 保存匹配分析
@@ -1207,10 +1669,18 @@ async def save_assessment_result(
                     "basic_traits": personality_scores,
                     "scenario_traits": scenario_traits,
                     "trait_comparison": trait_comparison,
-                    "ability_scores": request.all_scores,
+                    "ability_scores": observed_all_scores,
                     "skill_match": skill_match,
                     "personality_match": personality_match,
                     "overall_score": overall_score,
+                    "match_weights": match_weights,
+                    "hard_skill_gate": hard_skill_gate,
+                    "assessment_evidence": {
+                        "verified_skills": analysis_payload.get("detailed_analysis", {}).get("skill_evidence", {}).get("matched_skills", []),
+                        "missing_must_have_skills": analysis_payload.get("detailed_analysis", {}).get("skill_evidence", {}).get("missing_skills", []),
+                        "personality_evidence": analysis_payload.get("detailed_analysis", {}).get("personality_evidence", {}),
+                        "evidence_quote": analysis_payload.get("detailed_analysis", {}).get("evidence_quote", []),
+                    },
                     "agent_fusion": fusion_details,
                     "analysis": analysis_payload,
                     "report_sections": analysis_payload.get("report_sections"),
@@ -1245,6 +1715,8 @@ async def save_assessment_result(
                 "agent_scores": agent_scores_dict if agent_scores_dict else None,
                 "fused_score": fused_score,
                 "fusion_details": fusion_details,
+                "match_weights": match_weights,
+                "hard_skill_gate": hard_skill_gate,
             }
         )
     except Exception as e:

@@ -4,7 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useUserStore } from '@/stores/user'
 import { fetchHistory } from '@/utils/request'
-import { readHubJobs, removeHubJob, type InterviewHubJob } from '@/utils/interviewHub'
+import { addHubJob, readHubJobs, removeHubJob, type InterviewHubJob } from '@/utils/interviewHub'
 import {
   getCandidateInvitations,
   getPendingInvitationCount,
@@ -30,6 +30,17 @@ const pendingRecords = computed(() =>
 )
 const completedRecords = computed(() =>
   records.value.filter((r) => r.assessment_status === 'completed'),
+)
+const inProgressJobIds = computed(() => {
+  return new Set(
+    records.value
+      .filter((r) => r.assessment_status === 'pending')
+      .map((r) => Number(r.job_id))
+      .filter(Boolean),
+  )
+})
+const waitingHubJobs = computed(() =>
+  hubJobs.value.filter((job) => !inProgressJobIds.value.has(Number(job.jobId))),
 )
 const otherRecords = computed(() =>
   records.value.filter((r) => !['pending', 'completed'].includes(r.assessment_status)),
@@ -111,7 +122,7 @@ async function loadInterviewHistory() {
   if (!candidateId.value) return
   loading.value = true
   try {
-    const data = await fetchHistory(candidateId.value)
+    const data = await fetchHistory(candidateId.value, { includeAll: true, limit: 50 })
     records.value = Array.isArray(data) ? data : []
   } catch {
     ElMessage.error('加载面试记录失败')
@@ -142,7 +153,13 @@ async function refreshAll() {
 
 /* ---------- actions ---------- */
 function goToInterview(record: any) {
-  router.push({ path: '/home/interviews/room', query: { jobId: String(record.job_id) } })
+  router.push({
+    path: '/home/interviews/room',
+    query: {
+      jobId: String(record.job_id),
+      assessmentId: String(record.id),
+    },
+  })
 }
 
 function startHubInterview(job: InterviewHubJob) {
@@ -183,6 +200,14 @@ async function handleInvitation(inv: Invitation, action: 'accepted' | 'declined'
     ElMessage.success(`已${label}邀请`)
     await loadInvitations()
     if (action === 'accepted') {
+      await addHubJob({
+        id: inv.job_id,
+        title: inv.job_name,
+        company: inv.company,
+        city: inv.city,
+        salary: inv.salary,
+      })
+      await loadHubJobs()
       router.push({ path: '/home/interviews/room', query: { jobId: String(inv.job_id) } })
     }
   } catch {
@@ -264,7 +289,7 @@ watch(
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M19 21l-7-5-7 5V5a2 2 0 012-2h10a2 2 0 012 2z" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
         </span>
         <div class="stat-body">
-          <span class="stat-num">{{ hubJobs.length }}</span>
+          <span class="stat-num">{{ waitingHubJobs.length }}</span>
           <span class="stat-label">待开始</span>
         </div>
       </button>
@@ -383,9 +408,9 @@ watch(
           <p class="panel-sub">你收藏并加入面试列表的岗位，点击即可进入 AI 面试。</p>
         </div>
 
-        <div v-if="hubJobs.length > 0" class="card-list">
+        <div v-if="waitingHubJobs.length > 0" class="card-list">
           <div
-            v-for="job in hubJobs"
+            v-for="job in waitingHubJobs"
             :key="job.jobId"
             class="job-card"
             :class="{ highlighted: highlightJobId === job.jobId }"

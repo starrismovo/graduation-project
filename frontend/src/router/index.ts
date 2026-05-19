@@ -116,8 +116,11 @@ const router = createRouter({
     {
       path: '/views/position/:id/edit',
       name: 'JobEdit',
-      component: () => import('@/views/position/JobEditView.vue'),
-      meta: { requiresAuth: true }
+      redirect: to => ({
+        path: '/home/candidates',
+        query: { job_id: String(to.params.id) }
+      }),
+      meta: { requiresAuth: true, requiresHR: true }
     }
   ]
 })

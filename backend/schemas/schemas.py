@@ -24,6 +24,7 @@ class JobCreate(BaseModel):
     salary_min: float
     salary_max: float
     required_traits: Dict[str, Any] = {}
+    personality_requirements: Optional[Dict[str, Any]] = None
 
     @field_validator('required_traits', mode='before')
     @classmethod
@@ -36,6 +37,16 @@ class JobCreate(BaseModel):
                 return {}
         return v
 
+    @field_validator('personality_requirements', mode='before')
+    @classmethod
+    def parse_personality_requirements(cls, v):
+        if isinstance(v, str):
+            try:
+                return json.loads(v)
+            except (json.JSONDecodeError, TypeError):
+                return None
+        return v
+
 class JobUpdate(BaseModel):
     """更新岗位请求"""
     name: Optional[str] = None
@@ -46,6 +57,7 @@ class JobUpdate(BaseModel):
     salary_min: Optional[float] = None
     salary_max: Optional[float] = None
     required_traits: Optional[Dict[str, Any]] = None
+    personality_requirements: Optional[Dict[str, Any]] = None
 
 class JobResponse(BaseModel):
     """岗位响应"""
@@ -58,6 +70,7 @@ class JobResponse(BaseModel):
     salary_min: float
     salary_max: float
     required_traits: Dict[str, Any] = {}
+    personality_requirements: Optional[Dict[str, Any]] = None
     creator_id: Optional[int] = None
 
     @field_validator('required_traits', mode='before')

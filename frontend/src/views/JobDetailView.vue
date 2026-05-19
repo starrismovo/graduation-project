@@ -91,23 +91,45 @@ const traitImportanceMap: Record<string, string> = {
   neuroticism: '岗位中需要面对压力和挑战。神经质低（即情绪稳定）的人能够更好地应对压力、保持冷静决策。'
 }
 
+const traitKeyAliases: Record<string, string> = {
+  openness: 'openness',
+  开放性: 'openness',
+  conscientiousness: 'conscientiousness',
+  尽责性: 'conscientiousness',
+  extraversion: 'extraversion',
+  外向性: 'extraversion',
+  agreeableness: 'agreeableness',
+  宜人性: 'agreeableness',
+  neuroticism: 'neuroticism',
+  神经质: 'neuroticism'
+}
+
+const traitDisplayOrder = ['openness', 'conscientiousness', 'extraversion', 'agreeableness', 'neuroticism']
+
 const processedTraits = computed(() => {
   if (!jobDetail.value?.required_traits) return []
-  
-  return Object.entries(jobDetail.value.required_traits)
-    .filter(([, value]) => value !== null && value !== undefined)
-    .map(([key, value]) => {
-      const config = traitConfigMap[key] || {
-        key,
-        label: key,
-        description: '',
-        color: '#999',
-        icon: '•'
+
+  const normalizedTraits = Object.entries(jobDetail.value.required_traits).reduce<Record<string, number>>(
+    (result, [rawKey, rawValue]) => {
+      const key = traitKeyAliases[String(rawKey)]
+      const value = typeof rawValue === 'number' ? rawValue : Number(rawValue)
+      if (!key || !Number.isFinite(value)) {
+        return result
       }
-      const score = typeof value === 'number' ? value : Number(value)
+      result[key] = Math.round(value * 10) / 10
+      return result
+    },
+    {}
+  )
+
+  return traitDisplayOrder
+    .filter((key) => normalizedTraits[key] !== undefined)
+    .map((key) => {
+      const config = traitConfigMap[key]
+      const score = normalizedTraits[key]
       return {
         ...config,
-        score: Math.round(score * 10) / 10,
+        score,
         percentage: Math.min(100, Math.max(0, (score / 10) * 100)),
         importance: traitImportanceMap[key] || '该岗位对这个特质有一定要求，能够帮助更好地表现。'
       }

@@ -5,10 +5,12 @@
 import os
 import logging
 import sys
+import threading
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
 _OCR_INSTANCE = None
+_OCR_INIT_LOCK = threading.Lock()
 
 # 环境变量预设（在任何导入之前）
 OCR_CACHE_DIR = Path(__file__).resolve().parent / ".ocr_cache"
@@ -64,6 +66,21 @@ def _has_inference_model(model_dir: str) -> bool:
     )
 
 def create_paddleocr(**kwargs):
+    """返回全局复用的 PaddleOCR 实例，避免并发请求重复初始化模型。"""
+    global _OCR_INSTANCE
+
+    if _OCR_INSTANCE is not None:
+        logger.info("复用已初始化的 PaddleOCR 实例")
+        return _OCR_INSTANCE
+
+    with _OCR_INIT_LOCK:
+        if _OCR_INSTANCE is not None:
+            logger.info("复用已初始化的 PaddleOCR 实例")
+            return _OCR_INSTANCE
+        return _create_paddleocr_unlocked(**kwargs)
+
+
+def _create_paddleocr_unlocked(**kwargs):
     """创建使用本地模型的 PaddleOCR 实例（延迟加载）
     
     Args:
@@ -174,3 +191,20 @@ def create_paddleocr(**kwargs):
     except Exception as e:
         logger.error(f"❌ PaddleOCR 初始化失败: {type(e).__name__}: {e}")
         raise
+
+
+def preload_paddleocr_async() -> None:
+    """在后台线程预热 PaddleOCR，减少第一次上传简历时的等待时间。"""
+
+    if _OCR_INSTANCE is not None:
+        return
+
+    def _preload() -> None:
+        try:
+            logger.info("后台预热 PaddleOCR 模型...")
+            create_paddleocr()
+        except Exception as exc:
+            logger.warning("PaddleOCR 后台预热失败: %s: %s", type(exc).__name__, exc)
+
+    thread = threading.Thread(target=_preload, name="paddleocr-preload", daemon=True)
+    thread.start()

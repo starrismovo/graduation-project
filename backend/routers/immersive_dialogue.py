@@ -225,20 +225,21 @@ async def _run_unified_agent(
             "should_end": should_end,
         }
 
-    next_question = None
-    if not should_end:
-        next_question = await _run_next_question(
-            service,
-            candidate_id=candidate_id,
-            role=role,
-            history=history + [{"role": "candidate", "content": request.candidate_response}],
-            conversation_depth=request.conversation_depth + 1,
-            target_position=request.target_position,
-            job_info=request.job_info,
-            resume_info=request.resume_info,
-            candidate_name=request.candidate_name or "",
-            assessment_id=request.assessment_id,
-        )
+    # 快速模式：候选人回答后不再额外调用 InterviewerAgent LLM。
+    # analyze_candidate_response 已由 EvaluatorAgent 一次性生成分析和下一题草案，
+    # DecisionAgent 仅做规则校验，保证实时面试一轮最多一次模型请求。
+    next_question = None if should_end else analysis.get("next_question")
+    if not should_end and not next_question:
+        next_question = {
+            "question": "请结合一个具体经历，说明你在岗位相关情境下如何做出判断、采取行动并复盘结果。",
+            "intent": "补充评估证据",
+            "difficulty": "medium",
+            "tags": ["行为情境", "心理特质评估"],
+            "focus_area": "综合心理特质",
+            "context": "快速模式兜底问题",
+            "phase": role.value,
+            "interview_state": analysis.get("interview_state"),
+        }
 
     return {
         "operation": request.operation,
@@ -486,7 +487,8 @@ async def save_assessment_session(
             duration_seconds=request_data.get("duration_seconds", 0),
             conversation_depth=request_data.get("conversation_depth", 0),
             total_rounds=request_data.get("total_rounds", 0),
-            highlights=request_data.get("highlights", [])
+            highlights=request_data.get("highlights", []),
+            score_coverage=request_data.get("score_coverage", {}),
         )
         
         if result.get("success"):
@@ -728,18 +730,29 @@ async def check_resume(candidate_id: str, db: Session = Depends(get_db)):
 
 
 @router.get("/check-progress/{candidate_id}")
-async def check_progress(candidate_id: str, db: Session = Depends(get_db)):
+async def check_progress(
+    candidate_id: str,
+    job_id: Optional[int] = Query(None, description="按岗位实例筛选进行中的 AssessmentSession"),
+    assessment_id: Optional[int] = Query(None, description="指定 AssessmentSession"),
+    db: Session = Depends(get_db),
+):
     """检查候选人是否有进行中的评估"""
     try:
         candidate_id = _validate_candidate_id(candidate_id)
         
         from models.assessment import AssessmentRecord, AssessmentStatus
         
-        pending = db.query(AssessmentRecord).filter(
+        query = db.query(AssessmentRecord).filter(
             AssessmentRecord.candidate_id == int(candidate_id),
             AssessmentRecord.assessment_status == AssessmentStatus.PENDING,
             AssessmentRecord.is_deleted == False
-        ).order_by(AssessmentRecord.updated_at.desc()).first()
+        )
+        if assessment_id is not None:
+            query = query.filter(AssessmentRecord.id == int(assessment_id))
+        if job_id is not None:
+            query = query.filter(AssessmentRecord.job_id == int(job_id))
+
+        pending = query.order_by(AssessmentRecord.updated_at.desc()).first()
         
         if pending:
             return {
@@ -825,20 +838,37 @@ async def update_assessment_progress(
                     },
                     "message": "未指定岗位实例，跳过后端 AssessmentSession 创建"
                 }
-            # 创建新记录
-            record = AssessmentRecord(
-                candidate_id=int(candidate_id),
-                job_id=int(job_id),
-                job_title=request_data.get("job_title", "未知岗位"),
-                assessment_status=status,
-                assessment_mode="immersive",
-                total_rounds=request_data.get("total_rounds", 0),
-                duration_minutes=request_data.get("duration_minutes", 0),
-                conversation_depth=request_data.get("conversation_depth", 0),
-                conversation_summary=request_data.get("conversation_summary", ""),
-                match_score=request_data.get("match_score"),
-            )
-            db.add(record)
+            existing = db.query(AssessmentRecord).filter(
+                AssessmentRecord.candidate_id == int(candidate_id),
+                AssessmentRecord.job_id == int(job_id),
+                AssessmentRecord.assessment_status == AssessmentStatus.PENDING,
+                AssessmentRecord.is_deleted == False,
+            ).order_by(AssessmentRecord.updated_at.desc()).first()
+            if existing:
+                record = existing
+                record.assessment_status = status
+                record.job_title = request_data.get("job_title", record.job_title)
+                record.total_rounds = request_data.get("total_rounds", record.total_rounds)
+                record.duration_minutes = request_data.get("duration_minutes", record.duration_minutes)
+                record.conversation_depth = request_data.get("conversation_depth", record.conversation_depth)
+                record.conversation_summary = request_data.get("conversation_summary", record.conversation_summary)
+                if request_data.get("match_score") is not None:
+                    record.match_score = request_data["match_score"]
+            else:
+                # 创建新记录
+                record = AssessmentRecord(
+                    candidate_id=int(candidate_id),
+                    job_id=int(job_id),
+                    job_title=request_data.get("job_title", "未知岗位"),
+                    assessment_status=status,
+                    assessment_mode="immersive",
+                    total_rounds=request_data.get("total_rounds", 0),
+                    duration_minutes=request_data.get("duration_minutes", 0),
+                    conversation_depth=request_data.get("conversation_depth", 0),
+                    conversation_summary=request_data.get("conversation_summary", ""),
+                    match_score=request_data.get("match_score"),
+                )
+                db.add(record)
         
         db.commit()
         db.refresh(record)
@@ -1070,6 +1100,7 @@ async def upload_resume(
                         "phone": "",
                         "education": "",
                         "technical_skills": [],
+                        "project_experience": "",
                         "work_experience": "",
                         "soft_skills": []
                     }
@@ -1114,7 +1145,7 @@ async def upload_resume(
             bool(candidate_info.get('email')),
             bool(education),
             bool(technical_skills),
-            bool(candidate_info.get('work_experience'))
+            bool(candidate_info.get('project_experience') or candidate_info.get('work_experience'))
         ])
         profile_completeness = completed_fields / 5.0
         
@@ -1186,7 +1217,7 @@ def _ocr_extract_text(content: bytes, file_ext: str) -> str:
 
         if hasattr(image, "convert"):
             image = image.convert("RGB")
-            max_side = 1200
+            max_side = 900
             width, height = image.size
             longest = max(width, height)
             if longest > max_side:
@@ -1223,7 +1254,7 @@ def _ocr_extract_text(content: bytes, file_ext: str) -> str:
         return "\n".join(text_parts).strip()
     
     # ⏱️ 超时保护
-    pdf_render_resolution = 120
+    pdf_render_resolution = 96
     timeout_per_page = 20  # 每页最多 20 秒
     total_timeout = 90     # 总超时 90 秒
     start_time = time.time()
@@ -1405,7 +1436,13 @@ def _extract_resume_text(content: bytes, file_ext: str) -> str:
                 from docx import Document
                 from io import BytesIO
                 doc = Document(BytesIO(content))
-                text = '\n'.join([para.text for para in doc.paragraphs])
+                text_parts = [para.text for para in doc.paragraphs if para.text]
+                for table in doc.tables:
+                    for row in table.rows:
+                        row_text = ' '.join(cell.text.strip() for cell in row.cells if cell.text.strip())
+                        if row_text:
+                            text_parts.append(row_text)
+                text = '\n'.join(text_parts)
                 if text:
                     logger.info(f"DOCX 提取成功，长度: {len(text)}")
                     return text
@@ -1428,10 +1465,22 @@ def _extract_resume_text(content: bytes, file_ext: str) -> str:
         elif file_ext == '.pdf':
             logger.info("尝试提取 PDF 格式文件")
             try:
-                import pdfplumber
                 from io import BytesIO
+                try:
+                    import fitz
+                    with fitz.open(stream=content, filetype="pdf") as doc:
+                        fitz_text = '\n'.join(page.get_text("text") or '' for page in doc).strip()
+                    if fitz_text:
+                        logger.info(f"PDF PyMuPDF 提取成功，长度: {len(fitz_text)}")
+                        return fitz_text
+                except ImportError:
+                    logger.info("PyMuPDF 未安装，继续使用 pdfplumber 提取 PDF 文本")
+                except Exception as fitz_err:
+                    logger.warning(f"PyMuPDF 提取 PDF 失败，继续使用 pdfplumber: {fitz_err}")
+
+                import pdfplumber
                 with pdfplumber.open(BytesIO(content)) as pdf:
-                    text = '\n'.join([page.extract_text() or '' for page in pdf.pages])
+                    text = '\n'.join([page.extract_text(x_tolerance=1, y_tolerance=3) or '' for page in pdf.pages]).strip()
                 if text:
                     logger.info(f"PDF 提取成功，长度: {len(text)}")
                     return text
@@ -1486,6 +1535,7 @@ def _parse_resume_info(text: str) -> Dict[str, Any]:
         "phone": "",
         "education": "",
         "technical_skills": [],
+        "project_experience": "",
         "work_experience": "",
         "soft_skills": []
     }
@@ -1548,15 +1598,54 @@ def _parse_resume_info(text: str) -> Dict[str, Any]:
         info["technical_skills"] = [skill for skill in skill_keywords if skill in text]
         if info["technical_skills"]:
             logger.info(f"提取技能: {info['technical_skills']}")
+
+        def extract_section(section_keywords, stop_keywords, max_lines=14):
+            lines = [line.strip() for line in text.splitlines()]
+            lines = [line for line in lines if line]
+            start_index = None
+            for idx, line in enumerate(lines):
+                line_lower = line.lower()
+                if any(keyword.lower() in line_lower for keyword in section_keywords):
+                    start_index = idx
+                    break
+
+            if start_index is None:
+                return ""
+
+            selected = []
+            for line in lines[start_index:start_index + max_lines]:
+                line_lower = line.lower()
+                is_stop = any(keyword.lower() in line_lower for keyword in stop_keywords)
+                if selected and is_stop:
+                    break
+                selected.append(line)
+
+            return '\n'.join(selected).strip()
+
+        section_stop_keywords = [
+            "基本信息", "个人信息", "教育经历", "教育背景", "校园经历",
+            "专业技能", "技能清单", "技能特长", "获奖", "证书", "荣誉",
+            "自我评价", "个人评价", "求职意向", "联系方式",
+            "Education", "Skills", "Awards", "Certificates", "Summary"
+        ]
         
         # 提取工作经验
-        if any(kw in text for kw in ["工作经验", "工作经历", "Experience", "employment"]):
-            lines = text.split('\n')
-            for i, line in enumerate(lines):
-                if "工作" in line or "experience" in line.lower():
-                    info["work_experience"] = '\n'.join(lines[i:min(i+3, len(lines))])
-                    logger.info(f"提取工作经验: {info['work_experience'][:100]}")
-                    break
+        info["work_experience"] = extract_section(
+            ["工作经验", "工作经历", "实习经历", "实践经历", "Experience", "Employment", "Internship"],
+            section_stop_keywords,
+        )
+        if info["work_experience"]:
+            logger.info(f"提取工作经验: {info['work_experience'][:100]}")
+
+        info["project_experience"] = extract_section(
+            ["项目经验", "项目经历", "项目实践", "项目介绍", "Projects", "Project Experience"],
+            section_stop_keywords,
+        )
+        if info["project_experience"]:
+            logger.info(f"提取项目经验: {info['project_experience'][:100]}")
+
+        if not info["work_experience"] and info["project_experience"]:
+            info["work_experience"] = info["project_experience"]
         
         # 提取软技能（基于关键词匹配）
         soft_skill_keywords = {

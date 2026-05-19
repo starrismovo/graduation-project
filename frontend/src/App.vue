@@ -41,6 +41,22 @@ html, body, #app {
   padding: 0;
 }
 
+html,
+body,
+#app,
+#app :where(:not(input):not(textarea):not([contenteditable="true"]):not([contenteditable=""])) {
+  caret-color: transparent;
+}
+
+#app input,
+#app textarea,
+#app [contenteditable="true"],
+#app [contenteditable=""],
+#app .el-input__inner,
+#app .el-textarea__inner {
+  caret-color: auto;
+}
+
 /* ==== 光标规范：纯展示文字不显示 I 型输入光标 ==== */
 /* !important 确保压倒 UA 样式和 Element Plus 的 cursor:auto */
 *, *::before, *::after {

@@ -73,6 +73,7 @@ export const createJob = (data: {
   salary_min: number
   salary_max: number
   required_traits?: Record<string, any>
+  personality_requirements?: Record<string, any>
 }) => {
   return request.post('/jobs/', {
     ...data,
@@ -127,6 +128,7 @@ export const updateJob = (jobId: number, data: {
   salary_min: number
   salary_max: number
   required_traits?: Record<string, any>
+  personality_requirements?: Record<string, any>
 }) => {
   return request.put(`/jobs/${jobId}`, { ...data, required_traits: data.required_traits || {} })
 }

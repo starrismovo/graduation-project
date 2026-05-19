@@ -107,7 +107,7 @@
                   />
                 </svg>
                 <div class="score-center">
-                  <div class="score-value">{{ Math.round(report.match_score || 0) }}%</div>
+                  <div class="score-value">{{ Math.round(normalizePercentScore(report.match_score)) }}%</div>
                   <div class="score-label">匹配度</div>
                 </div>
               </div>
@@ -332,6 +332,7 @@ const getModeLabel = (mode: string) => {
 
 // 获取匹配度颜色
 const getScoreColor = (score: number) => {
+  score = normalizePercentScore(score)
   if (score >= 85) return '#67c23a'
   if (score >= 70) return '#409eff'
   if (score >= 55) return '#e6a23c'
@@ -339,7 +340,15 @@ const getScoreColor = (score: number) => {
 }
 
 // 获取匹配度等级
+const normalizePercentScore = (score: number | string | null | undefined): number => {
+  const value = Number(score)
+  if (!Number.isFinite(value) || value <= 0) return 0
+  const percent = value <= 10 ? value * 10 : value
+  return Math.max(0, Math.min(100, percent))
+}
+
 const getMatchLevel = (score: number) => {
+  score = normalizePercentScore(score)
   if (score >= 85) return '高度匹配'
   if (score >= 70) return '良好匹配'
   if (score >= 55) return '中等匹配'
@@ -348,6 +357,7 @@ const getMatchLevel = (score: number) => {
 
 // 获取环形进度条数据
 const getRingDasharray = (score: number) => {
+  score = normalizePercentScore(score)
   const circumference = 2 * Math.PI * 40
   const filled = (score / 100) * circumference
   return `${filled} ${circumference - filled}`

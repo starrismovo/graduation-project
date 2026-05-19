@@ -91,31 +91,25 @@
         <div class="card-header">
           <h3 class="card-title">匹配分数分布</h3>
         </div>
-        <div class="donut-section" v-if="scoreDistribution.some(d => d.count > 0)">
-          <div class="donut-legend">
+        <div class="funnel-section" v-if="scoreDistribution.some(d => d.count > 0)">
+          <div class="funnel-chart">
             <div
               v-for="seg in scoreDistribution"
               :key="seg.label"
-              class="legend-item"
+              class="funnel-row"
             >
-              <span class="legend-dot" :style="{ background: seg.color }" />
-              <span class="legend-label">{{ seg.label }}</span>
-              <span class="legend-value">{{ seg.count }} 人</span>
-              <span class="legend-pct">（{{ seg.pct }}%）</span>
+              <div
+                class="funnel-bar"
+                :style="{ width: seg.funnelWidth + '%', background: seg.color }"
+              >
+                <span class="funnel-label">{{ seg.label }}</span>
+                <strong>{{ seg.count }} 人</strong>
+                <span>{{ seg.pct }}%</span>
+              </div>
             </div>
           </div>
-          <!-- 简易横条图形式展示分布 -->
-          <div class="dist-bars">
-            <div v-for="seg in scoreDistribution" :key="seg.label" class="dist-row">
-              <div class="dist-name" :style="{ color: seg.color }">{{ seg.label }}</div>
-              <div class="dist-track">
-                <div
-                  class="dist-fill"
-                  :style="{ width: seg.pct + '%', background: seg.color }"
-                />
-              </div>
-              <div class="dist-pct">{{ seg.pct }}%</div>
-            </div>
+          <div class="funnel-note">
+            按当前 HR 发布岗位的评估记录统计，仅展示已有匹配分数的评估结果。
           </div>
         </div>
         <div v-else class="chart-empty">暂无评估数据</div>
@@ -183,10 +177,10 @@ const maxJobCount = computed(() => Math.max(...jobChartData.value.map(d => d.cou
 
 // 匹配分数分布
 const scoreDistribution = ref([
-  { label: '优秀 (≥80)', color: '#10b981', count: 0, pct: 0 },
-  { label: '良好 (60-79)', color: '#667eea', count: 0, pct: 0 },
-  { label: '一般 (40-59)', color: '#f59e0b', count: 0, pct: 0 },
-  { label: '较差 (<40)', color: '#ef4444', count: 0, pct: 0 },
+  { label: '优秀 (≥80)', color: '#10b981', count: 0, pct: 0, funnelWidth: 100 },
+  { label: '良好 (60-79)', color: '#667eea', count: 0, pct: 0, funnelWidth: 82 },
+  { label: '一般 (40-59)', color: '#f59e0b', count: 0, pct: 0, funnelWidth: 64 },
+  { label: '较弱 (<40)', color: '#ef4444', count: 0, pct: 0, funnelWidth: 46 },
 ])
 
 // 各岗位汇总表
@@ -204,7 +198,9 @@ async function loadAll() {
     ])
 
     const jobs: any[] = jobRes.data?.items || []
-    const candidates: any[] = candRes.data?.data?.items || []
+    const allCandidateRecords: any[] = candRes.data?.data?.items || []
+    const ownJobIds = new Set(jobs.map(job => Number(job.id)))
+    const candidates = allCandidateRecords.filter(record => ownJobIds.has(Number(record.job_id)))
 
     // ===== KPI =====
     summary.value.openJobs = jobs.length
@@ -217,13 +213,16 @@ async function loadAll() {
       : 0
 
     // ===== 柱状图：各岗位评估人数 =====
-    const jobCountMap: Record<string, number> = {}
-    for (const c of candidates) {
-      const key = c.job_title || '未知岗位'
-      jobCountMap[key] = (jobCountMap[key] || 0) + 1
+    const jobCountMap = new Map<number, { name: string; count: number }>()
+    for (const job of jobs) {
+      jobCountMap.set(Number(job.id), { name: job.name, count: 0 })
     }
-    jobChartData.value = Object.entries(jobCountMap)
-      .map(([name, count]) => ({ name, count }))
+    for (const c of candidates) {
+      const item = jobCountMap.get(Number(c.job_id))
+      if (item) item.count++
+    }
+    jobChartData.value = Array.from(jobCountMap.values())
+      .filter(item => item.count > 0)
       .sort((a, b) => b.count - a.count)
       .slice(0, 10)
 
@@ -240,6 +239,7 @@ async function loadAll() {
       ...seg,
       count: buckets[i],
       pct: Math.round((buckets[i] / total) * 100),
+      funnelWidth: Math.max(36, Math.round((buckets[i] / Math.max(...buckets, 1)) * 100)),
     }))
 
     // ===== 各岗位详情表 =====
@@ -256,15 +256,7 @@ async function loadAll() {
       }
     }
     for (const c of candidates) {
-      if (!c.job_id || !statMap[c.job_id]) {
-        if (c.job_id) {
-          statMap[c.job_id] = {
-            name: c.job_title || '未知',
-            total: 0, completed: 0, pending: 0,
-            scoreSum: 0, scoreCount: 0, highMatch: 0,
-          }
-        } else continue
-      }
+      if (!c.job_id || !statMap[c.job_id]) continue
       const s = statMap[c.job_id]
       s.total++
       if (c.assessment_status === 'completed') s.completed++
@@ -276,7 +268,6 @@ async function loadAll() {
       }
     }
     jobStats.value = Object.values(statMap)
-      .filter(s => s.total > 0)
       .map(s => ({
         ...s,
         avgScore: s.scoreCount ? Math.round(s.scoreSum / s.scoreCount) : 0,
@@ -538,6 +529,65 @@ function truncate(str: string, len: number) {
   font-weight: 600;
   color: #0f172a;
   text-align: right;
+}
+
+.funnel-section {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.funnel-chart {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 0;
+}
+
+.funnel-row {
+  width: 100%;
+  display: flex;
+  justify-content: center;
+}
+
+.funnel-bar {
+  min-width: 42%;
+  height: 44px;
+  padding: 0 18px;
+  border-radius: 8px;
+  color: #fff;
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  align-items: center;
+  gap: 12px;
+  box-shadow: 0 10px 20px rgba(15, 23, 42, 0.08);
+  transition: width 0.35s ease;
+}
+
+.funnel-label {
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.funnel-bar strong {
+  font-size: 14px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.funnel-bar span:last-child {
+  font-size: 12px;
+  opacity: 0.9;
+}
+
+.funnel-note {
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: #f8fafc;
+  color: #64748b;
+  font-size: 12px;
+  line-height: 1.6;
 }
 
 /* ========== 内联分数 ========== */

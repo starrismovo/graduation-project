@@ -56,7 +56,7 @@
                       cy="60"
                       r="48"
                       fill="none"
-                      :stroke="getScoreColor(reportData.match_score || 0)"
+                      :stroke="getScoreColor(normalizedMatchScore)"
                       stroke-width="10"
                       stroke-linecap="round"
                       :stroke-dasharray="ringDasharrayLarge"
@@ -64,15 +64,15 @@
                     />
                   </svg>
                   <div class="score-circle-content">
-                    <div class="score-percent">{{ Math.round(reportData.match_score || 0) }}%</div>
-                    <div class="score-level">{{ getMatchLevel(reportData.match_score || 0) }}</div>
+                    <div class="score-percent">{{ Math.round(normalizedMatchScore) }}%</div>
+                    <div class="score-level">{{ getMatchLevel(normalizedMatchScore) }}</div>
                   </div>
                 </div>
 
                 <div class="match-summary">
                   <div class="summary-head">
                     <span class="summary-kicker">综合判断</span>
-                    <h4>{{ getMatchLevel(reportData.match_score || 0) }}</h4>
+                    <h4>{{ getMatchLevel(normalizedMatchScore) }}</h4>
                   </div>
                   <p>{{ overviewSummary }}</p>
                 </div>
@@ -84,11 +84,11 @@
                     <div class="dimension-icon" :class="getDimensionTheme(dimension.label)">{{ getDimensionEmoji(dimension.label) }}</div>
                     <div>
                       <div class="dimension-label">{{ dimension.label }}</div>
-                      <div class="dimension-value">{{ Math.round(dimension.score) }}%</div>
+                      <div class="dimension-value">{{ formatPercentScore(dimension.score) }}</div>
                     </div>
                   </div>
                   <div class="dimension-bar">
-                    <span :style="{ width: `${Math.min(100, Math.max(0, dimension.score))}%`, background: getDimensionGradient(dimension.label) }"></span>
+                    <span :style="{ width: `${toPercentNumber(dimension.score)}%`, background: getDimensionGradient(dimension.label) }"></span>
                   </div>
                   <p>{{ dimension.description }}</p>
                 </article>
@@ -119,7 +119,7 @@
               <div class="feedback-head">
                 <el-tag type="info">暂未反馈</el-tag>
               </div>
-              <p>HR 尚未对本次 AssessmentSession 提交反馈。系统已保留评估报告与人岗匹配结果，后续反馈将展示在此处。</p>
+              <p>HR 尚未对本次评估提交反馈。系统已保留评估报告与人岗匹配结果，后续反馈将展示在此处。</p>
             </div>
           </section>
 
@@ -241,7 +241,7 @@
               <el-table :data="traitInsights" size="small" border>
                 <el-table-column prop="name" label="特质维度" min-width="110" />
                 <el-table-column label="我的分数" min-width="100">
-                  <template #default="scope">{{ scope.row.score.toFixed(1) }}/10</template>
+                  <template #default="scope">{{ formatTraitScore(scope.row.score) }}</template>
                 </el-table-column>
                 <el-table-column label="岗位期望" min-width="110">
                   <template #default="scope">{{ formatRequirement(scope.row.job_requirement) }}</template>
@@ -257,40 +257,9 @@
             </div>
           </section>
 
-          <section class="report-section dual-section">
-            <div class="section-header">
-              <span class="section-badge">7</span>
-              <div>
-                <h3>人格维度解读</h3>
-                <p>以卡片方式概括每个大五维度在当前评估中的含义。</p>
-              </div>
-            </div>
-
-            <div class="trait-card-grid">
-              <article v-for="item in traitInsights" :key="item.name" class="trait-card">
-                <div class="trait-status-line" :class="`line-${item.match_status}`"></div>
-                <div class="trait-card-top">
-                  <div>
-                    <div class="trait-card-name-row">
-                      <div class="trait-card-name">{{ item.name }}</div>
-                      <el-tag :type="getMatchTagType(item.match_status)" size="small" effect="plain">{{ getMatchStatusLabel(item.match_status) }}</el-tag>
-                    </div>
-                    <div class="trait-card-desc">{{ item.description }}</div>
-                  </div>
-                  <div class="trait-card-score">{{ item.score.toFixed(1) }}</div>
-                </div>
-                <p class="trait-card-summary">{{ item.summary }}</p>
-                <div class="trait-card-foot">
-                  <span class="trait-requirement">岗位期望：{{ formatRequirement(item.job_requirement) }}</span>
-                  <span class="trait-advice">{{ item.advice }}</span>
-                </div>
-              </article>
-            </div>
-          </section>
-
           <section id="section-actions" class="report-section">
             <div class="section-header">
-              <span class="section-badge">8</span>
+              <span class="section-badge">7</span>
               <div>
                 <h3>发展行动建议</h3>
                 <p>按照近期、中期与持续三个层次形成更便于落地执行的优化路径。</p>
@@ -348,7 +317,9 @@ const router = useRouter()
 const loading = ref(false)
 const reportData = ref<AssessmentReport | null>(null)
 
-const personalityTraits = computed<TraitScore[]>(() => reportData.value?.personality_trait || [])
+const personalityTraits = computed<TraitScore[]>(() => {
+  return (reportData.value?.personality_trait || []).filter((trait) => typeof trait.score === 'number')
+})
 const reportSections = computed(() => reportData.value?.report_sections)
 
 const roleCount = computed(() => reportData.value?.assessement_details?.roles_participated?.length || 3)
@@ -360,9 +331,11 @@ const overviewInfoCards = computed(() => [
   { label: '评估阶段数', value: `${roleCount.value} 个角色`, icon: '角', theme: 'orange' }
 ])
 
+const normalizedMatchScore = computed(() => normalizePercentScore(reportData.value?.match_score))
+
 const ringDasharrayLarge = computed(() => {
   const circumference = 2 * Math.PI * 48
-  const filled = ((reportData.value?.match_score || 0) / 100) * circumference
+  const filled = (normalizedMatchScore.value / 100) * circumference
   return `${filled} ${circumference - filled}`
 })
 
@@ -371,9 +344,9 @@ const matchDimensions = computed<MatchDimension[]>(() => {
     return reportSections.value.match_dimensions
   }
   return [
-    { label: '性格匹配', score: reportData.value?.match_score || 0, description: '基于人格特质的岗位适配结果。' },
-    { label: '技能匹配', score: 50, description: '当前版本未返回细分技能匹配时的默认展示。' },
-    { label: '综合匹配', score: reportData.value?.match_score || 0, description: '综合评估结果。' }
+    { label: '性格匹配', score: normalizedMatchScore.value, description: '基于人格特质的岗位适配结果。' },
+    { label: '技能匹配', score: null, description: '当前报告未返回可用技能证据，显示为证据不足。' },
+    { label: '综合匹配', score: normalizedMatchScore.value, description: '综合评估结果。' }
   ]
 })
 
@@ -471,7 +444,7 @@ const developmentActions = computed<DevelopmentActionItem[]>(() => {
 const strengthsList = computed(() => {
   return reportData.value?.match_analysis?.strengths?.length
     ? reportData.value.match_analysis.strengths
-    : ['当前报告以人格分析为主，建议结合后续多轮 AssessmentSession 持续补充优势证据。']
+    : ['当前报告以人格分析为主，建议结合后续多轮评估持续补充优势证据。']
 })
 
 const gapsList = computed(() => {
@@ -518,13 +491,35 @@ function formatRequirement(value?: number | null): string {
 }
 
 function getScoreColor(score: number): string {
+  score = normalizePercentScore(score)
   if (score >= 80) return '#67c23a'
   if (score >= 60) return '#409eff'
   if (score >= 40) return '#e6a23c'
   return '#f56c6c'
 }
 
+function normalizePercentScore(score: number | null | undefined): number {
+  if (typeof score !== 'number' || !Number.isFinite(score)) return 0
+  const normalized = score > 0 && score <= 10 ? score * 10 : score
+  return Math.min(100, Math.max(0, normalized))
+}
+
+function toPercentNumber(score: number | null | undefined): number {
+  return normalizePercentScore(score)
+}
+
+function formatPercentScore(score: number | null | undefined): string {
+  if (typeof score !== 'number' || !Number.isFinite(score)) return '证据不足'
+  return `${Math.round(normalizePercentScore(score))}%`
+}
+
+function formatTraitScore(score: number | null | undefined): string {
+  if (typeof score !== 'number' || !Number.isFinite(score)) return '未覆盖'
+  return `${score.toFixed(1)}/10`
+}
+
 function getMatchLevel(score: number): string {
+  score = normalizePercentScore(score)
   if (score >= 85) return '高度匹配'
   if (score >= 70) return '良好匹配'
   if (score >= 55) return '中等匹配'
@@ -1260,108 +1255,6 @@ onMounted(loadReport)
   background: #f8fbff;
 }
 
-.trait-card-grid {
-  display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: 14px;
-}
-
-.trait-card {
-  position: relative;
-  padding: 16px;
-  border-radius: 18px;
-  border: 1px solid #e7edf6;
-  background: linear-gradient(180deg, #ffffff 0%, #fbfcff 100%);
-  overflow: hidden;
-  box-shadow: 0 10px 20px rgba(39, 63, 105, 0.05);
-}
-
-.trait-status-line {
-  position: absolute;
-  left: 0;
-  top: 0;
-  width: 100%;
-  height: 4px;
-}
-
-.line-aligned {
-  background: linear-gradient(90deg, #16a34a 0%, #4ade80 100%);
-}
-
-.line-watch {
-  background: linear-gradient(90deg, #f59e0b 0%, #fbbf24 100%);
-}
-
-.line-gap {
-  background: linear-gradient(90deg, #f97316 0%, #fb923c 100%);
-}
-
-.line-balanced {
-  background: linear-gradient(90deg, #64748b 0%, #94a3b8 100%);
-}
-
-.trait-card-top {
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.trait-card-name-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-.trait-card-name {
-  color: #16213d;
-  font-size: 15px;
-  font-weight: 800;
-}
-
-.trait-card-desc {
-  margin-top: 6px;
-  color: #7b89a0;
-  font-size: 12px;
-  line-height: 1.65;
-}
-
-.trait-card-score {
-  min-width: 52px;
-  text-align: right;
-  color: #2563eb;
-  font-size: 26px;
-  font-weight: 800;
-}
-
-.trait-card-summary {
-  margin: 14px 0 0;
-  color: #68778f;
-  font-size: 12px;
-  line-height: 1.8;
-}
-
-.trait-card-foot {
-  margin-top: 14px;
-  padding-top: 12px;
-  border-top: 1px solid #edf2f8;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.trait-requirement {
-  color: #2b4fb8;
-  font-size: 12px;
-  font-weight: 700;
-}
-
-.trait-advice {
-  color: #6b7a92;
-  font-size: 12px;
-  line-height: 1.7;
-}
-
 .timeline-shell {
   position: relative;
   padding: 8px 8px 8px 22px;
@@ -1480,8 +1373,7 @@ onMounted(loadReport)
 
 @media (max-width: 1280px) {
   .overview-info-grid,
-  .match-dimension-grid,
-  .trait-card-grid {
+  .match-dimension-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
@@ -1511,8 +1403,7 @@ onMounted(loadReport)
   }
 
   .overview-info-grid,
-  .match-dimension-grid,
-  .trait-card-grid {
+  .match-dimension-grid {
     grid-template-columns: 1fr;
   }
 
@@ -1520,8 +1411,7 @@ onMounted(loadReport)
     flex-direction: column;
   }
 
-  .career-top,
-  .trait-card-top {
+  .career-top {
     flex-direction: column;
   }
 

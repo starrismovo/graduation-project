@@ -12,12 +12,27 @@ import {
  * TODO: 从 useUserStore 或认证上下文获取
  */
 function getCurrentCandidateId(): number {
-  // 临时实现，应该从全局状态获取
-  const stored = localStorage.getItem('candidateId')
-  if (stored) {
-    return parseInt(stored, 10)
+  const candidates = [
+    localStorage.getItem('candidateId'),
+    localStorage.getItem('user_id'),
+  ]
+
+  try {
+    const profile = JSON.parse(localStorage.getItem('user_profile') || 'null')
+    if (profile?.id) {
+      candidates.push(String(profile.id))
+    }
+  } catch {
+    // ignore invalid cached profile
   }
-  // 这是一个虚拟实现，实际应从 token/store 获取
+
+  for (const raw of candidates) {
+    const id = Number(raw)
+    if (Number.isInteger(id) && id > 0) {
+      return id
+    }
+  }
+
   return 0
 }
 
@@ -62,7 +77,7 @@ export async function readHubJobs(): Promise<InterviewHubJob[]> {
     savedJobsCache.value = items
     lastFetch.value = Date.now()
     
-    return normalizeApiResponse(items)
+    return mergeHubJobs(normalizeApiResponse(items), readFromLocalStorage())
   } catch (error) {
     console.error('获取心动岗位失败，使用本地存储:', error)
     return readFromLocalStorage()
@@ -90,6 +105,7 @@ export async function addHubJob(job: any): Promise<boolean> {
 
   try {
     await apiAddSavedJob(candidateId, jobId)
+    addToLocalStorage(job)
     
     // 清除缓存以便下次重新获取
     invalidateCache()
@@ -112,6 +128,7 @@ export async function removeHubJob(jobId: number): Promise<boolean> {
 
   try {
     await apiRemoveSavedJob(candidateId, jobId)
+    removeFromLocalStorage(jobId)
     
     // 从内存缓存中移除
     savedJobsCache.value = savedJobsCache.value.filter(j => j.job_id !== jobId)
@@ -262,4 +279,17 @@ function normalizeApiResponse(items: SavedJobItem[]): InterviewHubJob[] {
     category: undefined,
     addedAt: item.saved_at
   }))
+}
+
+function mergeHubJobs(primary: InterviewHubJob[], fallback: InterviewHubJob[]): InterviewHubJob[] {
+  const merged = new Map<number, InterviewHubJob>()
+  for (const job of fallback) {
+    merged.set(Number(job.jobId), job)
+  }
+  for (const job of primary) {
+    merged.set(Number(job.jobId), job)
+  }
+  return Array.from(merged.values()).sort(
+    (a, b) => new Date(b.addedAt).getTime() - new Date(a.addedAt).getTime(),
+  )
 }

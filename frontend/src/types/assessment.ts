@@ -7,7 +7,7 @@
  */
 export interface TraitScore {
   name: string          // 特质名称
-  score: number         // 评分（0-10）
+  score: number | null  // 评分（0-10），null 表示证据不足
   description?: string  // 特质描述
 }
 
@@ -47,13 +47,13 @@ export interface MatchAnalysis {
 
 export interface MatchDimension {
   label: string
-  score: number
+  score: number | null
   description?: string
 }
 
 export interface TraitInsight {
   name: string
-  score: number
+  score: number | null
   description?: string
   job_requirement?: number | null
   match_status: 'aligned' | 'watch' | 'gap' | 'balanced'

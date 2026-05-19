@@ -64,6 +64,48 @@ DEFAULT_WEIGHTS = {
 }
 
 
+CATEGORY_ALIASES = {
+    "技术": JobCategory.TECHNICAL,
+    "技术岗": JobCategory.TECHNICAL,
+    "后端": JobCategory.TECHNICAL,
+    "前端": JobCategory.TECHNICAL,
+    "算法": JobCategory.TECHNICAL,
+    "安全": JobCategory.TECHNICAL,
+    "数据": JobCategory.TECHNICAL,
+    "数据岗": JobCategory.TECHNICAL,
+    "产品": JobCategory.PRODUCT,
+    "产品岗": JobCategory.PRODUCT,
+    "设计": JobCategory.DESIGN,
+    "设计岗": JobCategory.DESIGN,
+    "UI": JobCategory.DESIGN,
+    "UX": JobCategory.DESIGN,
+    "运营": JobCategory.BUSINESS,
+    "业务": JobCategory.BUSINESS,
+    "业务岗": JobCategory.BUSINESS,
+    "管理": JobCategory.MANAGEMENT,
+    "管理岗": JobCategory.MANAGEMENT,
+}
+
+
+def normalize_job_category(job_category: Optional[str]) -> JobCategory:
+    """Normalize Chinese/local Job Instance category labels to weight enums."""
+    if not job_category:
+        return JobCategory.TECHNICAL
+
+    raw = str(job_category).strip()
+    if raw in CATEGORY_ALIASES:
+        return CATEGORY_ALIASES[raw]
+
+    for keyword, category in CATEGORY_ALIASES.items():
+        if keyword and keyword in raw:
+            return category
+
+    try:
+        return JobCategory(raw)
+    except ValueError:
+        return JobCategory.TECHNICAL
+
+
 def _clamp_score(score: float, low: float = 0.0, high: float = 100.0) -> float:
     """确保评分在有效范围内"""
     return max(low, min(high, float(score)))
@@ -79,12 +121,8 @@ def get_agent_weights(job_category: Optional[str] = None) -> Dict[str, float]:
     Returns:
         权重配置字典，格式为 {"technical": 0.5, "hr": 0.3, "hiring_manager": 0.2}
     """
-    try:
-        category = JobCategory(job_category) if job_category else JobCategory.TECHNICAL
-        weights = AGENT_WEIGHTS_BY_CATEGORY.get(category, DEFAULT_WEIGHTS)
-    except ValueError:
-        # 如果岗位类别无法识别，使用默认权重
-        weights = DEFAULT_WEIGHTS
+    category = normalize_job_category(job_category)
+    weights = AGENT_WEIGHTS_BY_CATEGORY.get(category, DEFAULT_WEIGHTS)
     
     return {
         AgentType.TECHNICAL.value: weights.get(AgentType.TECHNICAL, 0.4),

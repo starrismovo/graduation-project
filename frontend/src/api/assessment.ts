@@ -56,8 +56,15 @@ export async function checkResume(candidateId: string | number) {
 }
 
 /** 检查候选人是否有进行中的评估 */
-export async function checkProgress(candidateId: string | number) {
-  const res = await fetch(`${BASE}/check-progress/${candidateId}`)
+export async function checkProgress(
+  candidateId: string | number,
+  options: { jobId?: number | null; assessmentId?: number | null } = {},
+) {
+  const params = new URLSearchParams()
+  if (options.jobId) params.set('job_id', String(options.jobId))
+  if (options.assessmentId) params.set('assessment_id', String(options.assessmentId))
+  const query = params.toString()
+  const res = await fetch(`${BASE}/check-progress/${candidateId}${query ? `?${query}` : ''}`)
   return res.json()
 }
 
@@ -107,12 +114,15 @@ export async function saveSession(data: {
 /** 保存评估结果并生成报告 */
 export async function saveAssessmentResult(data: {
   candidate_id: string
+  assessment_id?: number
   job_id: number
   assessment_mode?: string
   all_scores?: Record<string, number>
   personality_scores?: Record<string, number>
   situational_scores?: Record<string, number>
+  agent_scores?: Record<string, number>
   candidate_info?: Record<string, any>
+  assessment_evidence?: Record<string, any>
 }) {
   const res = await fetch('/assessment/save-result', {
     method: 'POST',

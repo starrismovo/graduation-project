@@ -9,8 +9,12 @@ Write-Host ""
 
 # 设置环境变量
 Write-Host "📝 设置环境变量..." -ForegroundColor Yellow
-$Env:ROAD2ALL_API_KEY = 'sk-vLkONnzI0WkS5ma6218808F663F4444b98BcF1B2E639369a'
-$Env:ROAD2ALL_MODEL = 'gpt4o'
+if (-not $Env:ROAD2ALL_API_BASE) {
+    $Env:ROAD2ALL_API_BASE = 'https://api.deepseek.com'
+}
+if (-not $Env:ROAD2ALL_MODEL) {
+    $Env:ROAD2ALL_MODEL = 'deepseek-v4-pro'
+}
 
 # 激活虚拟环境
 Write-Host "🔧 激活虚拟环境..." -ForegroundColor Yellow
@@ -23,4 +27,4 @@ Write-Host "   后端地址: http://127.0.0.1:8000" -ForegroundColor Green
 Write-Host "   API 文档: http://127.0.0.1:8000/docs" -ForegroundColor Green
 Write-Host ""
 
-uvicorn main:app --reload --host 127.0.0.1 --port 8000
+uvicorn main:app --reload --reload-exclude ".ocr_cache/*" --host 127.0.0.1 --port 8000

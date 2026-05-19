@@ -28,7 +28,7 @@ const isHovered = ref(false)
       <div class="video-header">
         <span class="video-badge">智能解读</span>
         <h4>{{ title }}</h4>
-        <p>通过短视频快速理解当前 TraitScores 的结构特征与岗位适配含义。</p>
+        <p>通过短视频快速理解当前人格画像的结构特征与岗位适配含义。</p>
       </div>
 
       <div class="video-container">

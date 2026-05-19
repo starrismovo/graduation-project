@@ -171,9 +171,17 @@ export const fetchPortrait = async (candidateId: string | number) => {
  * @param candidateId 候选人ID
  * @returns 评估记录列表 [{id, job_id, job_title, match_score, created_at}, ...]
  */
-export const fetchHistory = async (candidateId: string | number) => {
+export const fetchHistory = async (
+  candidateId: string | number,
+  options: { includeAll?: boolean; limit?: number } = {},
+) => {
   try {
-    const response = await request.get(`/assessment/history/${candidateId}`)
+    const params: Record<string, any> = {}
+    if (options.includeAll) params.include_all = true
+    if (options.limit) params.limit = options.limit
+    const response = await request.get(`/assessment/history/${candidateId}`, {
+      params: Object.keys(params).length ? params : undefined,
+    })
     return response.data?.data || response.data || []
   } catch (error) {
     console.warn('获取评估历史失败，返回空数组:', error)
@@ -188,7 +196,9 @@ export const fetchHistory = async (candidateId: string | number) => {
  */
 export const fetchJobs = async (candidateId: string | number) => {
   try {
-    const response = await request.get(`/assessment/recommended-jobs/${candidateId}`)
+    const response = await request.get(`/assessment/recommended-jobs/${candidateId}`, {
+      params: { limit: 4 }
+    })
     return response.data?.data || response.data || []
   } catch (error) {
     console.warn('获取推荐岗位失败，返回空数组:', error)

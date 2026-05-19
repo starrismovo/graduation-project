@@ -80,26 +80,30 @@ class TraitEvaluator:
             {"特质名": 分数, ...}
         """
         
-        scores = {}
+        scores: Dict[str, float] = {}
         
         # 优先取 LLM 直接返回的评分
         if "scores" in evaluation and isinstance(evaluation["scores"], dict):
-            scores = evaluation["scores"]
-        
-        # 如果没有评分，尝试从其他字段推导
-        if not scores:
-            scores = self._infer_scores_from_evaluation(evaluation)
-        
-        # 确保所有默认特质都有分数
-        for trait in self.TRAIT_DIMENSIONS.keys():
-            if trait not in scores:
-                scores[trait] = 5.0  # 默认中等分数
-        
-        # 限制分数在 1-10 之间
-        for trait in scores:
-            scores[trait] = max(1.0, min(10.0, scores[trait]))
+            for trait, raw_value in evaluation["scores"].items():
+                if trait not in self.TRAIT_DIMENSIONS:
+                    continue
+                try:
+                    value = float(raw_value)
+                except (TypeError, ValueError):
+                    continue
+                if value <= 0:
+                    continue
+                scores[trait] = max(1.0, min(10.0, value))
         
         return scores
+
+    def build_score_coverage(self, scores: Dict[str, float], observed_dimensions: List[str] | None = None) -> Dict[str, str]:
+        """标记每个维度是否在本题中形成有效观察。"""
+        observed = set(observed_dimensions or scores.keys())
+        return {
+            trait: "observed" if trait in scores and trait in observed else "not_observed"
+            for trait in self.TRAIT_DIMENSIONS.keys()
+        }
     
     def _infer_scores_from_evaluation(self, evaluation: Dict[str, Any]) -> Dict[str, float]:
         """从评估文本推导分数"""
@@ -115,7 +119,7 @@ class TraitEvaluator:
         
         eval_text = eval_text.lower()
         
-        # 针对每个特质的关键词进行评分
+        # 针对每个特质的关键词进行评分。没有命中证据的维度不写入分数。
         for trait, dimension in self.TRAIT_DIMENSIONS.items():
             # 计算关键词出现频率
             keyword_count = sum(
@@ -129,11 +133,214 @@ class TraitEvaluator:
                 for indicator in dimension["indicators"]
             )
             
-            # 推导分数 (基础 5.0 + 关键词和指标词的贡献)
-            score = 5.0 + keyword_count * 0.5 + indicator_count * 1.0
-            scores[trait] = min(10.0, score)
+            if keyword_count or indicator_count:
+                score = 5.0 + keyword_count * 0.5 + indicator_count * 1.0
+                scores[trait] = min(10.0, score)
         
         return scores
+
+    def calibrate_scores_from_response(
+        self,
+        candidate_response: str,
+        question_tags: List[str] | None,
+        raw_scores: Dict[str, float] | None = None,
+        last_question: str = "",
+    ) -> Dict[str, Any]:
+        """
+        基于回答文本对本题实际考察维度进行确定性评分校准。
+        只给 question_tags 涉及的能力维度打分，未观察维度标记 not_observed。
+        """
+        text = candidate_response or ""
+        tags = [str(tag).strip() for tag in (question_tags or []) if str(tag).strip()]
+        raw_scores = raw_scores or {}
+        quality_signals = self._extract_quality_signals(text, last_question=last_question)
+        target_dimensions = self._resolve_question_dimensions(tags, text)
+        if quality_signals.get("low_evidence") or not target_dimensions:
+            return {
+                "scores": {},
+                "score_coverage": self.build_score_coverage({}),
+                "quality_signals": quality_signals,
+            }
+
+        calibrated: Dict[str, float] = {}
+        for dimension in target_dimensions:
+            score = self._score_dimension_from_signals(dimension, text, quality_signals)
+            calibrated[dimension] = round(max(1.0, min(10.0, score)), 1)
+
+        return {
+            "scores": calibrated,
+            "score_coverage": self.build_score_coverage(calibrated, target_dimensions),
+            "quality_signals": quality_signals,
+        }
+
+    def _resolve_question_dimensions(self, tags: List[str], text: str) -> List[str]:
+        aliases = {
+            "专业能力": "技术深度",
+            "逻辑思维": "问题解决",
+            "表达能力": "沟通能力",
+            "团队合作": "团队协作",
+            "创新思维": "创新能力",
+            "产品思维": "用户洞察",
+            "需求分析": "用户洞察",
+            "用户研究": "用户洞察",
+            "用户共情": "用户洞察",
+            "服务意识与共情能力": "用户洞察",
+            "压力应对": "问题解决",
+            "协作能力": "团队协作",
+            "尽责性": "团队协作",
+            "外向性": "沟通能力",
+            "宜人性": "团队协作",
+            "开放性": "创新能力",
+            "情绪稳定性": "问题解决",
+        }
+        resolved: List[str] = []
+        for tag in tags:
+            dimension = tag if tag in self.TRAIT_DIMENSIONS else aliases.get(tag)
+            if dimension and dimension not in resolved:
+                resolved.append(dimension)
+
+        return resolved[:4]
+
+    def _extract_quality_signals(self, text: str, last_question: str = "") -> Dict[str, Any]:
+        length = len(text.strip())
+        structure_markers = len(re.findall(r"(第一|第二|第三|首先|其次|然后|最后|步骤|方案|维度|\d+[.、]|[一二三四五]、)", text))
+        numeric_markers = len(re.findall(r"\d+(?:\.\d+)?\s*(?:%|人|天|周|月|年|次|个|分|小时|分钟|k|K|万)?", text))
+        case_markers = sum(1 for word in ["当时", "背景", "问题", "行动", "结果", "最终", "上线", "客户", "用户", "团队"] if word in text)
+        decision_markers = sum(1 for word in ["权衡", "优先级", "取舍", "风险", "替代", "假设", "验证", "A/B", "指标", "回滚", "迭代"] if word in text)
+        relevance_markers = sum(1 for word in ["岗位", "产品", "需求", "用户", "客户", "数据", "研发", "设计", "销售", "面试官", "候选人"] if word in text)
+        evidence_strength = (
+            min(2.0, length / 180)
+            + min(2.0, structure_markers * 0.45)
+            + min(2.0, numeric_markers * 0.35)
+            + min(2.0, case_markers * 0.25)
+            + min(2.0, decision_markers * 0.35)
+        )
+        answer_repeats_question = self._answer_repeats_question(text, last_question)
+        has_star_evidence = (
+            length >= 90
+            and case_markers >= 3
+            and (structure_markers >= 1 or decision_markers >= 1)
+            and (numeric_markers >= 1 or decision_markers >= 2)
+        )
+        low_evidence = (
+            answer_repeats_question
+            or length < 35
+            or (
+                length < 80
+                and structure_markers == 0
+                and numeric_markers == 0
+                and case_markers < 2
+                and decision_markers == 0
+            )
+            or evidence_strength < 0.8
+        )
+        if has_star_evidence and not answer_repeats_question:
+            low_evidence = False
+        return {
+            "response_length": length,
+            "structure_markers": structure_markers,
+            "numeric_markers": numeric_markers,
+            "case_markers": case_markers,
+            "decision_markers": decision_markers,
+            "relevance_markers": relevance_markers,
+            "structure_level": "high" if structure_markers >= 3 else "medium" if structure_markers >= 1 else "low",
+            "data_evidence": "high" if numeric_markers >= 3 else "medium" if numeric_markers >= 1 else "low",
+            "case_completeness": "high" if case_markers >= 5 else "medium" if case_markers >= 2 else "low",
+            "decision_depth": "high" if decision_markers >= 4 else "medium" if decision_markers >= 2 else "low",
+            "job_relevance": "high" if relevance_markers >= 4 else "medium" if relevance_markers >= 2 else "low",
+            "evidence_strength": round(min(10.0, evidence_strength), 2),
+            "low_evidence": low_evidence,
+            "answer_repeats_question": answer_repeats_question,
+            "has_star_evidence": has_star_evidence,
+        }
+
+    def _answer_repeats_question(self, answer: str, question: str) -> bool:
+        answer_norm = re.sub(r"\s+", "", str(answer or ""))
+        question_norm = re.sub(r"\s+", "", str(question or ""))
+        if not answer_norm or not question_norm:
+            return False
+        if answer_norm == question_norm:
+            return True
+        length_ratio = len(answer_norm) / max(len(question_norm), 1)
+        if len(answer_norm) >= 12 and answer_norm in question_norm:
+            return True
+        if len(answer_norm) >= 12 and question_norm in answer_norm and length_ratio <= 1.35:
+            return True
+        if length_ratio < 0.55 or length_ratio > 1.45:
+            return False
+        answer_units = {answer_norm[i : i + 2] for i in range(max(1, len(answer_norm) - 1))}
+        question_units = {question_norm[i : i + 2] for i in range(max(1, len(question_norm) - 1))}
+        if not answer_units or not question_units:
+            return False
+        return len(answer_units & question_units) / max(len(answer_units), len(question_units)) >= 0.78
+
+    def _score_dimension_from_signals(self, dimension: str, text: str, signals: Dict[str, Any]) -> float:
+        base = 4.2
+        base += min(1.4, signals["response_length"] / 260)
+        base += min(1.2, signals["structure_markers"] * 0.3)
+        base += min(1.0, signals["numeric_markers"] * 0.25)
+        base += min(1.0, signals["case_markers"] * 0.18)
+        base += min(1.2, signals["decision_markers"] * 0.25)
+        base += min(0.8, signals["relevance_markers"] * 0.12)
+
+        dimension_keywords = self.TRAIT_DIMENSIONS.get(dimension, {}).get("keywords", [])
+        keyword_hits = sum(1 for word in dimension_keywords if word in text)
+        base += min(1.0, keyword_hits * 0.25)
+
+        if dimension == "用户洞察" and any(word in text for word in ["用户", "客户", "痛点", "场景", "需求", "体验"]):
+            base += 0.5
+        if dimension == "团队协作" and any(word in text for word in ["协作", "沟通", "共识", "冲突", "销售", "研发", "设计"]):
+            base += 0.45
+        if dimension == "问题解决" and any(word in text for word in ["方案", "验证", "指标", "风险", "应对", "解决"]):
+            base += 0.45
+        if dimension == "创新能力" and any(word in text for word in ["替代", "新", "优化", "改进", "探索"]):
+            base += 0.35
+        if dimension == "技术深度" and not any(word in text for word in ["算法", "系统", "架构", "模型", "数据", "接口", "实现"]):
+            base -= 0.35
+
+        if signals["response_length"] < 40:
+            base -= 1.0
+        return base
+
+    def is_score_anomalous(
+        self,
+        scores: Dict[str, float],
+        *,
+        target_dimensions: List[str] | None = None,
+        quality_signals: Dict[str, Any] | None = None,
+        evidence_text: str = "",
+    ) -> bool:
+        if not scores:
+            return True
+        values = [float(value) for value in scores.values() if self._is_valid_score(value)]
+        if not values:
+            return True
+        if len(values) >= 2 and max(values) - min(values) < 0.1:
+            return True
+        if all(abs(value - 5.0) < 0.05 for value in values):
+            return True
+        near_neutral = sum(1 for value in values if 4.8 <= value <= 5.2)
+        if len(values) >= 3 and near_neutral / len(values) >= 0.7:
+            return True
+        allowed = set(target_dimensions or [])
+        if target_dimensions is not None and not allowed:
+            return True
+        if allowed and any(dimension not in allowed for dimension in scores.keys()):
+            return True
+        quality_signals = quality_signals or {}
+        if len(values) >= 5 and (quality_signals.get("low_evidence") or quality_signals.get("response_length", 0) < 80):
+            return True
+        if len(values) >= 5 and not str(evidence_text or "").strip():
+            return True
+        return False
+
+    @staticmethod
+    def _is_valid_score(value: Any) -> bool:
+        try:
+            score = float(value)
+        except (TypeError, ValueError):
+            return False
+        return 0 < score <= 10
     
     def detect_patterns(
         self,

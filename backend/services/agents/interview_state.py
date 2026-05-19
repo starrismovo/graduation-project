@@ -70,6 +70,17 @@ class TopicRecord:
 
 
 @dataclass
+class PersonalityTraitRecord:
+    """大五人格维度评估记录"""
+    trait_name: str
+    basic_score: float = 5.0
+    scenario_score: float = 5.0
+    evidence: List[str] = field(default_factory=list)
+    question_count: int = 0
+    confidence: float = 0.0
+
+
+@dataclass
 class AdaptiveInterviewState:
     """自适应面试状态"""
 
@@ -83,10 +94,12 @@ class AdaptiveInterviewState:
     difficulty_level: DifficultyLevel = DifficultyLevel.MEDIUM
     consecutive_high: int = 0   # 连续高分次数
     consecutive_low: int = 0    # 连续低分次数
+    low_info_streak: int = 0     # 连续低信息回答次数
 
     # ===== 覆盖追踪 =====
     coverage_map: Dict[str, TopicRecord] = field(default_factory=dict)
     topics_explored: List[str] = field(default_factory=list)
+    personality_traits: Dict[str, PersonalityTraitRecord] = field(default_factory=dict)
 
     # ===== 面试路径 =====
     interview_path: List[Dict[str, Any]] = field(default_factory=list)
@@ -106,11 +119,21 @@ class AdaptiveInterviewState:
 
         # 1. 更新分数历史与趋势
         scores = evaluation_result.get("scores", {})
+        avg_score = 6.0
         if scores:
             avg_score = sum(scores.values()) / len(scores)
             self.score_history.append(avg_score)
             self._update_performance_trend(avg_score)
             self._update_difficulty(avg_score)
+
+        depth_assessment = evaluation_result.get("depth_assessment", {}) or {}
+        if (
+            depth_assessment.get("answer_depth") == "shallow"
+            or depth_assessment.get("specificity") == "vague"
+        ):
+            self.low_info_streak += 1
+        else:
+            self.low_info_streak = 0
 
         # 2. 更新技能验证
         skill_match = evaluation_result.get("skill_match", {})
@@ -164,14 +187,53 @@ class AdaptiveInterviewState:
         if focus_area not in self.topics_explored:
             self.topics_explored.append(focus_area)
 
-        # 4. 记录面试路径
+        # 4. 更新大五人格覆盖
+        personality_observation = evaluation_result.get("personality_observation", {}) or {}
+        basic_traits = personality_observation.get("basic_trait_scores", {}) or {}
+        scenario_traits = personality_observation.get("scenario_trait_scores", {}) or {}
+        trait_evidence = personality_observation.get("trait_evidence", {}) or {}
+        confidence = float(personality_observation.get("confidence", 0.0) or 0.0)
+        for trait_name, scenario_score in scenario_traits.items():
+            try:
+                scene = float(scenario_score)
+            except (TypeError, ValueError):
+                continue
+            try:
+                base = float(basic_traits.get(trait_name, scene))
+            except (TypeError, ValueError):
+                base = scene
+            evidence = str(trait_evidence.get(trait_name, "") or "").strip()
+            if trait_name not in self.personality_traits:
+                self.personality_traits[trait_name] = PersonalityTraitRecord(
+                    trait_name=trait_name,
+                    basic_score=base,
+                    scenario_score=scene,
+                    confidence=confidence,
+                    question_count=1,
+                    evidence=[evidence] if evidence else [],
+                )
+            else:
+                record = self.personality_traits[trait_name]
+                record.question_count += 1
+                count = record.question_count
+                record.basic_score = (record.basic_score * (count - 1) + base) / count
+                record.scenario_score = (record.scenario_score * (count - 1) + scene) / count
+                record.confidence = max(record.confidence, confidence)
+                if evidence and evidence not in record.evidence:
+                    record.evidence.append(evidence)
+
+        # 5. 记录面试路径
         self.interview_path.append({
             "question_num": self.total_questions,
             "role": self.current_role,
             "focus_area": focus_area,
+            "question": question_info.get("question", ""),
+            "tags": question_info.get("tags", []),
             "avg_score": avg_score if scores else 6.0,
             "difficulty": self.difficulty_level.value,
             "action": self.last_action.value,
+            "personality_traits": list((personality_observation.get("scenario_trait_scores") or {}).keys()),
+            "observed_traits": list((personality_observation.get("observed_traits") or [])),
         })
 
     def init_required_skills(self, job_skills: List[str]) -> None:
@@ -214,7 +276,36 @@ class AdaptiveInterviewState:
             "total_questions": self.total_questions,
             "skill_gaps": self.skill_gaps[:],
             "unverified": self.get_unverified_required_skills(),
+            "personality_coverage_rate": self.get_personality_coverage_rate(),
+            "missing_personality_traits": self.get_missing_personality_traits(),
         }
+
+    def get_personality_coverage_rate(self) -> float:
+        required_traits = ["开放性", "尽责性", "外向性", "宜人性", "情绪稳定性"]
+        covered = [
+            trait for trait in required_traits
+            if trait in self.personality_traits
+            and self.personality_traits[trait].question_count > 0
+            and self.personality_traits[trait].confidence >= 4.0
+            and any(
+                evidence and not evidence.startswith("基于回答深度")
+                for evidence in self.personality_traits[trait].evidence
+            )
+        ]
+        return len(covered) / len(required_traits)
+
+    def get_missing_personality_traits(self) -> List[str]:
+        required_traits = ["开放性", "尽责性", "外向性", "宜人性", "情绪稳定性"]
+        return [
+            trait for trait in required_traits
+            if trait not in self.personality_traits
+            or self.personality_traits[trait].question_count == 0
+            or self.personality_traits[trait].confidence < 4.0
+            or not any(
+                evidence and not evidence.startswith("基于回答深度")
+                for evidence in self.personality_traits[trait].evidence
+            )
+        ]
 
     def to_context_dict(self) -> Dict[str, Any]:
         """转换为可传递给 Prompt / 前端的字典"""
@@ -227,7 +318,29 @@ class AdaptiveInterviewState:
             "performance_trend": self.performance_trend.value,
             "difficulty_level": self.difficulty_level.value,
             "score_history": self.score_history[-10:],  # 最近 10 轮
+            "low_info_streak": self.low_info_streak,
             "topics_explored": self.topics_explored[:],
+            "personality_traits": {
+                name: {
+                    "basic_score": round(r.basic_score, 2),
+                    "scenario_score": round(r.scenario_score, 2),
+                    "confidence": round(r.confidence, 2),
+                    "count": r.question_count,
+                    "evidence": r.evidence[-3:],
+                }
+                for name, r in self.personality_traits.items()
+            },
+            "observed_personality_traits": [
+                name
+                for name, r in self.personality_traits.items()
+                if r.confidence >= 4.0
+                and any(
+                    evidence and not evidence.startswith("基于回答深度")
+                    for evidence in r.evidence
+                )
+            ],
+            "missing_personality_traits": self.get_missing_personality_traits(),
+            "personality_coverage_rate": self.get_personality_coverage_rate(),
             "total_questions": self.total_questions,
             "current_role": self.current_role,
             "current_focus_skill": self.current_focus_skill,

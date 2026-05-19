@@ -67,7 +67,7 @@ const activeDimension = ref(0)
 const syncedDimensionIndexes = ref<number[]>([])
 const loading = ref(false)
 const psychologyDetail = ref<any | null>(null)
-const bubbleMessage = ref('点击任一人格维度后，我会基于本次 EvaluationResult 给出简短解释。')
+const bubbleMessage = ref('点击任一人格维度后，我会基于本次评估报告给出简短解释。')
 
 const dimensionDisplayMeta = [
   {
@@ -133,6 +133,83 @@ const traitCards = computed(() => {
     match_status: 'balanced',
     bubble_message: `你当前关注的是“${item.title}”。${item.summary} 建议结合后续评估结果继续观察该维度。`
   }))
+})
+
+const matchStatusText = (status?: string) => {
+  const statusMap: Record<string, string> = {
+    aligned: '适配较好',
+    balanced: '基本适配',
+    gap: '存在差距',
+    insufficient: '证据不足'
+  }
+  return statusMap[String(status || '').toLowerCase()] || '待进一步判断'
+}
+
+const formatTraitScore = (score?: number | null) => {
+  if (score === null || score === undefined || Number.isNaN(Number(score))) return '暂无'
+  const numericScore = Number(score)
+  return numericScore > 10 ? numericScore.toFixed(0) : numericScore.toFixed(1)
+}
+
+const formatRequirementRange = (requirement?: number | null) => {
+  if (requirement === null || requirement === undefined || Number.isNaN(Number(requirement))) {
+    return '暂无明确区间'
+  }
+  const center = Number(requirement)
+  const min = Math.max(0, center - 1)
+  const max = Math.min(10, center + 1)
+  return `${min.toFixed(1)} - ${max.toFixed(1)}`
+}
+
+const traitRecruitingMeanings: Record<string, string> = {
+  openness: '开放性体现候选人面对新问题、新工具和不确定任务时的探索意愿。在招聘场景中，该维度常用于观察学习迁移、创新思考和复杂问题理解能力。',
+  conscientiousness: '尽责性体现候选人的目标意识、计划执行和细节控制能力。在招聘场景中，该维度常用于判断任务交付稳定性、责任边界意识和长期可靠性。',
+  extraversion: '外向性体现候选人在沟通、表达和人际互动中的主动程度。在招聘场景中，该维度常用于观察候选人能否清晰表达观点、推动协作并在团队或客户场景中形成影响力。',
+  agreeableness: '宜人性体现候选人在协作关系中的同理心、支持性和冲突处理方式。在招聘场景中，该维度常用于判断团队适应、跨角色沟通和组织协同潜力。',
+  neuroticism: '神经质/情绪稳定性体现候选人面对压力、反馈和不确定情境时的情绪波动与恢复能力。在招聘场景中，该维度常用于观察抗压表现、风险应对和稳定决策能力。'
+}
+
+const currentDimensionCard = computed(() => traitCards.value[activeDimension.value] || traitCards.value[0] || {})
+
+const currentDimensionMeaning = computed(() => {
+  const card = currentDimensionCard.value
+  return traitRecruitingMeanings[card.trait_key] || card.summary || '该维度用于辅助理解候选人在岗位情境中的行为倾向和发展空间。'
+})
+
+const currentDimensionEvidence = computed(() => {
+  const card = currentDimensionCard.value
+  const rawEvidence = card.evidence || card.evidences || card.behavior_evidence || card.source_evidence || []
+  const evidenceList = Array.isArray(rawEvidence)
+    ? rawEvidence
+    : typeof rawEvidence === 'string'
+      ? rawEvidence.split(/[；;。]/).filter(Boolean)
+      : []
+  const normalized = evidenceList
+    .map((item: any) => typeof item === 'string' ? item : item?.text || item?.description || item?.content)
+    .filter(Boolean)
+    .slice(0, 3)
+
+  if (normalized.length) return normalized
+
+  return [
+    `当前评估已形成“${card.trait_name || '该维度'}”的初步判断，但面试回答中的直接行为证据仍需进一步补充。`,
+    '建议在后续追问中围绕具体任务、个人行动和结果影响补充案例，以提高评估解释的可信度。',
+    card.summary || '系统将结合后续 AssessmentSession 中的回答持续更新该维度的证据链。'
+  ].slice(0, 3)
+})
+
+const currentEvidenceStatus = computed(() => {
+  const card = currentDimensionCard.value
+  const rawEvidence = card.evidence || card.evidences || card.behavior_evidence || card.source_evidence || []
+  const count = Array.isArray(rawEvidence) ? rawEvidence.length : (rawEvidence ? 1 : 0)
+  if (count >= 2) return '证据较充分'
+  if (count === 1) return '证据有限'
+  return '证据待补充'
+})
+
+const currentDimensionAdvice = computed(() => {
+  const card = currentDimensionCard.value
+  return card.advice || '建议在后续面试中使用 STAR 结构补充具体案例，说明情境、任务目标、个人行动及最终结果。'
 })
 
 const actionGuides = computed(() => {
@@ -274,43 +351,52 @@ onMounted(() => {
           </div>
         </div>
 
-        <div class="video-description video-guide-card">
-          <div class="video-guide-head">
-            <span class="video-guide-accent"></span>
-            <div>
-              <h2>先看视频，重点解读</h2>
-              <p>通过更短的路径建立整体认知，再进入五维细化分析与建议查看。</p>
+        <div class="video-description video-guide-card trait-interpretation-panel">
+          <div class="trait-panel-head">
+            <div class="trait-panel-title-wrap">
+              <span class="trait-panel-eyebrow">当前人格维度</span>
+              <h2>{{ currentDimensionCard.trait_name }} {{ currentDimensionCard.english }}</h2>
+            </div>
+            <span class="trait-match-badge" :class="`status-${currentDimensionCard.match_status || 'balanced'}`">
+              {{ matchStatusText(currentDimensionCard.match_status) }}
+            </span>
+          </div>
+
+          <div class="trait-metrics-grid">
+            <div class="trait-metric-card">
+              <span>维度得分</span>
+              <strong>{{ formatTraitScore(currentDimensionCard.score) }}</strong>
+              <small>/10</small>
+            </div>
+            <div class="trait-metric-card">
+              <span>证据状态</span>
+              <strong>{{ currentEvidenceStatus }}</strong>
+            </div>
+            <div class="trait-metric-card">
+              <span>岗位要求区间</span>
+              <strong>{{ formatRequirementRange(currentDimensionCard.job_requirement) }}</strong>
             </div>
           </div>
 
-          <div class="guide-list">
-            <div class="guide-item">
-              <span class="guide-icon guide-icon--blue">1</span>
-              <div class="guide-copy">
-                <h3>先整体，后细节</h3>
-                <p>快速了解大五人格的核心含义与整体画像，先建立统一理解框架。</p>
-              </div>
-            </div>
+          <div class="trait-panel-section">
+            <h3>维度含义</h3>
+            <p>{{ currentDimensionMeaning }}</p>
+          </div>
 
-            <div class="guide-item">
-              <span class="guide-icon guide-icon--violet">2</span>
-              <div class="guide-copy">
-                <h3>基于你的结果解读</h3>
-                <p>结合评估结果，理解各维度在岗位匹配、行为风格与成长方向上的表现。</p>
-              </div>
-            </div>
+          <div class="trait-panel-section">
+            <h3>本次评估证据</h3>
+            <ul class="trait-evidence-list">
+              <li v-for="item in currentDimensionEvidence" :key="item">{{ item }}</li>
+            </ul>
+          </div>
 
-            <div class="guide-item">
-              <span class="guide-icon guide-icon--green">3</span>
-              <div class="guide-copy">
-                <h3>一看就懂，可查看建议</h3>
-                <p>看完即可查看气泡式建议，将人格维度与后续职业发展提示串联起来。</p>
-              </div>
-            </div>
+          <div class="trait-advice-box">
+            <span>改进建议</span>
+            <p>{{ currentDimensionAdvice }}</p>
           </div>
 
           <button class="guide-action-button" type="button" @click="handleConsultDimension(activeDimension)">
-            查看当前维度建议
+            同步到右侧助手
           </button>
         </div>
         </div>
@@ -329,23 +415,8 @@ onMounted(() => {
 
           <div class="consult-avatar-panel">
             <div class="consult-avatar-shell">
-              <svg viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg" class="consult-bot">
-                <defs>
-                  <linearGradient id="consultBotGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-                    <stop offset="0%" stop-color="#7c3aed" />
-                    <stop offset="100%" stop-color="#5b67ff" />
-                  </linearGradient>
-                </defs>
-                <rect x="26" y="26" width="68" height="48" rx="22" fill="url(#consultBotGrad)" />
-                <rect x="36" y="36" width="48" height="28" rx="14" fill="#ffffff" opacity="0.95" />
-                <circle cx="51" cy="50" r="5" fill="#5b67ff" />
-                <circle cx="69" cy="50" r="5" fill="#5b67ff" />
-                <path d="M49 61Q60 68 71 61" stroke="#5b67ff" stroke-width="4" fill="none" stroke-linecap="round" />
-                <path d="M60 26V18" stroke="#8b5cf6" stroke-width="5" stroke-linecap="round" />
-                <rect x="49" y="10" width="22" height="10" rx="5" fill="#d9d6fe" />
-                <circle cx="27" cy="88" r="10" fill="#dbeafe" />
-                <circle cx="93" cy="88" r="10" fill="#e9d5ff" />
-              </svg>
+              <span class="consult-avatar-orbit" aria-hidden="true"></span>
+              <img src="/ai-counselor.png" alt="AI 解读助手" class="consult-bot consult-counselor-image" />
             </div>
           </div>
 
@@ -495,8 +566,16 @@ onMounted(() => {
             <p>将心理特质解释转化为后续学习、岗位选择与职业发展的可执行线索。</p>
           </div>
           <ul class="tips-list">
-            <li v-for="item in actionGuides" :key="item.title">
-              <strong>{{ item.title }}</strong>：{{ item.description }}
+            <li v-for="(item, index) in actionGuides" :key="item.title" class="tip-action-card">
+              <div class="tip-card-top">
+                <span class="tip-step">0{{ index + 1 }}</span>
+                <span class="tip-dot"></span>
+              </div>
+              <strong>{{ item.title }}</strong>
+              <p>{{ item.description }}</p>
+              <div class="tip-card-foot">
+                <span>{{ index < 2 ? '优先执行' : index < 4 ? '持续练习' : '定期复盘' }}</span>
+              </div>
             </li>
           </ul>
         </div>
@@ -743,6 +822,7 @@ onMounted(() => {
   min-width: 0;
   display: grid;
   grid-template-columns: minmax(360px, 1.05fr) minmax(300px, 0.72fr);
+  align-items: stretch;
   gap: 18px;
   padding: 18px;
   border-radius: 24px;
@@ -844,13 +924,13 @@ onMounted(() => {
   display: flex;
   flex-direction: column;
   padding: 22px;
-  height: 100%;
-  min-height: 0;
+  height: auto;
+  min-height: auto;
   border: 1px solid rgba(224, 231, 255, 0.96);
   border-radius: 16px;
   box-shadow: 0 10px 24px rgba(15, 23, 42, 0.06);
   align-self: stretch;
-  overflow: hidden;
+  overflow: visible;
 }
 
 .video-guide-head {
@@ -923,6 +1003,172 @@ onMounted(() => {
   margin: 0;
   font-size: 14px;
   line-height: 1.58;
+}
+
+.trait-interpretation-panel {
+  gap: 12px;
+  padding: 18px;
+}
+
+.trait-panel-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+}
+
+.trait-panel-title-wrap {
+  min-width: 0;
+}
+
+.trait-panel-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  min-height: 22px;
+  padding: 0 9px;
+  margin-bottom: 6px;
+  border-radius: 999px;
+  background: rgba(99, 102, 241, 0.1);
+  color: #5b67ff;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.trait-panel-head h2 {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.trait-match-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  min-height: 30px;
+  padding: 0 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(199, 210, 254, 0.9);
+  background: rgba(238, 242, 255, 0.95);
+  color: #4f46e5;
+  font-size: 12px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.trait-match-badge.status-aligned {
+  border-color: rgba(34, 197, 94, 0.22);
+  background: rgba(34, 197, 94, 0.1);
+  color: #15803d;
+}
+
+.trait-match-badge.status-gap {
+  border-color: rgba(245, 158, 11, 0.26);
+  background: rgba(245, 158, 11, 0.1);
+  color: #b45309;
+}
+
+.trait-metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));
+  gap: 10px;
+}
+
+.trait-metric-card {
+  min-width: 0;
+  min-height: 68px;
+  padding: 10px;
+  border-radius: 14px;
+  border: 1px solid rgba(224, 231, 255, 0.9);
+  background: linear-gradient(180deg, rgba(248, 250, 255, 0.96), rgba(255, 255, 255, 0.96));
+}
+
+.trait-metric-card span {
+  display: block;
+  margin-bottom: 6px;
+  color: #7c86a2;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.trait-metric-card strong {
+  display: inline;
+  color: #1f2937;
+  font-size: 17px;
+  line-height: 1.2;
+  font-weight: 800;
+  overflow-wrap: anywhere;
+}
+
+.trait-metric-card small {
+  margin-left: 3px;
+  color: #98a2b3;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.trait-panel-section {
+  min-width: 0;
+}
+
+.trait-panel-section h3,
+.trait-advice-box span {
+  display: block;
+  margin: 0 0 6px;
+  color: #344054;
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.trait-panel-section p,
+.trait-advice-box p {
+  margin: 0;
+  color: #667085;
+  font-size: 13px;
+  line-height: 1.62;
+}
+
+.trait-evidence-list {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.trait-evidence-list li {
+  position: relative;
+  min-width: 0;
+  padding: 8px 10px 8px 26px;
+  border-radius: 12px;
+  border: 1px solid rgba(224, 231, 255, 0.78);
+  background: rgba(255, 255, 255, 0.78);
+  color: #526071;
+  font-size: 13px;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+}
+
+.trait-evidence-list li::before {
+  content: '';
+  position: absolute;
+  left: 11px;
+  top: 17px;
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: #7c3aed;
+}
+
+.trait-advice-box {
+  min-width: 0;
+  padding: 11px 14px;
+  border-radius: 14px;
+  border: 1px solid rgba(199, 210, 254, 0.82);
+  background:
+    radial-gradient(circle at 8% 18%, rgba(124, 58, 237, 0.09), transparent 38%),
+    rgba(248, 250, 255, 0.94);
 }
 
 .guide-action-button {
@@ -1004,31 +1250,79 @@ onMounted(() => {
 
 .consult-avatar-panel {
   margin-top: 18px;
-  border-radius: 20px;
+  border-radius: 24px;
   background:
-    radial-gradient(circle at 50% 46%, rgba(91, 103, 255, 0.2), transparent 32%),
-    linear-gradient(180deg, rgba(237, 233, 254, 0.88), rgba(248, 250, 255, 0.98));
-  min-height: 190px;
+    radial-gradient(circle at 52% 36%, rgba(139, 92, 246, 0.2), transparent 38%),
+    radial-gradient(circle at 68% 62%, rgba(96, 165, 250, 0.18), transparent 42%),
+    linear-gradient(145deg, #f8fbff 0%, #eef4ff 54%, #f6f2ff 100%);
+  min-height: 270px;
   display: flex;
   align-items: center;
   justify-content: center;
   overflow: hidden;
+  box-shadow: inset 0 0 0 1px rgba(129, 140, 248, 0.18), 0 18px 34px rgba(99, 102, 241, 0.12);
 }
 
 .consult-avatar-shell {
+  position: relative;
   width: 100%;
   height: 100%;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 10px;
+  padding: 14px;
+}
+
+.consult-avatar-orbit {
+  position: absolute;
+  width: 210px;
+  height: 210px;
+  left: 50%;
+  top: 47%;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  border: 1px solid rgba(99, 102, 241, 0.24);
+  box-shadow:
+    0 0 0 18px rgba(219, 234, 254, 0.46),
+    0 0 42px rgba(96, 165, 250, 0.26);
+}
+
+.consult-avatar-orbit::before,
+.consult-avatar-orbit::after {
+  content: '';
+  position: absolute;
+  border-radius: 50%;
+  background: rgba(99, 102, 241, 0.28);
+  box-shadow: 0 0 18px rgba(96, 165, 250, 0.3);
+}
+
+.consult-avatar-orbit::before {
+  width: 8px;
+  height: 8px;
+  right: 26px;
+  top: 24px;
+}
+
+.consult-avatar-orbit::after {
+  width: 6px;
+  height: 6px;
+  left: 22px;
+  bottom: 42px;
 }
 
 .consult-bot {
   width: 100%;
-  max-width: 168px;
+  max-width: 238px;
   height: auto;
-  filter: drop-shadow(0 18px 26px rgba(91, 103, 255, 0.16));
+  filter: drop-shadow(0 24px 26px rgba(60, 72, 125, 0.22));
+}
+
+.consult-counselor-image {
+  position: relative;
+  z-index: 1;
+  max-height: 252px;
+  object-fit: contain;
+  object-position: center bottom;
 }
 
 .consult-side-desc {
@@ -1488,13 +1782,28 @@ onMounted(() => {
 }
 
 .tips-card {
-  padding: 24px;
+  position: relative;
+  overflow: hidden;
+  padding: 28px 30px 30px;
   background:
+    radial-gradient(circle at 88% 8%, rgba(124, 58, 237, 0.11), transparent 26%),
     radial-gradient(circle at 12% 10%, rgba(59, 130, 246, 0.08), transparent 30%),
     linear-gradient(135deg, rgba(255, 255, 255, 0.96), rgba(247, 250, 255, 0.96));
   border-radius: 24px;
   border: 1px solid rgba(224, 231, 255, 0.96);
   box-shadow: 0 18px 42px rgba(15, 23, 42, 0.06);
+}
+
+.tips-card::before {
+  content: '';
+  position: absolute;
+  inset: 0 0 auto;
+  height: 4px;
+  background: linear-gradient(90deg, #5b67ff, #8b5cf6, #38bdf8);
+}
+
+.tips-header {
+  max-width: 760px;
 }
 
 .tips-header h3 {
@@ -1513,49 +1822,94 @@ onMounted(() => {
 }
 
 .tips-list {
-  margin: 18px 0 0;
+  position: relative;
+  margin: 22px 0 0;
   padding: 0;
   list-style: none;
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: 14px;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 16px;
 }
 
 .tips-list li {
   margin: 0;
-  min-height: 128px;
-  padding: 18px 16px 16px 44px;
+  min-height: 186px;
+  padding: 18px;
   position: relative;
-  font-size: 15px;
-  color: #667085;
-  line-height: 1.68;
-  border: 1px solid rgba(224, 231, 255, 0.96);
-  border-radius: 18px;
-  background: rgba(255, 255, 255, 0.86);
-  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.04);
+  overflow: hidden;
+  border: 1px solid rgba(199, 210, 254, 0.86);
+  border-radius: 20px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(248, 250, 255, 0.96));
+  box-shadow: 0 14px 30px rgba(71, 85, 105, 0.055);
+  display: flex;
+  flex-direction: column;
+  transition: transform 0.24s ease, box-shadow 0.24s ease, border-color 0.24s ease;
 }
 
-.tips-list li:before {
-  content: '';
-  position: absolute;
-  left: 16px;
-  top: 20px;
-  width: 16px;
-  height: 16px;
-  border-radius: 999px;
-  border: 4px solid rgba(99, 102, 241, 0.16);
-  background: #6366f1;
-  box-sizing: border-box;
+.tips-list li:hover {
+  transform: translateY(-3px);
+  border-color: rgba(129, 140, 248, 0.9);
+  box-shadow: 0 20px 38px rgba(91, 103, 255, 0.12);
 }
 
 .tips-list li:last-child {
   margin-bottom: 0;
 }
 
+.tip-card-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 14px;
+}
+
+.tip-step {
+  color: rgba(91, 103, 255, 0.16);
+  font-size: 32px;
+  line-height: 1;
+  font-weight: 900;
+  letter-spacing: 0;
+}
+
+.tip-dot {
+  width: 14px;
+  height: 14px;
+  border-radius: 999px;
+  background: linear-gradient(135deg, #5b67ff, #8b5cf6);
+  box-shadow: 0 0 0 7px rgba(91, 103, 255, 0.1);
+}
+
 .tips-list strong {
   display: block;
-  margin-bottom: 6px;
+  margin-bottom: 10px;
   color: #344054;
+  font-size: 17px;
+  line-height: 1.45;
+  font-weight: 800;
+}
+
+.tips-list p {
+  margin: 0;
+  color: #667085;
+  font-size: 14px;
+  line-height: 1.75;
+}
+
+.tip-card-foot {
+  margin-top: auto;
+  padding-top: 16px;
+}
+
+.tip-card-foot span {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 0 11px;
+  border-radius: 999px;
+  background: rgba(91, 103, 255, 0.1);
+  color: #5b67ff;
+  font-size: 12px;
   font-weight: 800;
 }
 

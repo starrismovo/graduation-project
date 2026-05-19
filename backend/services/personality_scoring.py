@@ -12,6 +12,30 @@ SCORING_MODEL_VERSION = "bigfive_map_v1_2026_04"
 
 BIG_FIVE_TRAITS = ["外向性", "宜人性", "尽责性", "神经质", "开放性"]
 
+BIG_FIVE_TRAIT_ALIASES = {
+    "外向性": "外向性",
+    "外倾性": "外向性",
+    "extroversion": "外向性",
+    "extraversion": "外向性",
+    "宜人性": "宜人性",
+    "亲和性": "宜人性",
+    "agreeableness": "宜人性",
+    "尽责性": "尽责性",
+    "责任心": "尽责性",
+    "conscientiousness": "尽责性",
+    "神经质": "神经质",
+    "neuroticism": "神经质",
+    "开放性": "开放性",
+    "开放度": "开放性",
+    "openness": "开放性",
+}
+
+REVERSED_TRAIT_ALIASES = {
+    "情绪稳定性": "神经质",
+    "emotional_stability": "神经质",
+    "stability": "神经质",
+}
+
 
 def _clamp_score(score: float, low: float = 0.0, high: float = 10.0) -> float:
     return max(low, min(high, float(score)))
@@ -27,8 +51,48 @@ def _sanitize_scores(scores: Dict[str, float]) -> Dict[str, float]:
     return sanitized
 
 
-def _ability_score(scores: Dict[str, float], key: str, default: float = 5.0) -> float:
-    return _clamp_score(scores.get(key, default))
+def _normalize_score_scale(value: float) -> float:
+    """Accept both 0-10 and 0-100 Big Five inputs, then normalize to 0-10."""
+    value = float(value)
+    if value > 10.0:
+        value = value / 10.0
+    return _clamp_score(value)
+
+
+def normalize_big_five_scores(scores: Dict[str, float] | None) -> Dict[str, float]:
+    """Normalize Big Five trait keys to Chinese labels used by reports."""
+    normalized: Dict[str, float] = {}
+    for raw_key, raw_value in (scores or {}).items():
+        key_text = str(raw_key).strip()
+        trait = BIG_FIVE_TRAIT_ALIASES.get(key_text)
+        is_reversed = False
+        if not trait:
+            trait = REVERSED_TRAIT_ALIASES.get(key_text)
+            is_reversed = trait is not None
+        if not trait:
+            continue
+        try:
+            value = _normalize_score_scale(float(raw_value))
+        except (TypeError, ValueError):
+            continue
+        if is_reversed:
+            value = 10.0 - value
+        normalized[trait] = _clamp_score(value)
+    return normalized
+
+
+def _ability_score(scores: Dict[str, float], key: str) -> float | None:
+    if key not in scores:
+        return None
+    return _clamp_score(scores[key])
+
+
+def _weighted_average(parts: list[tuple[float | None, float]]) -> float | None:
+    valid = [(score, weight) for score, weight in parts if score is not None]
+    if not valid:
+        return None
+    total_weight = sum(weight for _, weight in valid)
+    return sum(float(score) * weight for score, weight in valid) / total_weight
 
 
 def score_big_five_from_abilities(all_scores: Dict[str, float]) -> Tuple[Dict[str, float], Dict[str, Any]]:
@@ -38,35 +102,30 @@ def score_big_five_from_abilities(all_scores: Dict[str, float]) -> Tuple[Dict[st
     """
     src = _sanitize_scores(all_scores)
 
-    extraversion = (
-        _ability_score(src, "表达能力") * 0.5 +
-        _ability_score(src, "团队合作") * 0.5
-    )
-    agreeableness = (
-        _ability_score(src, "团队合作") * 0.6 +
-        _ability_score(src, "表达能力") * 0.4
-    )
-    conscientiousness = (
-        _ability_score(src, "专业能力") * 0.5 +
-        _ability_score(src, "逻辑思维") * 0.5
-    )
-    neuroticism = 10.0 - (
-        _ability_score(src, "逻辑思维") * 0.4 +
-        _ability_score(src, "表达能力") * 0.3 +
-        _ability_score(src, "专业能力") * 0.3
-    )
-    openness = (
-        _ability_score(src, "创新思维") * 0.5 +
-        _ability_score(src, "学习能力") * 0.5
-    )
+    communication = _ability_score(src, "沟通能力") or _ability_score(src, "表达能力")
+    teamwork = _ability_score(src, "团队协作") or _ability_score(src, "团队合作")
+    problem = _ability_score(src, "问题解决") or _ability_score(src, "逻辑思维")
+    technical = _ability_score(src, "技术深度") or _ability_score(src, "专业能力")
+    innovation = _ability_score(src, "创新能力") or _ability_score(src, "创新思维")
+    learning = _ability_score(src, "学习能力")
 
-    result = {
-        "外向性": _clamp_score(extraversion),
-        "宜人性": _clamp_score(agreeableness),
-        "尽责性": _clamp_score(conscientiousness),
-        "神经质": _clamp_score(neuroticism),
-        "开放性": _clamp_score(openness),
-    }
+    result: Dict[str, float] = {}
+    extraversion = _weighted_average([(communication, 0.5), (teamwork, 0.5)])
+    agreeableness = _weighted_average([(teamwork, 0.6), (communication, 0.4)])
+    conscientiousness = _weighted_average([(technical, 0.5), (problem, 0.5)])
+    stability = _weighted_average([(problem, 0.4), (communication, 0.3), (technical, 0.3)])
+    openness = _weighted_average([(innovation, 0.5), (learning, 0.5)])
+
+    if extraversion is not None:
+        result["外向性"] = _clamp_score(extraversion)
+    if agreeableness is not None:
+        result["宜人性"] = _clamp_score(agreeableness)
+    if conscientiousness is not None:
+        result["尽责性"] = _clamp_score(conscientiousness)
+    if stability is not None:
+        result["神经质"] = _clamp_score(10.0 - stability)
+    if openness is not None:
+        result["开放性"] = _clamp_score(openness)
 
     metadata = {
         "model_version": SCORING_MODEL_VERSION,
@@ -86,21 +145,11 @@ def resolve_personality_scores(
     - Otherwise derive from `all_scores` using the versioned mapping.
     """
     if personality_scores:
-        sanitized = _sanitize_scores(personality_scores)
-        normalized = {
-            "外向性": sanitized.get("外向性", sanitized.get("extraversion", 5.0)),
-            "宜人性": sanitized.get("宜人性", sanitized.get("agreeableness", 5.0)),
-            "尽责性": sanitized.get("尽责性", sanitized.get("conscientiousness", 5.0)),
-            "神经质": sanitized.get("神经质", sanitized.get("neuroticism", 5.0)),
-            "开放性": sanitized.get("开放性", sanitized.get("openness", 5.0)),
-        }
-        return {
-            trait: _clamp_score(score)
-            for trait, score in normalized.items()
-        }, {
+        normalized = normalize_big_five_scores(personality_scores)
+        return normalized, {
             "model_version": SCORING_MODEL_VERSION,
             "source": "request_personality_scores",
-            "input_dimensions": sorted(list(sanitized.keys())),
+            "input_dimensions": sorted(list((personality_scores or {}).keys())),
         }
 
     return score_big_five_from_abilities(all_scores or {})
@@ -131,19 +180,22 @@ def calculate_scenario_traits(
     """
     if not job_personality_requirements:
         # 如果没有岗位需求，场景人格 = 基础人格（无调适）
-        return _sanitize_scores(basic_traits), {
-            trait: 0.0 for trait in _sanitize_scores(basic_traits).keys()
+        basic = normalize_big_five_scores(basic_traits)
+        return basic, {
+            trait: 0.0 for trait in basic.keys()
         }
     
-    basic = _sanitize_scores(basic_traits)
-    job_req = _sanitize_scores(job_personality_requirements)
+    basic = normalize_big_five_scores(basic_traits)
+    job_req = normalize_big_five_scores(job_personality_requirements)
     
     scenario = {}
     adjustments = {}
     
     for trait in BIG_FIVE_TRAITS:
-        base_score = basic.get(trait, 5.0)
-        job_need = job_req.get(trait, 5.0)
+        if trait not in basic or trait not in job_req:
+            continue
+        base_score = basic[trait]
+        job_need = job_req[trait]
         
         # 计算调适偏移 Δp(i)
         difference = base_score - job_need
@@ -192,16 +244,20 @@ def get_trait_comparison(
         ...
     }
     """
-    basic = _sanitize_scores(basic_traits)
-    scenario = _sanitize_scores(scenario_traits)
-    job_req = _sanitize_scores(job_requirements or {})
+    basic = normalize_big_five_scores(basic_traits)
+    scenario = normalize_big_five_scores(scenario_traits)
+    job_req = normalize_big_five_scores(job_requirements or {})
     
     comparison = {}
     
     for trait in BIG_FIVE_TRAITS:
-        base = basic.get(trait, 5.0)
+        if trait not in basic and trait not in scenario and trait not in job_req:
+            continue
+        base = basic.get(trait)
         scene = scenario.get(trait, base)
-        job_need = job_req.get(trait, 5.0)
+        job_need = job_req.get(trait)
+        if base is None or scene is None or job_need is None:
+            continue
         
         # 计算场景人格与岗位需求的匹配度（1-5星）
         difference = abs(scene - job_need)
@@ -221,7 +277,7 @@ def get_trait_comparison(
             "scenario_trait": _clamp_score(scene),
             "job_requirement": _clamp_score(job_need),
             "match_degree": match_degree,
-            "gap": _clamp_score(job_need - scene),  # 与岗位需求的差距（负数表示超出）
+            "gap": round(job_need - scene, 1),  # 与岗位需求的差距（负数表示超出）
         }
     
     return comparison

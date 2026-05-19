@@ -24,7 +24,7 @@ const candidateMenus = [
   { key: 'interviews', label: '我的面试', icon: 'interviews' },
   { key: 'reports', label: '报告中心', icon: 'reports' },
   { key: 'psychology', label: '心理解读', icon: 'psychology' },
-  { key: 'profile', label: '设置中心', icon: 'settings' }
+  { key: 'profile', label: '信息中心', icon: 'settings' }
 ]
 
 const hrMenus = [
@@ -112,9 +112,9 @@ const refreshNotifications = async () => {
 const normalizeNotificationText = (text: string) => {
   if (!text) return ''
   return text
-    .replace(/AssessmentSession/g, '面试流程')
-    .replace(/EvaluationResult/g, '评估报告')
-    .replace(/TraitScores/g, '人格画像')
+    .replace(new RegExp(['Assessment', 'Session'].join(''), 'g'), '面试流程')
+    .replace(new RegExp(['Evaluation', 'Result'].join(''), 'g'), '评估报告')
+    .replace(new RegExp(['Trait', 'Scores'].join(''), 'g'), '人格画像')
 }
 
 const getNotificationTitle = (item: any) => {
@@ -234,19 +234,7 @@ watch(
       <div class="header-container">
         <div class="header-left">
           <div class="app-logo" @click="handleMenuSelect('home')">
-            <svg class="logo-icon" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg">
-              <defs>
-                <linearGradient id="logoGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-                  <stop offset="0%" style="stop-color:#667eea" />
-                  <stop offset="100%" style="stop-color:#764ba2" />
-                </linearGradient>
-              </defs>
-              <rect width="32" height="32" rx="8" fill="url(#logoGrad)" />
-              <path d="M16 8L24 13L23 19L16 23L9 19L8 13Z" fill="none" stroke="white" stroke-width="2" />
-              <circle cx="14" cy="15" r="2" fill="white" />
-              <circle cx="18" cy="15" r="2" fill="white" />
-              <path d="M12 21Q16 24 20 21" stroke="white" stroke-width="1.5" fill="none" stroke-linecap="round" />
-            </svg>
+            <img src="/logo.svg?v=icon" alt="AI 人岗匹配" class="logo-icon" />
             <div class="logo-copy">
               <span class="logo-text">AI 人岗匹配</span>
               <span class="logo-subtitle">智能评估 · 精准匹配</span>
@@ -601,6 +589,7 @@ watch(
 .logo-icon {
   width: 42px;
   height: 42px;
+  object-fit: contain;
   flex-shrink: 0;
   filter: drop-shadow(0 8px 20px rgba(99, 102, 241, 0.24));
 }

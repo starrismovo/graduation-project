@@ -3,7 +3,7 @@
     <div class="history-head">
       <div>
         <h3>历史评估记录</h3>
-        <p>展示已完成的 AssessmentSession 与 EvaluationResult，便于回溯人岗匹配结果变化。</p>
+        <p>展示已完成的评估记录与报告结果，便于回溯人岗匹配变化。</p>
       </div>
     </div>
 

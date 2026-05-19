@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from database import get_db
-from models.user import User
+from models.user import User, UserType
 from models.job import Job
 from models.interview import Interview
 from models.assessment import AssessmentRecord, CandidatePersonalityProfile, AssessmentStatus
@@ -14,7 +14,7 @@ from schemas.schemas import (
     InterviewStatsResponse, HomeDataResponse
 )
 from typing import List, Optional, Dict, Any
-from sqlalchemy import and_, or_, func
+from sqlalchemy import and_, or_, func, case
 from routers.user import get_current_user
 
 router = APIRouter(prefix="/jobs", tags=["岗位管理"])
@@ -31,6 +31,75 @@ TRAIT_KEY_ALIASES = {
     "neuroticism": "neuroticism",
     "神经质": "neuroticism",
 }
+
+PSYCHOLOGICAL_FOCUS_OPTIONS = {
+    "communication": {
+        "label": "频繁沟通协作",
+        "traits": {"extraversion": 7.5, "agreeableness": 7.0, "neuroticism": 4.0},
+    },
+    "self_drive": {
+        "label": "自驱与目标管理",
+        "traits": {"conscientiousness": 8.0, "openness": 6.5, "neuroticism": 4.0},
+    },
+    "pressure": {
+        "label": "高压力与稳定应对",
+        "traits": {"conscientiousness": 7.0, "neuroticism": 3.0, "agreeableness": 6.0},
+    },
+    "innovation": {
+        "label": "创新探索与快速学习",
+        "traits": {"openness": 8.0, "conscientiousness": 6.0, "extraversion": 6.0},
+    },
+    "detail": {
+        "label": "细致稳定与低失误",
+        "traits": {"conscientiousness": 8.5, "neuroticism": 3.5, "openness": 5.5},
+    },
+    "empathy": {
+        "label": "服务意识与共情能力",
+        "traits": {"agreeableness": 8.0, "extraversion": 6.5, "neuroticism": 4.5},
+    },
+    "analysis": {
+        "label": "独立分析与理性决策",
+        "traits": {"openness": 7.5, "conscientiousness": 7.0, "neuroticism": 3.5},
+    },
+}
+
+
+def _build_personality_requirements(
+    raw_requirements: Optional[Dict[str, Any]],
+    raw_required_traits: Optional[Dict[str, Any]],
+) -> tuple[Dict[str, float], Optional[Dict[str, Any]]]:
+    requirements = dict(raw_requirements or {})
+    base_traits = _normalize_job_traits(raw_required_traits)
+    selected = requirements.get("psychological_focus") or requirements.get("selected_focus") or []
+    if isinstance(selected, str):
+        selected = [selected]
+    selected = [str(item) for item in selected if str(item) in PSYCHOLOGICAL_FOCUS_OPTIONS]
+
+    if not selected:
+        return base_traits, raw_requirements
+
+    totals: Dict[str, float] = {}
+    counts: Dict[str, int] = {}
+    for key in selected:
+        for trait, value in PSYCHOLOGICAL_FOCUS_OPTIONS[key]["traits"].items():
+            totals[trait] = totals.get(trait, 0.0) + float(value)
+            counts[trait] = counts.get(trait, 0) + 1
+
+    generated_traits = {
+        trait: round(totals[trait] / counts[trait], 1)
+        for trait in totals
+        if counts.get(trait)
+    }
+
+    merged_traits = {**base_traits, **generated_traits}
+    normalized_requirements = {
+        **requirements,
+        "input_mode": "psychological_focus",
+        "psychological_focus": selected,
+        "focus_labels": [PSYCHOLOGICAL_FOCUS_OPTIONS[key]["label"] for key in selected],
+        "generated_big_five": generated_traits,
+    }
+    return merged_traits, normalized_requirements
 
 
 def _normalize_job_traits(required_traits: Optional[Dict[str, Any]]) -> Dict[str, float]:
@@ -106,6 +175,11 @@ def create_job(
     """HR创建岗位"""
     if not current_user or (not current_user.is_hr and not getattr(current_user, 'is_hr_user', False)):
         raise HTTPException(status_code=403, detail="只有HR可以创建岗位")
+
+    required_traits, personality_requirements = _build_personality_requirements(
+        job.personality_requirements,
+        job.required_traits,
+    )
     
     new_job = Job(
         name=job.name,
@@ -115,7 +189,8 @@ def create_job(
         city=job.city,
         salary_min=job.salary_min,
         salary_max=job.salary_max,
-        required_traits=job.required_traits,
+        required_traits=required_traits,
+        personality_requirements=personality_requirements,
         creator_id=current_user.id
     )
     db.add(new_job)
@@ -427,25 +502,41 @@ def get_hr_job_list(
     if not (current_user.is_hr or getattr(current_user, 'is_hr_user', False)):
         raise HTTPException(status_code=403, detail="仅HR可访问")
 
+    hr_job_ids = db.query(Job.id).filter(Job.creator_id == current_user.id)
+    if search:
+        hr_job_ids = hr_job_ids.filter(Job.name.ilike(f'%{search}%'))
+
     # 子查询：每个岗位的总投递数
     applications_sq = (
-        db.query(Interview.job_id, func.count(Interview.id).label('cnt'))
-        .filter(Interview.is_deleted == False)
-        .group_by(Interview.job_id)
+        db.query(AssessmentRecord.job_id, func.count(AssessmentRecord.id).label('cnt'))
+        .filter(
+            AssessmentRecord.is_deleted == False,
+            AssessmentRecord.job_id.in_(hr_job_ids),
+        )
+        .group_by(AssessmentRecord.job_id)
         .subquery()
     )
     # 子查询：每个岗位的平均匹配分
     avg_sq = (
-        db.query(Interview.job_id, func.avg(Interview.match_score).label('avg_score'))
-        .filter(Interview.is_deleted == False, Interview.match_score.isnot(None))
-        .group_by(Interview.job_id)
+        db.query(AssessmentRecord.job_id, func.avg(AssessmentRecord.match_score).label('avg_score'))
+        .filter(
+            AssessmentRecord.is_deleted == False,
+            AssessmentRecord.job_id.in_(hr_job_ids),
+            AssessmentRecord.match_score.isnot(None),
+        )
+        .group_by(AssessmentRecord.job_id)
         .subquery()
     )
     # 子查询：每个岗位待处理报告数（已完成但HR未阅）
     pending_sq = (
-        db.query(Interview.job_id, func.count(Interview.id).label('pending'))
-        .filter(Interview.is_deleted == False, Interview.status == 'completed')
-        .group_by(Interview.job_id)
+        db.query(AssessmentRecord.job_id, func.count(AssessmentRecord.id).label('pending'))
+        .filter(
+            AssessmentRecord.is_deleted == False,
+            AssessmentRecord.job_id.in_(hr_job_ids),
+            AssessmentRecord.assessment_status == AssessmentStatus.COMPLETED,
+            AssessmentRecord.feedback_status == "pending",
+        )
+        .group_by(AssessmentRecord.job_id)
         .subquery()
     )
 
@@ -465,13 +556,39 @@ def get_hr_job_list(
     if search:
         query = query.filter(Job.name.ilike(f'%{search}%'))
 
-    total = query.count()
+    total = db.query(func.count(Job.id)).filter(Job.id.in_(hr_job_ids)).scalar() or 0
+    summary_row = (
+        db.query(
+            func.count(AssessmentRecord.id).label('total_applications'),
+            func.avg(AssessmentRecord.match_score).label('avg_match_rate'),
+            func.coalesce(
+                func.sum(
+                    case(
+                        (
+                            and_(
+                                AssessmentRecord.assessment_status == AssessmentStatus.COMPLETED,
+                                AssessmentRecord.feedback_status == "pending",
+                            ),
+                            1,
+                        ),
+                        else_=0,
+                    )
+                ),
+                0,
+            ).label('pending_reports'),
+        )
+        .join(Job, AssessmentRecord.job_id == Job.id)
+        .filter(
+            Job.id.in_(hr_job_ids),
+            AssessmentRecord.is_deleted == False,
+        )
+        .first()
+    )
     rows = query.order_by(Job.id.desc()).offset(skip).limit(limit).all()
 
-    items = []
-    for row in rows:
+    def build_item(row):
         job = row[0]
-        items.append({
+        return {
             'id': job.id,
             'name': job.name,
             'company': job.company,
@@ -480,16 +597,20 @@ def get_hr_job_list(
             'salary_min': job.salary_min,
             'salary_max': job.salary_max,
             'description': job.description,
+            'required_traits': job.required_traits,
+            'personality_requirements': job.personality_requirements,
             'applications': int(row[1]),
             'avg_match_rate': round(float(row[2]), 1) if row[2] else 0,
             'pending_reports': int(row[3]),
             'status': 'active',
-        })
+        }
+
+    items = [build_item(row) for row in rows]
 
     # 汇总统计
-    total_applications = sum(i['applications'] for i in items)
-    avg_match = round(sum(i['avg_match_rate'] for i in items) / len(items), 1) if items else 0
-    total_pending = sum(i['pending_reports'] for i in items)
+    total_applications = int(summary_row.total_applications or 0) if summary_row else 0
+    avg_match = round(float(summary_row.avg_match_rate), 1) if summary_row and summary_row.avg_match_rate else 0
+    total_pending = int(summary_row.pending_reports or 0) if summary_row else 0
 
     return {
         'total': total,
@@ -546,6 +667,8 @@ def get_hr_recommended_candidates(
             AssessmentRecord.assessment_status == AssessmentStatus.COMPLETED,
             AssessmentRecord.is_deleted == False,
             AssessmentRecord.job_id != job_id,
+            User.user_type == UserType.CANDIDATE,
+            User.is_hr == False,
         )
         .order_by(func.coalesce(AssessmentRecord.match_score, -1).desc(), AssessmentRecord.created_at.desc())
         .all()
@@ -631,6 +754,11 @@ def update_job(
     if job.creator_id != current_user.id:
         raise HTTPException(status_code=403, detail="只能编辑自己创建的岗位")
 
+    required_traits, personality_requirements = _build_personality_requirements(
+        job_data.personality_requirements,
+        job_data.required_traits,
+    )
+
     job.name = job_data.name
     job.description = job_data.description
     job.company = job_data.company
@@ -638,8 +766,8 @@ def update_job(
     job.city = job_data.city
     job.salary_min = job_data.salary_min
     job.salary_max = job_data.salary_max
-    if job_data.required_traits is not None:
-        job.required_traits = job_data.required_traits
+    job.required_traits = required_traits
+    job.personality_requirements = personality_requirements
 
     db.commit()
     db.refresh(job)

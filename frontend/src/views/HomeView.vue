@@ -64,6 +64,19 @@ const avgScoreColor = computed(() => {
   return '#f59e0b'
 })
 
+const portraitConclusion = computed(() => {
+  if (!Array.isArray(portraitData.value) || portraitData.value.length === 0) {
+    return '完成评估后，系统将结合人格画像生成基础特质分析与岗位适配提示。'
+  }
+
+  const topStrengths = strengths.value.slice(0, 2)
+  const watchTraits = weaknesses.value.slice(0, 2)
+  const strengthText = topStrengths.length > 0 ? topStrengths.join('、') : '各维度表现较为均衡'
+  const watchText = watchTraits.length > 0 ? `，可继续关注${watchTraits.join('、')}相关情境证据` : '，当前未出现明显短板维度'
+
+  return `当前基础人格画像显示：${strengthText}，综合得分 ${avgScore.value}${watchText}。`
+})
+
 const avgScoreDash = computed(() => {
   const value = Number(avgScore.value)
   const circumference = 2 * Math.PI * 34
@@ -88,8 +101,8 @@ const quickUpdates = computed(() => {
       badge: latest ? '优先处理' : '等待评估',
       accent: 'red',
       content: latest
-        ? `岗位“${latest.job_title || '当前岗位'}”的 EvaluationResult 已可查看，建议优先阅读匹配解释。`
-        : '完成一次多Agent协同评估后，这里会自动同步最新 EvaluationResult。',
+        ? `岗位“${latest.job_title || '当前岗位'}”的评估报告已生成，建议先查看匹配原因和改进建议。`
+        : '完成一次智能面试评估后，这里会同步最新报告。',
       meta: latest ? reportTime : '刚刚'
     },
     {
@@ -98,8 +111,8 @@ const quickUpdates = computed(() => {
       accent: 'violet',
       content:
         history.value.length > 0
-          ? '系统已完成最近一次 AssessmentSession，可回顾基础人格与场景人格的评估结论。'
-          : '当前尚未生成 AssessmentSession，完成首轮评估后将自动汇总最近过程。',
+          ? '最近一次面试评估已完成，可回顾性格特质、岗位适配表现和后续建议。'
+          : '完成首轮评估后，这里会展示最近一次评估进展。',
       meta: history.value.length > 0 ? '2 小时前' : '待开始'
     },
     {
@@ -108,14 +121,14 @@ const quickUpdates = computed(() => {
       accent: 'blue',
       content:
         recommendedJobs.value.length > 0
-          ? `系统已结合 Basic Personality 与 Scenario Personality 生成“${topJobTitle}”等岗位建议。`
-          : '完成评估后，系统将依据 TraitScores 与岗位需求自动生成岗位实例推荐。',
+          ? `系统已根据你的性格特质和岗位适配表现，更新“${topJobTitle}”等岗位建议。`
+          : '完成评估后，系统将根据性格特质与岗位需求生成推荐岗位。',
       meta: recommendedJobs.value.length > 0 ? '昨天 10:24' : '待评估'
     }
   ]
 })
 
-const insightItems = computed(() => {
+const counselorTags = computed(() => {
   const topStrengths = strengths.value.slice(0, 3)
   const topWeaknesses = weaknesses.value.slice(0, 2)
   const topDirections = recommendedJobs.value
@@ -126,25 +139,29 @@ const insightItems = computed(() => {
   return [
     {
       title: '优势特质',
-      type: 'violet',
-      content: topStrengths.length > 0 ? topStrengths.join('、') : '当前 TraitScores 维度较为均衡，建议继续积累评估样本。'
-    },
-    {
-      title: '发展建议',
-      type: 'rose',
-      content: topWeaknesses.length > 0 ? `建议重点关注 ${topWeaknesses.join('、')} 相关情境表现。` : '当前没有明显短板维度，可继续完善情境化评估证据。'
+      type: 'strength',
+      content: topStrengths.length > 0 ? topStrengths.join('、') : '特质均衡'
     },
     {
       title: '适配方向',
-      type: 'blue',
-      content: topDirections.length > 0 ? topDirections.join('、') : '用户研究、产品运营、品牌策划、培训发展等方向可作为后续观察样本。'
-    },
-    {
-      title: '潜力亮点',
-      type: 'green',
-      content: Number(avgScore.value) >= 7 ? '学习能力与协作稳定性较好，具备持续成长潜力。' : '建议结合更多 AssessmentSession，进一步观察稳定特质与岗位适配趋势。'
+      type: 'direction',
+      content: topDirections.length > 0 ? topDirections.slice(0, 2).join('、') : '等待岗位匹配'
     }
   ]
+})
+
+const counselorAdvice = computed(() => {
+  const topStrengths = strengths.value.slice(0, 2)
+  const topJob = recommendedJobs.value[0]
+  const topJobTitle = topJob?.job_title || topJob?.title
+
+  if (portraitData.value && portraitData.value.length > 0) {
+    const strengthText = topStrengths.length > 0 ? `你在${topStrengths.join('、')}上的表现更突出` : '你的大五人格画像整体较为均衡'
+    const jobText = topJobTitle ? `，当前可优先结合“${topJobTitle}”等岗位实例观察适配证据` : '，后续可以结合具体岗位实例进一步验证适配方向'
+    return `${strengthText}${jobText}。我会把这些特质转化为岗位沟通、协作方式和成长建议，帮助你理解报告背后的原因。`
+  }
+
+  return '完成一次智能面试评估后，我会结合你的大五人格画像与岗位匹配结果，给出更具体的解释和发展建议。'
 })
 
 function getScoreColor(score: number): string {
@@ -326,9 +343,18 @@ watchEffect(() => {
             @action="startNewAssessment"
           />
 
-          <div v-else class="portrait-layout">
+          <template v-else>
+            <div class="portrait-summary-strip">
+              <div>
+                <span>基础人格</span>
+                <p>{{ portraitConclusion }}</p>
+              </div>
+              <button class="portrait-detail-link" type="button" @click="goToPsychologyDetail">查看完整画像</button>
+            </div>
+
+          <div class="portrait-layout">
             <div class="portrait-block radar-block">
-              <RadarChart :data="portraitData" :size="336" />
+              <RadarChart :data="portraitData" :size="300" />
             </div>
 
             <div class="portrait-block score-block">
@@ -385,6 +411,7 @@ watchEffect(() => {
               </div>
             </div>
           </div>
+          </template>
         </article>
       </div>
 
@@ -392,24 +419,31 @@ watchEffect(() => {
         <article class="dashboard-card side-card side-card-primary">
           <div class="section-head compact">
             <div>
-              <h3>AI 解读与建议</h3>
-      
+              <h3>AI 心理咨询师解读</h3>
+              <p>基于当前大五人格画像与岗位匹配结果生成</p>
             </div>
             <button class="text-link" type="button" @click="goToPsychologyDetail">查看详情</button>
           </div>
 
-          <div class="insight-panel">
-            <div class="insight-visual">
-              <img src="/ai首页.png" alt="" class="insight-visual-image" />
+          <div class="insight-panel ai-counselor-entry">
+            <div class="insight-visual counselor-visual" aria-label="AI 心理咨询助手">
+              <div class="counselor-glow"></div>
+              <img src="/ai-counselor.png" alt="AI 心理咨询助手" class="insight-visual-image counselor-image" />
             </div>
 
-            <div class="insight-list">
-              <div v-for="item in insightItems" :key="item.title" class="insight-item">
-                <span :class="['insight-icon', item.type]"></span>
-                <div class="insight-copy">
-                  <h4>{{ item.title }}</h4>
-                  <p>{{ item.content }}</p>
-                </div>
+            <div class="counselor-consult">
+              <div class="counselor-bubble counselor-float-card main-advice">
+                <span class="counselor-bubble-label">AI 咨询师建议</span>
+                <p>{{ counselorAdvice }}</p>
+              </div>
+
+              <div
+                v-for="item in counselorTags"
+                :key="item.title"
+                :class="['counselor-tag-card', 'counselor-float-card', item.type]"
+              >
+                <span>{{ item.title }}</span>
+                <strong>{{ item.content }}</strong>
               </div>
             </div>
           </div>
@@ -774,11 +808,50 @@ watchEffect(() => {
   height: 100%;
 }
 
+.portrait-summary-strip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 16px;
+  padding: 14px 16px;
+  border: 1px solid rgba(213, 222, 255, 0.86);
+  border-radius: 18px;
+  background: linear-gradient(135deg, rgba(239, 246, 255, 0.96), rgba(248, 245, 255, 0.92));
+}
+
+.portrait-summary-strip span {
+  display: block;
+  margin-bottom: 5px;
+  color: #5b67ff;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.portrait-summary-strip p {
+  margin: 0;
+  color: #475569;
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+.portrait-detail-link {
+  flex-shrink: 0;
+  height: 34px;
+  padding: 0 13px;
+  border: 1px solid rgba(129, 140, 248, 0.32);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.78);
+  color: #5b67ff;
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
 .portrait-layout {
   display: grid;
   grid-template-columns: minmax(380px, 1.08fr) minmax(390px, 0.92fr);
   align-items: stretch;
-  height: calc(100% - 54px);
 }
 
 .portrait-block {
@@ -786,7 +859,7 @@ watchEffect(() => {
 }
 
 .radar-block {
-  min-height: 440px;
+  min-height: 342px;
   padding: 8px 26px 8px 10px;
   border-right: 1px solid #edf2ff;
   display: flex;
@@ -795,19 +868,19 @@ watchEffect(() => {
 }
 
 .score-block {
-  min-height: 440px;
-  padding: 12px 0 8px 28px;
+  min-height: 342px;
+  padding: 4px 0 4px 28px;
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: 16px;
 }
 
 .score-overview {
   display: grid;
-  grid-template-columns: 116px minmax(0, 1fr);
-  gap: 18px;
-  padding: 18px;
-  border-radius: 22px;
+  grid-template-columns: 94px minmax(0, 1fr);
+  gap: 14px;
+  padding: 14px;
+  border-radius: 18px;
   border: 1px solid #edf2ff;
   background: linear-gradient(180deg, #fafbff 0%, #f8fbff 100%);
 }
@@ -890,7 +963,7 @@ watchEffect(() => {
 .trait-bars {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 10px;
 }
 
 .trait-bar-header {
@@ -965,12 +1038,48 @@ watchEffect(() => {
   min-height: 0;
 }
 
+.side-card-primary {
+  border-radius: 24px;
+  background: #ffffff;
+  box-shadow: 0 18px 44px rgba(88, 103, 176, 0.12);
+}
+
+.side-card-primary .section-head {
+  margin-bottom: 14px;
+}
+
+.side-card-primary .section-head h3 {
+  margin-bottom: 7px;
+  color: #172033;
+}
+
+.side-card-primary .section-head p {
+  margin: 0;
+  max-width: 310px;
+  color: #64748b;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
 .insight-panel {
   display: grid;
   grid-template-columns: 148px minmax(0, 1fr);
   gap: 18px;
   align-items: center;
   min-height: 440px;
+}
+
+.ai-counselor-entry {
+  position: relative;
+  display: block;
+  min-height: 378px;
+  padding: 16px;
+  border: 1px solid rgba(213, 222, 255, 0.82);
+  border-radius: 22px;
+  background:
+    radial-gradient(circle at 50% 66%, rgba(129, 140, 248, 0.16), transparent 34%),
+    linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+  overflow: hidden;
 }
 
 .insight-visual {
@@ -981,12 +1090,181 @@ watchEffect(() => {
   padding: 10px 0;
 }
 
+.counselor-visual {
+  position: absolute;
+  left: 50%;
+  bottom: 74px;
+  transform: translateX(-50%);
+  width: min(58%, 210px);
+  min-height: 210px;
+  border-radius: 20px;
+  overflow: visible;
+  background:
+    radial-gradient(circle at 52% 36%, rgba(139, 92, 246, 0.22), transparent 38%),
+    radial-gradient(circle at 68% 62%, rgba(96, 165, 250, 0.18), transparent 42%),
+    linear-gradient(145deg, #f8fbff 0%, #eef4ff 54%, #f6f2ff 100%);
+  box-shadow: inset 0 0 0 1px rgba(129, 140, 248, 0.18), 0 20px 38px rgba(99, 102, 241, 0.12);
+}
+
+.counselor-glow {
+  position: absolute;
+  width: 154px;
+  height: 154px;
+  left: 50%;
+  top: 46%;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  border: 1px solid rgba(99, 102, 241, 0.24);
+  box-shadow:
+    0 0 0 18px rgba(219, 234, 254, 0.46),
+    0 0 42px rgba(96, 165, 250, 0.26);
+}
+
+.counselor-glow::before,
+.counselor-glow::after {
+  content: '';
+  position: absolute;
+  border-radius: 50%;
+  background: rgba(99, 102, 241, 0.28);
+  box-shadow: 0 0 18px rgba(96, 165, 250, 0.3);
+}
+
+.counselor-glow::before {
+  width: 8px;
+  height: 8px;
+  right: 26px;
+  top: 24px;
+}
+
+.counselor-glow::after {
+  width: 6px;
+  height: 6px;
+  left: 22px;
+  bottom: 42px;
+}
+
 .insight-visual-image {
   width: min(100%, 196px);
   aspect-ratio: 1 / 1.38;
   display: block;
   object-fit: contain;
   object-position: center;
+}
+
+.counselor-image {
+  position: relative;
+  z-index: 1;
+  width: clamp(150px, 72%, 178px);
+  max-height: 218px;
+  aspect-ratio: auto;
+  filter: drop-shadow(0 24px 26px rgba(60, 72, 125, 0.22));
+}
+
+.counselor-consult {
+  position: absolute;
+  inset: 18px;
+  z-index: 2;
+  pointer-events: none;
+}
+
+.counselor-float-card {
+  position: absolute;
+  pointer-events: auto;
+  backdrop-filter: blur(12px);
+  animation: counselorFloat 5.8s ease-in-out infinite;
+}
+
+@keyframes counselorFloat {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-7px); }
+}
+
+.counselor-bubble {
+  padding: 14px 16px;
+  border: 1px solid rgba(199, 210, 254, 0.72);
+  border-radius: 22px 22px 22px 8px;
+  background: rgba(255, 255, 255, 0.88);
+  box-shadow: 0 14px 28px rgba(99, 102, 241, 0.09);
+}
+
+.main-advice {
+  top: 2px;
+  left: 0;
+  right: 0;
+  max-height: 132px;
+  overflow: hidden;
+}
+
+.counselor-bubble::before {
+  content: '';
+  position: absolute;
+  left: -8px;
+  top: 34px;
+  width: 14px;
+  height: 14px;
+  border-left: 1px solid rgba(199, 210, 254, 0.72);
+  border-bottom: 1px solid rgba(199, 210, 254, 0.72);
+  background: rgba(255, 255, 255, 0.96);
+  transform: rotate(45deg);
+}
+
+.counselor-bubble-label {
+  display: inline-flex;
+  margin-bottom: 8px;
+  color: #5b67ff;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.counselor-bubble p {
+  margin: 0;
+  color: #334155;
+  font-size: 13px;
+  line-height: 1.65;
+}
+
+.counselor-tag-card {
+  width: 126px;
+  padding: 10px 12px;
+  border-radius: 16px;
+  border: 1px solid #e5edff;
+  background: rgba(255, 255, 255, 0.9);
+  box-shadow: 0 14px 30px rgba(88, 103, 176, 0.1);
+}
+
+.counselor-tag-card span {
+  display: block;
+  margin-bottom: 5px;
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.counselor-tag-card strong {
+  display: block;
+  color: #1e293b;
+  font-size: 13px;
+  line-height: 1.38;
+}
+
+.counselor-tag-card.strength {
+  left: 14px;
+  bottom: 58px;
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.08), rgba(255, 255, 255, 0.95));
+}
+
+.counselor-tag-card.growth {
+  right: 14px;
+  bottom: 58px;
+  background: linear-gradient(135deg, rgba(236, 72, 153, 0.08), rgba(255, 255, 255, 0.95));
+  animation-delay: -1.8s;
+}
+
+.counselor-tag-card.direction {
+  left: calc(50% - 63px);
+  bottom: 8px;
+  background: linear-gradient(135deg, rgba(14, 165, 233, 0.08), rgba(255, 255, 255, 0.95));
+  animation-delay: -3.2s;
 }
 
 .insight-list {
@@ -1082,8 +1360,64 @@ watchEffect(() => {
     min-height: 0;
   }
 
+  .ai-counselor-entry {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    min-height: 0;
+    padding: 16px;
+  }
+
   .insight-visual {
     min-height: 124px;
+  }
+
+  .counselor-visual {
+    position: relative;
+    left: auto;
+    bottom: auto;
+    transform: none;
+    width: 100%;
+    min-height: 260px;
+  }
+
+  .counselor-image {
+    max-height: 250px;
+  }
+
+  .counselor-consult {
+    position: static;
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 12px;
+  }
+
+  .counselor-float-card,
+  .main-advice,
+  .counselor-tag-card,
+  .counselor-tag-card.strength,
+  .counselor-tag-card.growth,
+  .counselor-tag-card.direction {
+    position: static;
+    width: auto;
+    animation: none;
+  }
+
+  .main-advice {
+    grid-column: 1 / -1;
+    max-height: none;
+  }
+
+  .counselor-bubble {
+    border-radius: 20px;
+  }
+
+  .counselor-bubble::before {
+    left: 42px;
+    top: -8px;
+    border-left: 1px solid rgba(199, 210, 254, 0.72);
+    border-top: 1px solid rgba(199, 210, 254, 0.72);
+    border-bottom: none;
   }
 }
 
@@ -1096,6 +1430,10 @@ watchEffect(() => {
   .score-overview {
     grid-template-columns: 1fr;
     text-align: center;
+  }
+
+  .counselor-consult {
+    grid-template-columns: 1fr;
   }
 }
 

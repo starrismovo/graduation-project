@@ -83,21 +83,43 @@
               <el-tag type="success">{{ readyReportCandidates.length }} 份待查看</el-tag>
             </div>
 
-            <el-table :data="paginatedCandidates" border stripe style="width: 100%" empty-text="当前岗位暂无候选评估记录">
-              <el-table-column label="候选人" min-width="180">
-                <template #default="{ row }">
+            <div v-if="paginatedCandidates.length > 0" class="report-queue">
+              <article v-for="row in paginatedCandidates" :key="row.record_id" class="report-card">
+                <div class="report-main">
                   <div class="candidate-cell">
                     <div class="avatar-circle">{{ getInitial(row.candidate_name) }}</div>
-                    <div>
+                    <div class="candidate-copy">
                       <div class="candidate-name">{{ row.candidate_name || '未知候选人' }}</div>
                       <div class="candidate-email">{{ row.candidate_email || '--' }}</div>
                     </div>
                   </div>
-                </template>
-              </el-table-column>
+                  <div class="report-meta">
+                    <span>{{ formatDate(row.created_at) }}</span>
+                    <el-tag :type="row.assessment_status === 'completed' ? 'success' : 'warning'" size="small">
+                      {{ row.assessment_status === 'completed' ? '已完成' : '进行中' }}
+                    </el-tag>
+                    <el-tag :type="Number(row.evaluation_count || 1) > 1 ? 'warning' : 'info'" size="small">
+                      {{ row.evaluation_count || 1 }} 次评估
+                    </el-tag>
+                  </div>
+                  <div class="personality-tags">
+                    <span class="personality-tags-label">心理摘要</span>
+                    <template v-if="row.personality_summary?.length">
+                      <el-tag
+                        v-for="tag in row.personality_summary"
+                        :key="tag"
+                        size="small"
+                        type="primary"
+                        effect="plain"
+                      >
+                        {{ tag }}
+                      </el-tag>
+                    </template>
+                    <span v-else class="personality-empty">暂无心理画像摘要</span>
+                  </div>
+                </div>
 
-              <el-table-column label="匹配度" min-width="160">
-                <template #default="{ row }">
+                <div class="report-score">
                   <div v-if="row.match_score != null" class="score-cell">
                     <div class="score-bar">
                       <div
@@ -109,54 +131,42 @@
                     <span class="score-number" :style="{ color: getScoreColor(row.match_score) }">{{ row.match_score }}%</span>
                   </div>
                   <span v-else class="no-score">待评估</span>
-                </template>
-              </el-table-column>
+                </div>
 
-              <el-table-column label="状态" min-width="110" align="center">
-                <template #default="{ row }">
-                  <el-tag :type="row.assessment_status === 'completed' ? 'success' : 'warning'" size="small">
-                    {{ row.assessment_status === 'completed' ? '已完成' : '进行中' }}
-                  </el-tag>
-                </template>
-              </el-table-column>
-
-              <el-table-column label="轮数" min-width="80" align="center">
-                <template #default="{ row }">{{ row.total_rounds ?? '--' }}</template>
-              </el-table-column>
-
-              <el-table-column label="评估时间" min-width="160">
-                <template #default="{ row }">{{ formatDate(row.created_at) }}</template>
-              </el-table-column>
-
-              <el-table-column label="操作" min-width="170" fixed="right">
-                <template #default="{ row }">
+                <div class="report-actions">
                   <el-button
                     v-if="row.assessment_status === 'completed'"
-                    link
                     type="primary"
+                    plain
                     @click="viewReport(row)"
                   >
                     查看报告
                   </el-button>
                   <el-button
+                    v-if="Number(row.evaluation_count || 1) > 1"
+                    plain
+                    @click="openHistoryDialog(row)"
+                  >
+                    查看历史
+                  </el-button>
+                  <el-button
                     v-if="row.assessment_status === 'completed'"
-                    link
                     type="success"
+                    plain
                     @click="openFeedbackDialog(row)"
                   >
                     {{ row.feedback_status === 'sent' ? '修改反馈' : '填写反馈' }}
                   </el-button>
-                  <el-button
-                    v-else
-                    link
-                    type="warning"
-                    disabled
-                  >
+                  <el-button v-else type="warning" plain disabled>
                     等待完成
                   </el-button>
-                </template>
-              </el-table-column>
-            </el-table>
+                </div>
+              </article>
+            </div>
+
+            <div v-else class="inner-empty">
+              当前岗位暂无候选评估记录。
+            </div>
 
             <div class="pagination-row">
               <el-pagination
@@ -326,12 +336,71 @@
         <el-button type="primary" :loading="feedbackLoading" @click="submitFeedback">提交反馈</el-button>
       </template>
     </el-dialog>
+
+    <el-dialog v-model="showHistoryDialog" title="候选人岗位评估历史" width="760px">
+      <div v-if="historyCandidate" class="history-dialog-body">
+        <div class="dialog-summary">
+          <div><span>候选人：</span>{{ historyCandidate.candidate_name || '未知候选人' }}</div>
+          <div><span>岗位实例：</span>{{ historyCandidate.job_title || selectedJob?.name || '--' }}</div>
+          <div><span>当前评估报告：</span>最新一次评估 · {{ historyCandidate.match_score ?? 0 }}%</div>
+        </div>
+
+        <el-table
+          :data="historyCandidate.assessment_history || []"
+          border
+          stripe
+          max-height="360"
+          empty-text="暂无历史评估记录"
+        >
+          <el-table-column label="评估时间" min-width="160">
+            <template #default="{ row }">{{ formatDate(row.created_at) }}</template>
+          </el-table-column>
+          <el-table-column label="匹配度" min-width="130" align="center">
+            <template #default="{ row }">
+              <span class="history-score" :style="{ color: getScoreColor(row.match_score || 0) }">
+                {{ row.match_score ?? '--' }}%
+              </span>
+            </template>
+          </el-table-column>
+          <el-table-column label="状态" min-width="100" align="center">
+            <template #default="{ row }">
+              <el-tag :type="row.assessment_status === 'completed' ? 'success' : 'warning'" size="small">
+                {{ row.assessment_status === 'completed' ? '已完成' : '进行中' }}
+              </el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column label="HR反馈" min-width="110" align="center">
+            <template #default="{ row }">
+              <el-tag :type="row.feedback_status === 'sent' ? 'success' : 'info'" size="small">
+                {{ row.feedback_status === 'sent' ? '已反馈' : '待反馈' }}
+              </el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column label="标记" min-width="90" align="center">
+            <template #default="{ row }">
+              <el-tag v-if="row.is_latest" type="primary" size="small">最新</el-tag>
+              <span v-else class="muted-text">历史</span>
+            </template>
+          </el-table-column>
+          <el-table-column label="操作" min-width="120" fixed="right">
+            <template #default="{ row }">
+              <el-button link type="primary" @click="viewReport({ record_id: row.record_id })">
+                查看报告
+              </el-button>
+            </template>
+          </el-table-column>
+        </el-table>
+      </div>
+      <template #footer>
+        <el-button @click="showHistoryDialog = false">关闭</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { Refresh } from '@element-plus/icons-vue'
 import { useUserStore } from '@/stores/user'
@@ -340,6 +409,7 @@ import { getHRInvitations, sendInvitation } from '@/api/invitation'
 import request, { updateAssessmentFeedback } from '@/utils/request'
 
 const router = useRouter()
+const route = useRoute()
 const userStore = useUserStore()
 
 const candidateLoading = ref(false)
@@ -367,6 +437,9 @@ const feedbackForm = ref({
   feedback_visible_to_candidate: true,
 })
 
+const showHistoryDialog = ref(false)
+const historyCandidate = ref<any | null>(null)
+
 const hrId = computed(() => userStore.userId || userStore.profile?.id || '')
 
 const selectedJob = computed(() => {
@@ -375,7 +448,10 @@ const selectedJob = computed(() => {
 
 const filteredCandidates = computed(() => {
   if (!selectedJobId.value) return []
-  return allCandidates.value.filter(candidate => Number(candidate.job_id) === selectedJobId.value)
+  const queryStatus = typeof route.query.status === 'string' ? route.query.status : ''
+  return allCandidates.value
+    .filter(candidate => Number(candidate.job_id) === selectedJobId.value)
+    .filter(candidate => !queryStatus || candidate.assessment_status === queryStatus)
 })
 
 const paginatedCandidates = computed(() => {
@@ -421,6 +497,8 @@ const fallbackRecommendedCandidates = computed(() => {
   const uniqueMap = new Map<number, any>()
 
   allCandidates.value
+    .filter(candidate => candidate.candidate_is_hr !== true)
+    .filter(candidate => !candidate.candidate_user_type || candidate.candidate_user_type === 'CANDIDATE')
     .filter(candidate => Number(candidate.job_id) !== selectedJobId.value)
     .filter(candidate => candidate.assessment_status === 'completed')
     .filter(candidate => candidate.match_score != null)
@@ -499,7 +577,10 @@ async function loadJobOptions() {
   try {
     const res = await getHRJobList({ limit: 200 })
     jobOptions.value = res.data?.items || []
-    if (!selectedJobId.value && jobOptions.value.length > 0) {
+    const queryJobId = Number(route.query.job_id)
+    if (!selectedJobId.value && queryJobId && jobOptions.value.some(job => Number(job.id) === queryJobId)) {
+      selectedJobId.value = queryJobId
+    } else if (!selectedJobId.value && jobOptions.value.length > 0) {
       selectedJobId.value = jobOptions.value[0].id
     }
   } catch (error) {
@@ -638,6 +719,11 @@ function openFeedbackDialog(row: any) {
   showFeedbackDialog.value = true
 }
 
+function openHistoryDialog(row: any) {
+  historyCandidate.value = row
+  showHistoryDialog.value = true
+}
+
 function buildDefaultFeedback(row: any) {
   const score = Number(row.match_score || 0)
   if (score >= 80) {
@@ -699,7 +785,12 @@ function goAnalytics() {
 }
 
 function goReports() {
-  router.push('/home/reports')
+  router.push({
+    path: '/home/candidates',
+    query: selectedJobId.value
+      ? { job_id: String(selectedJobId.value), status: 'completed' }
+      : { status: 'completed' },
+  })
 }
 
 function getInitial(name: string) {
@@ -1023,6 +1114,7 @@ function getRecommendReason(score: number, sourceJobName?: string) {
   display: flex;
   align-items: center;
   gap: 10px;
+  min-width: 0;
 }
 
 .avatar-circle {
@@ -1043,10 +1135,86 @@ function getRecommendReason(score: number, sourceJobName?: string) {
   color: #111827;
 }
 
+.candidate-copy {
+  min-width: 0;
+}
+
 .candidate-email {
   margin-top: 4px;
   font-size: 12px;
   color: #94a3b8;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.report-queue {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.report-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(160px, 0.55fr) auto;
+  align-items: center;
+  gap: 16px;
+  padding: 14px 16px;
+  border: 1px solid #e5eefc;
+  border-radius: 12px;
+  background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+}
+
+.report-main {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+
+.report-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding-left: 48px;
+  font-size: 12px;
+  color: #94a3b8;
+}
+
+.personality-tags {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding-left: 48px;
+}
+
+.personality-tags-label {
+  font-size: 12px;
+  color: #64748b;
+}
+
+.personality-empty {
+  font-size: 12px;
+  color: #94a3b8;
+}
+
+.report-score {
+  min-width: 0;
+}
+
+.report-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 8px;
+  max-width: 260px;
+}
+
+.report-actions .el-button {
+  margin-left: 0;
 }
 
 .score-cell {
@@ -1092,7 +1260,7 @@ function getRecommendReason(score: number, sourceJobName?: string) {
 
 .recommend-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
   gap: 16px;
 }
 
@@ -1104,6 +1272,8 @@ function getRecommendReason(score: number, sourceJobName?: string) {
   display: flex;
   flex-direction: column;
   gap: 14px;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .recommend-top {
@@ -1113,16 +1283,27 @@ function getRecommendReason(score: number, sourceJobName?: string) {
   gap: 12px;
 }
 
+.recommend-top > div {
+  min-width: 0;
+  flex: 1;
+}
+
 .recommend-top h4 {
   margin: 0;
   font-size: 16px;
   color: #0f172a;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .recommend-top p {
   margin: 6px 0 0;
   font-size: 12px;
   color: #94a3b8;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .recommend-score {
@@ -1134,6 +1315,8 @@ function getRecommendReason(score: number, sourceJobName?: string) {
   font-size: 13px;
   font-weight: 700;
   white-space: nowrap;
+  flex: 0 0 auto;
+  max-width: 86px;
 }
 
 .recommend-body {
@@ -1153,6 +1336,20 @@ function getRecommendReason(score: number, sourceJobName?: string) {
   justify-content: space-between;
   align-items: center;
   gap: 12px;
+  flex-wrap: wrap;
+}
+
+.recommend-actions .el-button {
+  margin-left: 0;
+}
+
+.recommend-actions .el-button:first-child {
+  flex: 1 1 190px;
+  min-width: 0;
+}
+
+.recommend-actions .el-button:last-child {
+  flex: 0 0 auto;
 }
 
 .invite-list {
@@ -1246,6 +1443,22 @@ function getRecommendReason(score: number, sourceJobName?: string) {
   gap: 16px;
 }
 
+.history-dialog-body {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.history-score {
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.muted-text {
+  color: #94a3b8;
+  font-size: 12px;
+}
+
 .dialog-summary {
   display: grid;
   gap: 8px;
@@ -1298,6 +1511,24 @@ function getRecommendReason(score: number, sourceJobName?: string) {
   .invite-row {
     flex-direction: column;
     align-items: flex-start;
+  }
+
+  .report-card {
+    grid-template-columns: 1fr;
+    align-items: stretch;
+  }
+
+  .report-meta {
+    padding-left: 0;
+  }
+
+  .personality-tags {
+    padding-left: 0;
+  }
+
+  .report-actions {
+    justify-content: flex-start;
+    max-width: none;
   }
 }
 </style>

@@ -9,11 +9,13 @@ import asyncio
 import logging
 from typing import Optional, Dict, Any
 from enum import Enum
+from pathlib import Path
 
 import httpx
 from dotenv import load_dotenv
 
 load_dotenv()
+load_dotenv(dotenv_path=Path(__file__).resolve().parents[1] / ".env.local", override=True)
 
 logger = logging.getLogger(__name__)
 
@@ -202,6 +204,10 @@ class LLMClient:
             "temperature": temperature,
             "max_tokens": max_tokens
         }
+        if "deepseek" in (self.api_base or "").lower() or "deepseek" in (self.model or "").lower():
+            payload["thinking"] = {
+                "type": os.getenv("DEEPSEEK_THINKING", "disabled").strip().lower()
+            }
         
         try:
             response = await self._post_with_retry(

@@ -253,6 +253,71 @@ class JDParser:
 
 class MatchingEngine:
     """岗位-候选人匹配引擎"""
+
+    TRAIT_ALIASES = {
+        "openness": "openness",
+        "开放性": "openness",
+        "conscientiousness": "conscientiousness",
+        "尽责性": "conscientiousness",
+        "责任心": "conscientiousness",
+        "extraversion": "extraversion",
+        "extroversion": "extraversion",
+        "外向性": "extraversion",
+        "agreeableness": "agreeableness",
+        "宜人性": "agreeableness",
+        "neuroticism": "neuroticism",
+        "神经质": "neuroticism",
+        "emotional_stability": "neuroticism",
+        "情绪稳定性": "neuroticism",
+    }
+
+    @staticmethod
+    def _normalize_percent_score(value: float) -> float:
+        score = float(value)
+        if score <= 10.0:
+            score *= 10.0
+        return max(0.0, min(100.0, score))
+
+    @classmethod
+    def _normalize_candidate_personality(cls, candidate_personality: Dict[str, float]) -> Dict[str, float]:
+        normalized: Dict[str, float] = {}
+        for raw_key, raw_value in (candidate_personality or {}).items():
+            key_text = str(raw_key).strip()
+            trait = cls.TRAIT_ALIASES.get(key_text)
+            if not trait:
+                continue
+            try:
+                score = cls._normalize_percent_score(float(raw_value))
+            except (TypeError, ValueError):
+                continue
+            if key_text in {"emotional_stability", "情绪稳定性"}:
+                score = 100.0 - score
+            normalized[trait] = score
+        return normalized
+
+    @staticmethod
+    def _range_fit_score(
+        candidate_score: float,
+        min_val: float,
+        max_val: float,
+        *,
+        lower_is_better: bool = False,
+    ) -> float:
+        min_val = max(0.0, min(100.0, float(min_val)))
+        max_val = max(min_val, min(100.0, float(max_val)))
+
+        if lower_is_better:
+            if candidate_score <= max_val:
+                span = max(1.0, max_val - min_val)
+                return 90.0 + (max_val - candidate_score) / span * 10.0
+            return max(0.0, 100.0 - (candidate_score - max_val) * 6.0)
+
+        if candidate_score < min_val:
+            return max(0.0, 100.0 - (min_val - candidate_score) * 6.0)
+        if candidate_score <= max_val:
+            span = max(1.0, max_val - min_val)
+            return 90.0 + (candidate_score - min_val) / span * 10.0
+        return max(0.0, 100.0 - (candidate_score - max_val) * 4.0)
     
     @staticmethod
     def calculate_skill_match(
@@ -303,6 +368,7 @@ class MatchingEngine:
             匹配度 0-100
         """
         
+        candidate = MatchingEngine._normalize_candidate_personality(candidate_personality)
         dimensions = [
             ("openness", personality_framework.openness_min, personality_framework.openness_max, personality_framework.openness_weight),
             ("conscientiousness", personality_framework.conscientiousness_min, personality_framework.conscientiousness_max, personality_framework.conscientiousness_weight),
@@ -315,22 +381,21 @@ class MatchingEngine:
         weighted_match = 0
         
         for dimension, min_val, max_val, weight in dimensions:
-            candidate_score = candidate_personality.get(dimension, 50)
-            
-            # 计算是否在理想范围内（值越接近中心越好）
-            if min_val <= candidate_score <= max_val:
-                fit = 100
-            else:
-                # 超出范围，按距离扣分
-                if candidate_score < min_val:
-                    fit = max(0, 100 - (min_val - candidate_score) * 2)
-                else:
-                    fit = max(0, 100 - (candidate_score - max_val) * 2)
+            candidate_score = candidate.get(dimension)
+            if candidate_score is None:
+                continue
+
+            fit = MatchingEngine._range_fit_score(
+                candidate_score,
+                min_val,
+                max_val,
+                lower_is_better=dimension == "neuroticism",
+            )
             
             weighted_match += fit * weight
             total_weight += weight
         
-        match_score = weighted_match / total_weight if total_weight > 0 else 0
+        match_score = weighted_match / total_weight if total_weight > 0 else 50.0
         
         return round(match_score, 1)
     

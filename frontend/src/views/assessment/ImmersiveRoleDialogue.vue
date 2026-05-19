@@ -71,13 +71,13 @@
         <!-- 实时情绪与语气分析 -->
         <div class="sentiment-monitor" v-if="latestSentiment && currentStep >= 3">
           <div class="sentiment-indicator">
-            <span class="label">候选人状态:</span>
+            <span class="label">作答状态:</span>
             <el-tag :type="getSentimentType(latestSentiment.emotion)" size="small">
               {{ latestSentiment.emotion }}
             </el-tag>
           </div>
           <div class="confidence-bar">
-            <span class="label">表达自信度:</span>
+            <span class="label">表达稳定度:</span>
             <el-progress 
               :percentage="latestSentiment.confidence" 
               :color="getConfidenceColor(latestSentiment.confidence)"
@@ -343,105 +343,51 @@
           </div>
         </div>
 
-        <!-- Step 4: 评估报告 -->
+        <!-- Step 4: 完成状态。正式报告在独立报告模块查看。 -->
         <div v-if="currentStep === 4" class="conversation-starter report-section">
-          <div class="starter-content report-content">
+          <div class="starter-content report-content completion-content">
             <div class="greeting-avatar">
               <img :src="aiInterviewerAvatar" />
             </div>
-            <h4>📊 评估报告</h4>
+            <h4>评估已完成</h4>
 
-            <!-- 加载中 -->
-            <div v-if="reportLoading" class="report-loading">
+            <div v-if="reportLoading" class="report-loading report-loading-with-counselor">
+              <div class="report-counselor-visual" aria-label="AI 咨询助手正在生成岗位适配建议">
+                <span class="report-counselor-orbit"></span>
+                <img src="/ai-counselor.png" alt="AI 咨询助手" class="report-counselor-image" />
+              </div>
+              <div class="report-loading-copy">
+                <span class="report-complete-badge">已完成心理特质分析</span>
+                <h4>AI 咨询助手正在生成你的岗位适配建议</h4>
+              </div>
               <el-icon class="is-loading" style="font-size: 32px; color: #409eff;"><i class="el-icon-loading"></i></el-icon>
-              <p>正在生成评估报告，请稍候...</p>
+              <p>系统正在保存本次评估记录，并生成你的岗位适配报告。</p>
             </div>
 
-            <!-- 报告内容 -->
-            <div v-else-if="reportData" class="report-detail">
-              <!-- 面试概览 -->
-              <div class="report-card">
-                <div class="info-header">📋 面试概览</div>
-                <div class="report-stats">
-                  <div class="stat-item">
-                    <div class="stat-label">面试时长</div>
-                    <div class="stat-value">{{ formatTime(elapsedTime) }}</div>
-                  </div>
-                  <div class="stat-item">
-                    <div class="stat-label">回答题数</div>
-                    <div class="stat-value">{{ respondedCount }}</div>
-                  </div>
-                  <div class="stat-item">
-                    <div class="stat-label">匹配度</div>
-                    <div class="stat-value match-score">{{ Math.round(reportData.match_score || 0) }}%</div>
-                  </div>
+            <div v-else class="completion-card">
+              <div class="completion-stats">
+                <div class="stat-item">
+                  <div class="stat-label">面试时长</div>
+                  <div class="stat-value">{{ formatTime(elapsedTime) }}</div>
+                </div>
+                <div class="stat-item">
+                  <div class="stat-label">回答题数</div>
+                  <div class="stat-value">{{ respondedCount }}</div>
+                </div>
+                <div class="stat-item">
+                  <div class="stat-label">报告状态</div>
+                  <div class="stat-value">{{ reportRecordId ? '已生成' : '已完成' }}</div>
                 </div>
               </div>
-
-              <!-- 五大人格评分 -->
-              <div class="report-card" v-if="reportData.personality_traits && reportData.personality_traits.length > 0">
-                <div class="info-header">🧠 人格特质评估</div>
-                <div class="trait-list">
-                  <div v-for="trait in reportData.personality_traits" :key="trait.name" class="trait-row">
-                    <span class="trait-name">{{ trait.name }}</span>
-                    <el-progress
-                      :percentage="(trait.score || 0) * 10"
-                      :color="getTraitProgressColor(trait.score)"
-                      :show-text="false"
-                      :stroke-width="10"
-                      style="flex: 1; margin: 0 12px;"
-                    />
-                    <span class="trait-score">{{ (trait.score || 0).toFixed(1) }}</span>
-                  </div>
-                </div>
-              </div>
-
-              <!-- 面试评分 -->
-              <div class="report-card">
-                <div class="info-header">⚡ 面试表现评分</div>
-                <div class="trait-list">
-                  <div v-for="(score, name) in latestScores" :key="name" class="trait-row">
-                    <span class="trait-name">{{ name }}</span>
-                    <el-progress
-                      :percentage="score * 10"
-                      :color="getTraitProgressColor(score)"
-                      :show-text="false"
-                      :stroke-width="10"
-                      style="flex: 1; margin: 0 12px;"
-                    />
-                    <span class="trait-score">{{ score.toFixed(1) }}</span>
-                  </div>
-                </div>
-              </div>
-
-              <!-- 强项 -->
-              <div class="report-card" v-if="reportData.match_analysis?.strengths?.length">
-                <div class="info-header">✅ 核心优势</div>
-                <ul class="analysis-list">
-                  <li v-for="(item, idx) in reportData.match_analysis.strengths" :key="idx">{{ item }}</li>
-                </ul>
-              </div>
-
-              <!-- 改进空间 -->
-              <div class="report-card" v-if="reportData.match_analysis?.gaps?.length">
-                <div class="info-header">📈 改进空间</div>
-                <ul class="analysis-list">
-                  <li v-for="(item, idx) in reportData.match_analysis.gaps" :key="idx">{{ item }}</li>
-                </ul>
-              </div>
-
-              <!-- 建议 -->
-              <div class="report-card" v-if="reportData.recommendations?.length">
-                <div class="info-header">💡 专业建议</div>
-                <ul class="analysis-list">
-                  <li v-for="(item, idx) in reportData.recommendations" :key="idx">{{ item }}</li>
-                </ul>
-              </div>
-
-              <!-- 操作按钮 -->
+              <p class="completion-tip">
+                本页仅保留面试过程。完整评估报告、匹配度解释、证据链与HR反馈请在评估报告模块查看。
+              </p>
               <div class="report-actions">
-                <el-button type="primary" size="large" @click="finishAndClose">
-                  ✓ 完成评估
+                <el-button v-if="reportRecordId" type="primary" size="large" @click="openReportModule">
+                  查看评估报告
+                </el-button>
+                <el-button size="large" @click="finishAndClose">
+                  完成
                 </el-button>
               </div>
             </div>
@@ -465,9 +411,11 @@
                 <span class="timestamp">{{ msg.time }}</span>
               </div>
               <div class="message-body">
+                <div class="question-kicker">面试官提问</div>
                 <p>{{ msg.content }}</p>
                 <!-- 评估标签 -->
                 <div v-if="msg.tags" class="message-tags">
+                  <span class="tag-label">考察维度</span>
                   <el-tag 
                     v-for="tag in msg.tags" 
                     :key="tag"
@@ -529,14 +477,15 @@
       </div>
 
       <!-- 智能输入区 -->
-      <div class="input-area" v-if="currentStep >= 3">
+      <div class="input-area" v-if="currentStep === 3 && !shouldEndInterview">
         <!-- 上下文提示条 -->
         <div v-if="contextHint" class="context-hint">
           <el-icon><i class="el-icon-info"></i></el-icon>
-          <span>{{ contextHint }}</span>
+          <span><strong>本题关注：</strong>{{ contextHint }}</span>
         </div>
 
         <!-- 输入框 -->
+        <div class="answer-label">你的回答</div>
         <div class="input-wrapper">
           <el-input
             ref="inputRef"
@@ -767,6 +716,8 @@ interface Message {
   tags?: string[]
   focusArea?: string
   agentRole?: string
+  expectedTraits?: string[]
+  scoreable?: boolean
   responseTime?: number
   aiFeedback?: string
 }
@@ -824,7 +775,7 @@ const assessmentSteps = [
   '岗位确认',
   '简历解析',
   '面试启动',
-  'Agent面试',
+  '智能面试',
   '评估报告'
 ]
 
@@ -880,7 +831,7 @@ const interviewPlan = ref<InterviewPlan>({
 })
 
 const aiInterviewerAvatar = ref(generateAvatar('AI'))
-const aiInterviewerTitle = ref('高级智能面试官 • 多维度评估')
+const aiInterviewerTitle = ref('性格特质与岗位适配评估')
 
 // ==================== 对话管理 ====================
 const messages = ref<Message[]>([])
@@ -890,20 +841,41 @@ const isTyping = ref(false)
 const currentPhase = ref('面试准备中...')
 const contextHint = ref<string | null>(null)
 
+function toCandidateVisibleContext(context?: string | null) {
+  const text = (context || '').trim()
+  if (!text) return null
+  const internalMarkers = ['问题草案', '规则修正', 'debug', '校验', 'validation']
+  if (internalMarkers.some(marker => text.includes(marker))) return null
+  return text
+}
+
 // ==================== 时间追踪 ====================
 const startTime = ref<number>(0)
 const elapsedTime = ref(0)
 const timerInterval = ref<number | null>(null)
 
 // ==================== 评估数据 ====================
-const latestScores = ref<Record<string, number>>({
-  '专业能力': 0,
-  '逻辑思维': 0,
-  '表达能力': 0,
-  '学习能力': 0,
-  '团队合作': 0,
-  '创新思维': 0
+const latestScores = ref<Record<string, number>>({})
+const SCORE_ALIASES: Record<string, string> = {
+  '专业能力': '技术深度',
+  '逻辑思维': '问题解决',
+  '表达能力': '沟通能力',
+  '团队合作': '团队协作',
+  '创新思维': '创新能力',
+}
+const assessmentEvidence = ref<{
+  verified_skills: string[]
+  missing_must_have_skills: string[]
+  personality_evidence: Record<string, string>
+  evidence_quote: string[]
+}>({
+  verified_skills: [],
+  missing_must_have_skills: [],
+  personality_evidence: {},
+  evidence_quote: [],
 })
+const scoreCoverage = ref<Record<string, string>>({})
+const unobservedScores = ref<Record<string, string>>({})
 
 const latestSentiment = ref<{ emotion: string; confidence: number } | null>(null)
 const detectedPatterns = ref<Pattern[]>([])
@@ -970,7 +942,7 @@ const currentJobDisplayTitle = computed(() => {
 const isInterviewLocked = computed(() => currentStep.value >= 1 && currentStep.value < 4)
 
 const currentInterviewStatusLabel = computed(() => {
-  if (currentStep.value >= 4) return '报告生成中'
+  if (currentStep.value >= 4) return reportLoading.value ? '报告生成中' : '评估完成'
   if (currentStep.value >= 3) return '面试进行中'
   if (currentStep.value >= 1) return '面试准备中'
   if (hasInProgress.value) return '可继续面试'
@@ -992,8 +964,9 @@ const radarChart = ref<any>(null)
 // ==================== 计算属性 ====================
 const dynamicPlaceholder = computed(() => {
   if (isProcessing.value) return '正在分析中...'
+  if (shouldEndInterview.value || currentStep.value >= 4) return '本轮面试已结束'
   if (currentStep.value < 3) return '请先完成前置步骤...'
-  return `请详细描述你的想法和经验...`
+  return '请结合真实经历，说明你的判断、行动和结果...'
 })
 
 const processingStatusText = computed(() => {
@@ -1002,14 +975,17 @@ const processingStatusText = computed(() => {
 })
 
 const canSubmit = computed(() => {
-  return !isProcessing.value && currentStep.value >= 3 && userInput.value.trim().length > 0
+  return !isProcessing.value
+    && currentStep.value === 3
+    && !shouldEndInterview.value
+    && userInput.value.trim().length > 0
 })
 
 const introScene = computed<IntroScene>(() => {
   if (initLoading.value) {
     return {
       title: '正在连接面试现场',
-      lines: ['正在核验候选人身份与评估上下文', '正在载入本场面试所需的 Agent 会话资源'],
+      lines: ['正在核验候选人身份与评估上下文', '正在载入本场智能面试所需的会话资源'],
       status: '请稍候，系统即将完成接入。'
     }
   }
@@ -1030,7 +1006,7 @@ const introScene = computed<IntroScene>(() => {
         hasResolvedJobTarget.value ? '系统已检测到你的历史履历信息，正在准备岗位匹配型面试链路' : '系统已检测到你的历史履历信息，正在准备基于履历画像的综合评估链路',
         '你可以直接沿用已有画像，也可以替换为新的简历内容'
       ],
-      status: '确认履历后，面试 Agent 将立即接管会话。'
+      status: '确认履历后，系统将立即进入正式面试。'
     }
   }
 
@@ -1040,7 +1016,7 @@ const introScene = computed<IntroScene>(() => {
       lines: [
         hasResolvedJobTarget.value ? `当前岗位：${currentJobDisplayTitle.value}` : '当前模式：简历综合评估',
         hasResolvedJobTarget.value ? '系统将先解析你的简历与经历，再动态生成本场岗位评估策略' : '系统将先解析你的简历与经历，再动态生成综合评估策略',
-        '信息完成后，面试 Agent 会自动进入正式提问'
+        '信息完成后，系统会自动进入正式提问。'
       ],
       status: '请先上传简历或补全信息。'
     }
@@ -1056,9 +1032,9 @@ const introScene = computed<IntroScene>(() => {
 
   if (currentStep.value === 2) {
     return {
-      title: 'Agent 面试链路已就绪',
+      title: '智能面试已就绪',
       lines: [hasResolvedJobTarget.value ? '我已结合岗位需求和履历信息，为你生成本场个性化评估计划' : '我已结合你的履历背景和能力线索，为你生成本场综合评估计划', '接下来我会连续推进提问、分析和决策，请尽量完整作答'],
-      status: '系统正在启动面试 Agent，马上进入正式提问。'
+      status: '系统正在启动面试流程，马上进入正式提问。'
     }
   }
 
@@ -1156,6 +1132,7 @@ async function useExistingResume() {
   candidateInfo.value.email = info.email || ''
   candidateInfo.value.education = info.education || ''
   candidateInfo.value.skills = Array.isArray(info.skills) ? info.skills.join(', ') : (info.skills || '')
+  candidateInfo.value.projects = info.projects || info.project_experience || info.work_experience || ''
 
   // 构造 parsedResumeData 以供后续步骤使用
   parsedResumeData.value = {
@@ -1165,6 +1142,8 @@ async function useExistingResume() {
       education: info.education || '',
       experience_level: '',
       technical_skills: Array.isArray(info.skills) ? info.skills : [],
+      project_experience: info.projects || info.project_experience || info.work_experience || '',
+      work_experience: info.work_experience || info.project_experience || info.projects || '',
       soft_skills: [],
     },
     assessed_dimensions: ['技术能力', '问题解决', '沟通能力', '团队协作', '学习能力'],
@@ -1299,10 +1278,11 @@ async function uploadAndParseResume(file: File, filename: string) {
           console.log('自动填入技能:', info.technical_skills)
         }
         
-        // 填入工作经验
-        if (info.work_experience && info.work_experience !== ''){
-          candidateInfo.value.projects = info.work_experience.substring(0, 200)
-          console.log('自动填入工作经验')
+        // 填入项目/实践经历
+        const projectExperience = info.project_experience || info.projects || info.work_experience
+        if (projectExperience && projectExperience !== ''){
+          candidateInfo.value.projects = projectExperience.substring(0, 1000)
+          console.log('自动填入项目/实践经历')
         }
       }
       
@@ -1444,7 +1424,9 @@ async function startInterview() {
     role: 'ai',
     content: openingMessage,
     time: nowTime(),
-    tags: ['面试开始', '破冰']
+    tags: ['面试开始', '破冰'],
+    focusArea: 'opening',
+    scoreable: false,
   })
   
   isTyping.value = false
@@ -1469,11 +1451,13 @@ async function generateNextQuestion() {
     tags: question.tags,
     focusArea: question.focusArea,
     agentRole: question.agentRole,
+    expectedTraits: question.expectedTraits,
+    scoreable: true,
   })
   
   isTyping.value = false
   currentPhase.value = question.phase || '多轮面试中'
-  contextHint.value = question.context || null
+  contextHint.value = toCandidateVisibleContext(question.context)
   
   await scrollToBottom()
   inputRef.value?.focus()
@@ -1481,6 +1465,10 @@ async function generateNextQuestion() {
 
 async function submitMessage() {
   if (!canSubmit.value) return
+  if (shouldEndInterview.value || currentStep.value !== 3) {
+    userInput.value = ''
+    return
+  }
 
   const content = userInput.value.trim()
   const responseTime = Date.now()
@@ -1500,11 +1488,14 @@ async function submitMessage() {
   await scrollToBottom()
   
   try {
-    // 合并请求：分析回答 + 生成下一题（单次 API 往返）
-    const result = await analyzeAndFetchNext(content)
+    const isFinalAnswer = respondedCount.value >= interviewPlan.value.totalQuestions
+    // 最后一题只做回答分析，不再生成下一题，避免候选人等待无用的 LLM 请求
+    const result = isFinalAnswer
+      ? { analysis: await analyzeResponse(content), nextQuestion: null, shouldEnd: true }
+      : await analyzeAndFetchNext(content)
     
     // 1. 更新评分
-    updateScores(result.analysis.scores)
+    updateScores(result.analysis.scores, result.analysis.scoreCoverage)
     
     // 2. 更新情绪
     latestSentiment.value = result.analysis.sentiment
@@ -1515,11 +1506,24 @@ async function submitMessage() {
     }
     
     // 4. 添加反馈
-    messages.value[messages.value.length - 1].aiFeedback = result.analysis.feedback
+    const personalityNote = result.analysis.personalityObservation?.scenario_personality
+    messages.value[messages.value.length - 1].aiFeedback = personalityNote
+      ? `${result.analysis.feedback}\n心理特质观察：${personalityNote}`
+      : result.analysis.feedback
     
     // 5. 检查是否完成
     if (respondedCount.value >= interviewPlan.value.totalQuestions || result.shouldEnd) {
       shouldEndInterview.value = true
+      messages.value.push({
+        role: 'ai',
+        content: '本轮智能面试已完成。系统将基于本次回答生成性格特质分析、岗位适配结论与匹配建议。',
+        time: nowTime(),
+        tags: ['面试结束', '心理特质评估', '人岗匹配'],
+        focusArea: '评估总结',
+        agentRole: getCurrentAgentRoleId(),
+        scoreable: false,
+      })
+      await scrollToBottom()
       completeInterview()
     } else if (result.nextQuestion) {
       // 6. 每次回答后自动保存
@@ -1534,10 +1538,12 @@ async function submitMessage() {
         tags: result.nextQuestion.tags,
         focusArea: result.nextQuestion.focusArea,
         agentRole: result.nextQuestion.agentRole,
+        expectedTraits: result.nextQuestion.expectedTraits,
+        scoreable: true,
       })
       isTyping.value = false
       currentPhase.value = result.nextQuestion.phase || '多轮面试中'
-      contextHint.value = result.nextQuestion.context || null
+      contextHint.value = toCandidateVisibleContext(result.nextQuestion.context)
       await scrollToBottom()
       inputRef.value?.focus()
     } else {
@@ -1581,8 +1587,11 @@ async function analyzeResponse(content: string) {
       history: messages.value.slice(-5).map(m => ({
         role: m.role === 'candidate' ? 'candidate' : 'assistant',
         content: m.content,
+        tags: m.tags || [],
         focus_area: m.focusArea,
         agent_role: m.agentRole,
+        expected_traits: m.expectedTraits || [],
+        scoreable: m.scoreable !== false,
       })),
       target_position: selectedJobTitle.value || undefined,
       resume_info: Object.keys(resumePayload).length > 0 ? resumePayload : undefined,
@@ -1591,6 +1600,7 @@ async function analyzeResponse(content: string) {
 
     if (data.code === 200 && data.data?.analysis) {
       const analysis = data.data.analysis
+      mergeAssessmentEvidence(analysis)
       // 捕获 DecisionAgent 决策和面试状态
       if (analysis.decision) {
         latestDecision.value = analysis.decision
@@ -1601,9 +1611,12 @@ async function analyzeResponse(content: string) {
       }
       return {
         scores: analysis.scores || {},
+        scoreCoverage: analysis.score_coverage || {},
+        qualitySignals: analysis.quality_signals || {},
         sentiment: analysis.sentiment || { emotion: '专注', confidence: 75 },
         patterns: analysis.patterns || [],
         feedback: analysis.feedback || '很好的回答！',
+        personalityObservation: analysis.personality_observation || null,
         decision: analysis.decision || null
       }
     }
@@ -1624,6 +1637,15 @@ function getLocalFallbackAnalysis() {
       '团队合作': 7.5 + Math.random() * 1.5,
       '创新思维': 7.0 + Math.random() * 2
     },
+    scoreCoverage: {
+      '专业能力': 'observed',
+      '逻辑思维': 'observed',
+      '表达能力': 'observed',
+      '学习能力': 'observed',
+      '团队合作': 'observed',
+      '创新思维': 'observed',
+    },
+    qualitySignals: { fallback: true },
     sentiment: { emotion: ['自信', '谨慎', '积极'][Math.floor(Math.random() * 3)], confidence: 70 + Math.random() * 20 },
     patterns: [
       {
@@ -1634,7 +1656,10 @@ function getLocalFallbackAnalysis() {
         color: '#67c23a'
       }
     ],
-    feedback: '很好的回答！逻辑清晰，表达准确。'
+    feedback: '很好的回答！逻辑清晰，表达准确。',
+    personalityObservation: {
+      scenario_personality: '本地备用评估无法形成稳定心理特质判断'
+    }
   }
 }
 
@@ -1667,8 +1692,11 @@ async function analyzeAndFetchNext(content: string) {
       history: messages.value.slice(-6).map(m => ({
         role: m.role === 'candidate' ? 'candidate' : 'assistant',
         content: m.content,
+        tags: m.tags || [],
         focus_area: m.focusArea,
         agent_role: m.agentRole,
+        expected_traits: m.expectedTraits || [],
+        scoreable: m.scoreable !== false,
       })),
       target_position: selectedJobTitle.value || undefined,
       resume_info: Object.keys(resumePayload).length > 0 ? resumePayload : undefined,
@@ -1678,6 +1706,7 @@ async function analyzeAndFetchNext(content: string) {
     if (data.code === 200 && data.data) {
       const analysis = data.data.analysis || {}
       const nextQ = data.data.question
+      mergeAssessmentEvidence(analysis)
 
       // 更新面试状态
       if (analysis.decision) {
@@ -1693,9 +1722,12 @@ async function analyzeAndFetchNext(content: string) {
       return {
         analysis: {
           scores: analysis.scores || {},
+          scoreCoverage: analysis.score_coverage || {},
+          qualitySignals: analysis.quality_signals || {},
           sentiment: analysis.sentiment || { emotion: '专注', confidence: 75 },
           patterns: analysis.patterns || [],
           feedback: analysis.feedback || '很好的回答！',
+          personalityObservation: analysis.personality_observation || null,
         },
         nextQuestion: nextQ ? {
           content: nextQ.question || nextQ.content || '',
@@ -1704,6 +1736,7 @@ async function analyzeAndFetchNext(content: string) {
           interviewState: nextQ.interview_state || null,
           focusArea: nextQ.focus_area || null,
           agentRole: nextQ.interview_state?.current_role || getCurrentAgentRoleId(),
+          expectedTraits: nextQ.expected_traits || [],
           phase: nextQ.phase || nextQ.interview_state?.current_role || '多轮面试'
         } : null,
         shouldEnd: !!data.data.should_end
@@ -1752,8 +1785,11 @@ async function fetchNextQuestion() {
       history: messages.value.map(m => ({
         role: m.role === 'candidate' ? 'candidate' : 'assistant',
         content: m.content,
+        tags: m.tags || [],
         focus_area: m.focusArea,
         agent_role: m.agentRole,
+        expected_traits: m.expectedTraits || [],
+        scoreable: m.scoreable !== false,
       })),
       target_position: selectedJobTitle.value || undefined,
       resume_info: Object.keys(resumePayload).length > 0 ? resumePayload : undefined,
@@ -1771,6 +1807,7 @@ async function fetchNextQuestion() {
         context: question.context,
         focusArea: question.focus_area || null,
         agentRole: question.interview_state?.current_role || getCurrentAgentRoleId(),
+        expectedTraits: question.expected_traits || [],
         phase: question.phase || question.interview_state?.current_role || '多轮面试'
       }
     }
@@ -1798,19 +1835,83 @@ function getLocalFallbackQuestion() {
     content: q,
     tags: ['开放式问题', '经验分享'],
     context: '请详细描述你的思考过程',
+    focusArea: '综合评估',
+    agentRole: getCurrentAgentRoleId(),
+    expectedTraits: [],
     phase: '多轮面试'
   }
 }
 
-function updateScores(newScores: Record<string, number>) {
-  Object.keys(newScores).forEach(key => {
-    const current = latestScores.value[key] || 0
-    const target = newScores[key]
-    latestScores.value[key] = Math.round((current * 0.6 + target * 0.4) * 10) / 10
+function normalizeScoreName(name: string) {
+  return SCORE_ALIASES[name] || name
+}
+
+function updateScores(newScores: Record<string, number>, coverage?: Record<string, string>) {
+  Object.entries(newScores || {}).forEach(([rawKey, rawValue]) => {
+    const key = normalizeScoreName(rawKey)
+    const rawStatus = coverage?.[rawKey] || coverage?.[key]
+    if (coverage && rawStatus !== 'observed') {
+      unobservedScores.value[key] = '证据不足/待补充观察'
+      return
+    }
+    const value = Number(rawValue)
+    if (!Number.isFinite(value) || value <= 0) return
+
+    const target = value > 10 ? value / 10 : value
+    const current = latestScores.value[key]
+    latestScores.value[key] = typeof current === 'number' && current > 0
+      ? Math.round((current * 0.6 + target * 0.4) * 10) / 10
+      : Math.round(target * 10) / 10
+    scoreCoverage.value[key] = 'observed'
+    delete unobservedScores.value[key]
+  })
+
+  Object.entries(coverage || {}).forEach(([rawKey, status]) => {
+    const key = normalizeScoreName(rawKey)
+    if (status !== 'observed' && !latestScores.value[key]) {
+      scoreCoverage.value[key] = status
+      unobservedScores.value[key] = '证据不足/待补充观察'
+    }
   })
   
   emit('update-scores', latestScores.value)
   // 评估数据不在候选人端显示，只在 HR 端显示
+}
+
+function mergeAssessmentEvidence(analysis: any) {
+  const verified = [
+    ...(analysis?.verified_skills || []),
+    ...(analysis?.skill_match?.matched || []),
+  ].map((item: any) => String(item || '').trim()).filter(Boolean)
+  assessmentEvidence.value.verified_skills = Array.from(new Set([
+    ...assessmentEvidence.value.verified_skills,
+    ...verified,
+  ])).slice(0, 12)
+
+  const missing = [
+    ...(analysis?.missing_must_have_skills || []),
+    ...(analysis?.skill_match?.gap || []),
+  ].map((item: any) => String(item || '').trim()).filter(Boolean)
+  assessmentEvidence.value.missing_must_have_skills = Array.from(new Set([
+    ...assessmentEvidence.value.missing_must_have_skills,
+    ...missing,
+  ])).slice(0, 12)
+
+  const evidence = analysis?.personality_evidence || analysis?.personality_observation?.trait_evidence || {}
+  Object.entries(evidence).forEach(([trait, quote]) => {
+    const text = String(quote || '').trim()
+    if (text && !text.includes('证据不足')) {
+      assessmentEvidence.value.personality_evidence[trait] = text
+    }
+  })
+
+  const quote = String(analysis?.evidence_quote || analysis?.evidence || '').trim()
+  if (quote) {
+    assessmentEvidence.value.evidence_quote = Array.from(new Set([
+      ...assessmentEvidence.value.evidence_quote,
+      quote,
+    ])).slice(-8)
+  }
 }
 
 function updatePatterns(patterns: Pattern[]) {
@@ -1818,6 +1919,8 @@ function updatePatterns(patterns: Pattern[]) {
 }
 
 function completeInterview() {
+  if (shouldEndInterview.value && currentStep.value >= 4) return
+  shouldEndInterview.value = true
   ElMessage.success('✨ 面试完成！正在生成报告...')
   currentStep.value = 4  // 进入报告阶段
   
@@ -1833,8 +1936,10 @@ function completeInterview() {
   if (cid) clearLocalProgress(cid)
   
   // 准备完成数据
-  const overallScore = Object.values(latestScores.value).reduce((a, b) => a + b, 0) /
-    Math.max(Object.keys(latestScores.value).length, 1)
+  const validScores = Object.values(latestScores.value).filter(v => typeof v === 'number' && v > 0)
+  const overallScore = validScores.length
+    ? validScores.reduce((a, b) => a + b, 0) / validScores.length
+    : 5
   
   const completionData = {
     sessionId: `session_${Date.now()}`,
@@ -1885,13 +1990,52 @@ function getFallbackBigFive(scores: Record<string, number>): Record<string, numb
   }
 }
 
+function getAgentBigFiveScores(): Record<string, number> {
+  const traits = interviewState.value?.personality_traits || {}
+  const result: Record<string, number> = {}
+  ;(['外向性', '宜人性', '尽责性', '开放性'] as const).forEach(trait => {
+    const score = traits[trait]?.basic_score
+    if (typeof score === 'number' && score > 0) result[trait] = score
+  })
+  const emotionalStability = traits['情绪稳定性']?.basic_score
+  if (typeof emotionalStability === 'number' && emotionalStability > 0) {
+    result['神经质'] = Math.max(0, Math.min(10, Math.round((10 - emotionalStability) * 10) / 10))
+  }
+  return result
+}
+
+function getAgentFusionScores(): Record<string, number> {
+  const score = (keys: string[]) => {
+    const values = keys
+      .map(key => latestScores.value[key])
+      .filter(value => typeof value === 'number' && value > 0)
+    if (!values.length) return 50
+    const avg = values.reduce((sum, value) => sum + value, 0) / values.length
+    return Math.max(0, Math.min(100, Math.round((avg <= 10 ? avg * 10 : avg) * 10) / 10))
+  }
+
+  return {
+    technical: score(['专业能力', '技术深度', '问题解决', '逻辑思维', '学习能力']),
+    hr: score(['表达能力', '沟通能力', '团队合作', '团队协作', '文化契合']),
+    hiring_manager: score(['创新能力', '用户洞察', '战略思维', '领导力', '问题解决'])
+  }
+}
+
+function toBackendPercentScore(score: number | null | undefined): number {
+  if (typeof score !== 'number' || !Number.isFinite(score)) return 0
+  const percent = score <= 10 ? score * 10 : score
+  return Math.max(0, Math.min(100, Math.round(percent * 10) / 10))
+}
+
 /** 调用后端保存评估结果并获取报告 */
 async function generateReport(cid: number | null, overallScore: number, completionData: any) {
   reportLoading.value = true
   
   try {
     const jobId = selectedJobId.value || props.initialContext?.job_id || null
-    const fallbackBigFive = getFallbackBigFive(latestScores.value)
+    const agentBigFive = getAgentBigFiveScores()
+    const agentScores = getAgentFusionScores()
+    const fallbackBigFive = getFallbackBigFive(agentBigFive)
 
     if (!jobId) {
       reportData.value = {
@@ -1909,7 +2053,7 @@ async function generateReport(cid: number | null, overallScore: number, completi
           total_rounds: respondedCount.value,
           duration_minutes: elapsedTime.value / 60000,
           conversation_depth: respondedCount.value,
-          match_score: Math.round(overallScore * 10) / 10,
+          match_score: toBackendPercentScore(overallScore),
           conversation_summary: `完成${respondedCount.value}轮综合评估，总时长${formatTime(elapsedTime.value)}`,
         }).catch(e => console.warn('更新综合评估状态失败:', e))
       }
@@ -1920,10 +2064,18 @@ async function generateReport(cid: number | null, overallScore: number, completi
     // 1. 保存评估结果到后端（生成报告数据）
     const saveRes = await saveAssessmentResult({
       candidate_id: String(cid || props.candidateId),
+      assessment_id: backendAssessmentId.value ?? undefined,
       job_id: jobId,
       assessment_mode: 'immersive',
       all_scores: latestScores.value,
+      personality_scores: agentBigFive,
+      agent_scores: agentScores,
       candidate_info: completionData.candidateInfo,
+      assessment_evidence: {
+        ...assessmentEvidence.value,
+        score_coverage: scoreCoverage.value,
+        unobserved_scores: unobservedScores.value,
+      },
     })
     
     if (saveRes.code === 200 && saveRes.data?.record_id) {
@@ -1946,6 +2098,11 @@ async function generateReport(cid: number | null, overallScore: number, completi
     
     // 3. 同步评估进度状态
     if (cid) {
+      const persistedMatchScore = toBackendPercentScore(
+        saveRes?.data?.overall_score ??
+        reportData.value?.match_score ??
+        overallScore
+      )
       updateProgress({
         candidate_id: cid,
         assessment_id: backendAssessmentId.value ?? undefined,
@@ -1955,7 +2112,7 @@ async function generateReport(cid: number | null, overallScore: number, completi
         total_rounds: respondedCount.value,
         duration_minutes: elapsedTime.value / 60000,
         conversation_depth: respondedCount.value,
-        match_score: Math.round(overallScore * 10) / 10,
+        match_score: persistedMatchScore,
         conversation_summary: `完成${respondedCount.value}轮面试，总时长${formatTime(elapsedTime.value)}`,
       }).catch(e => console.warn('更新完成状态失败:', e))
     }
@@ -2006,6 +2163,14 @@ function finishAndClose() {
     finished: true,
     reportRecordId: reportRecordId.value,
     scores: latestScores.value,
+  })
+}
+
+function openReportModule() {
+  if (!reportRecordId.value) return
+  router.push({
+    name: 'AssessmentReport',
+    params: { recordId: String(reportRecordId.value) },
   })
 }
 
@@ -2133,7 +2298,7 @@ function stopAutoSave() {
 // ==================== 恢复进度 ====================
 function restoreFromLocal(progress: LocalProgress) {
   currentStep.value = progress.currentStep
-  messages.value = progress.messages || []
+  messages.value = normalizeRestoredMessages(progress.messages || [])
   latestScores.value = progress.scores || latestScores.value
   detectedPatterns.value = progress.patterns || []
   respondedCount.value = progress.respondedCount || 0
@@ -2144,6 +2309,10 @@ function restoreFromLocal(progress: LocalProgress) {
   selectedJobTitle.value = progress.jobTitle || ''
   interviewState.value = progress.interviewState || null
   latestDecision.value = progress.latestDecision || null
+  isProcessing.value = false
+  isTyping.value = false
+  shouldEndInterview.value = false
+  currentPhase.value = progress.currentStep >= 3 ? '面试进行中' : '面试准备中'
 
   // 恢复计时
   if (progress.currentStep >= 3 && progress.startTime) {
@@ -2156,6 +2325,94 @@ function restoreFromLocal(progress: LocalProgress) {
 
   leftPanelMode.value = 'info'
   ElMessage.success('已恢复上次测评进度')
+
+  nextTick(() => {
+    resumeInterruptedAnalysisIfNeeded()
+  })
+}
+
+function normalizeRestoredMessages(items: Message[]): Message[] {
+  return (items || []).map((message) => {
+    if (message.role !== 'ai') return message
+    const tags = message.tags || []
+    const isSystemMessage =
+      message.scoreable === false ||
+      tags.includes('面试开始') ||
+      tags.includes('破冰') ||
+      tags.includes('面试结束')
+    return {
+      ...message,
+      scoreable: !isSystemMessage,
+      expectedTraits: message.expectedTraits || [],
+    }
+  })
+}
+
+async function resumeInterruptedAnalysisIfNeeded() {
+  if (currentStep.value !== 3 || shouldEndInterview.value || isProcessing.value) return
+  const last = messages.value[messages.value.length - 1]
+  if (!last || last.role !== 'candidate' || last.aiFeedback) return
+
+  const hasQuestionAfterLastAnswer = messages.value
+    .slice(messages.value.lastIndexOf(last) + 1)
+    .some(message => message.role === 'ai' && message.scoreable !== false)
+  if (hasQuestionAfterLastAnswer) return
+
+  isProcessing.value = true
+  try {
+    const isFinalAnswer = respondedCount.value >= interviewPlan.value.totalQuestions
+    const result = isFinalAnswer
+      ? { analysis: await analyzeResponse(last.content), nextQuestion: null, shouldEnd: true }
+      : await analyzeAndFetchNext(last.content)
+
+    updateScores(result.analysis.scores, result.analysis.scoreCoverage)
+    latestSentiment.value = result.analysis.sentiment
+    if (result.analysis.patterns) {
+      updatePatterns(result.analysis.patterns)
+    }
+
+    const personalityNote = result.analysis.personalityObservation?.scenario_personality
+    last.aiFeedback = personalityNote
+      ? `${result.analysis.feedback}\n心理特质观察：${personalityNote}`
+      : result.analysis.feedback
+
+    if (respondedCount.value >= interviewPlan.value.totalQuestions || result.shouldEnd) {
+      shouldEndInterview.value = true
+      messages.value.push({
+        role: 'ai',
+        content: '本轮智能面试已完成。系统将基于本次回答生成性格特质分析、岗位适配结论与匹配建议。',
+        time: nowTime(),
+        tags: ['面试结束', '心理特质评估', '人岗匹配'],
+        focusArea: '评估总结',
+        agentRole: getCurrentAgentRoleId(),
+        scoreable: false,
+      })
+      await scrollToBottom()
+      completeInterview()
+    } else if (result.nextQuestion) {
+      messages.value.push({
+        role: 'ai',
+        content: result.nextQuestion.content,
+        time: nowTime(),
+        tags: result.nextQuestion.tags,
+        focusArea: result.nextQuestion.focusArea,
+        agentRole: result.nextQuestion.agentRole,
+        expectedTraits: result.nextQuestion.expectedTraits,
+        scoreable: true,
+      })
+      currentPhase.value = result.nextQuestion.phase || '多轮面试中'
+      contextHint.value = toCandidateVisibleContext(result.nextQuestion.context)
+      doAutoSave()
+      await scrollToBottom()
+      inputRef.value?.focus()
+    }
+  } catch (error) {
+    console.warn('恢复后续跑分析失败:', error)
+    ElMessage.warning('已恢复进度，可继续输入回答')
+  } finally {
+    isProcessing.value = false
+    isTyping.value = false
+  }
 }
 
 // ==================== 页面退出保存 ====================
@@ -2202,6 +2459,13 @@ onBeforeRouteLeave(async (_, __, next) => {
 onMounted(async () => {
   // 从路由参数读取预选的岗位ID
   const queryJobId = route.query.jobId
+  const queryAssessmentId = route.query.assessmentId
+  if (queryAssessmentId) {
+    const aid = Number(queryAssessmentId)
+    if (!isNaN(aid) && aid > 0) {
+      backendAssessmentId.value = aid
+    }
+  }
   if (queryJobId) {
     const jid = Number(queryJobId)
     if (!isNaN(jid) && jid > 0) {
@@ -2253,7 +2517,10 @@ onMounted(async () => {
     // 2) 检查后端是否有进行中的评估
     const [resumeRes, progressRes] = await Promise.all([
       checkResume(cid).catch(() => null),
-      checkProgress(cid).catch(() => null),
+      checkProgress(cid, {
+        jobId: selectedJobId.value,
+        assessmentId: backendAssessmentId.value,
+      }).catch(() => null),
     ])
 
     // 处理进行中评估
@@ -2302,7 +2569,7 @@ onBeforeUnmount(() => {
   gap: 0;
   height: 100vh;
   padding: 0;
-  background: #f0f2f5;
+  background: #eef4ff;
   overflow: hidden;
   z-index: 1;
 }
@@ -2317,18 +2584,29 @@ onBeforeUnmount(() => {
   background-repeat: no-repeat;
   background-size: cover;
   background-position: center;
-  box-shadow: 1px 0 6px rgba(0, 0, 0, 0.06);
+  box-shadow: 1px 0 10px rgba(73, 96, 143, 0.08);
   overflow: hidden;
   z-index: 2;
 }
 
+.left-sidebar::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: rgba(255, 255, 255, 0.68);
+  pointer-events: none;
+  z-index: 0;
+}
+
 .svg-overlay {
+  position: relative;
+  z-index: 1;
   flex: 1;
   display: flex;
   align-items: center;
   justify-content: center;
   padding: 24px;
-  background-color: rgba(0,0,0,0.3);
+  background-color: rgba(255, 255, 255, 0.55);
   color: white;
   text-align: center;
 }
@@ -2352,8 +2630,8 @@ onBeforeUnmount(() => {
   bottom: 0;
   display: flex;
   flex-direction: column;
-  background-color: rgba(255,255,255,0.85);
-  padding: 16px;
+  background-color: rgba(255, 255, 255, 0.9);
+  padding: 18px;
   overflow-y: auto;
   z-index: 1;
 }
@@ -2472,7 +2750,7 @@ onBeforeUnmount(() => {
 
 /* 流程指示器 */
 .process-indicator {
-  padding: 16px;
+  padding: 12px 0;
   border-bottom: 1px solid #ebeef5;
   overflow-y: auto;
   flex-shrink: 0;
@@ -2482,10 +2760,10 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 12px;
-  margin-bottom: 8px;
+  padding: 12px 14px;
+  margin-bottom: 10px;
   cursor: pointer;
-  border-radius: 8px;
+  border-radius: 10px;
   transition: all 0.3s ease;
 }
 
@@ -2494,12 +2772,13 @@ onBeforeUnmount(() => {
 }
 
 .process-indicator .step.active {
-  background: #e6eefb;
-  color: #409eff;
+  background: linear-gradient(135deg, rgba(64, 158, 255, 0.16), rgba(109, 93, 252, 0.1));
+  color: #2563eb;
+  box-shadow: inset 3px 0 0 #409eff;
 }
 
 .process-indicator .step.completed {
-  color: #67c23a;
+  color: #3b8f2d;
 }
 
 .process-indicator .step-number {
@@ -2567,7 +2846,7 @@ onBeforeUnmount(() => {
 .process-indicator {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 10px;
   padding-bottom: 12px;
   border-bottom: 1px solid #e4e7ed;
 }
@@ -2576,16 +2855,18 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 10px;
-  border-radius: 6px;
+  padding: 12px 14px;
+  border-radius: 10px;
   cursor: pointer;
   transition: all 0.3s;
-  background: #fafbfc;
+  background: rgba(255, 255, 255, 0.78);
+  border: 1px solid rgba(209, 224, 255, 0.72);
 }
 
 .step.active {
-  background: linear-gradient(135deg, #e3f2fd 0%, #e8f4f8 100%);
-  border-left: 3px solid #409eff;
+  background: linear-gradient(135deg, #eaf3ff 0%, #f3efff 100%);
+  border-color: rgba(64, 158, 255, 0.42);
+  box-shadow: inset 3px 0 0 #409eff, 0 8px 22px rgba(64, 158, 255, 0.12);
 }
 
 .step.completed {
@@ -2601,9 +2882,10 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  height: 28px;
-  background: #409eff;
+  width: 30px;
+  height: 30px;
+  background: #dce8ff;
+  color: #2563eb;
   color: #fff;
   border-radius: 50%;
   font-size: 12px;
@@ -2613,6 +2895,7 @@ onBeforeUnmount(() => {
 
 .step.completed .step-number {
   background: #67c23a;
+  color: #fff;
 }
 
 .step-title {
@@ -2907,9 +3190,104 @@ onBeforeUnmount(() => {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 16px;
-  padding: 40px 0;
+  gap: 18px;
+  padding: 18px 0 26px;
   color: #606266;
+}
+
+.report-loading-with-counselor > .el-icon {
+  display: none;
+}
+
+.report-counselor-visual {
+  position: relative;
+  width: min(100%, 360px);
+  min-height: 300px;
+  border-radius: 26px;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background:
+    radial-gradient(circle at 52% 36%, rgba(139, 92, 246, 0.2), transparent 38%),
+    radial-gradient(circle at 68% 62%, rgba(96, 165, 250, 0.18), transparent 42%),
+    linear-gradient(145deg, #f8fbff 0%, #eef4ff 54%, #f6f2ff 100%);
+  box-shadow: inset 0 0 0 1px rgba(129, 140, 248, 0.18), 0 22px 46px rgba(99, 102, 241, 0.14);
+}
+
+.report-counselor-orbit {
+  position: absolute;
+  width: 220px;
+  height: 220px;
+  left: 50%;
+  top: 47%;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  border: 1px solid rgba(99, 102, 241, 0.24);
+  box-shadow:
+    0 0 0 20px rgba(219, 234, 254, 0.46),
+    0 0 42px rgba(96, 165, 250, 0.26);
+}
+
+.report-counselor-orbit::before,
+.report-counselor-orbit::after {
+  content: '';
+  position: absolute;
+  border-radius: 50%;
+  background: rgba(99, 102, 241, 0.28);
+  box-shadow: 0 0 18px rgba(96, 165, 250, 0.3);
+}
+
+.report-counselor-orbit::before {
+  width: 8px;
+  height: 8px;
+  right: 28px;
+  top: 26px;
+}
+
+.report-counselor-orbit::after {
+  width: 6px;
+  height: 6px;
+  left: 24px;
+  bottom: 44px;
+}
+
+.report-counselor-image {
+  position: relative;
+  z-index: 1;
+  width: min(86%, 286px);
+  max-height: 286px;
+  object-fit: contain;
+  object-position: center bottom;
+  filter: drop-shadow(0 24px 26px rgba(60, 72, 125, 0.22));
+}
+
+.report-loading-copy {
+  max-width: 520px;
+}
+
+.report-complete-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 28px;
+  padding: 0 14px;
+  border-radius: 999px;
+  background: rgba(16, 185, 129, 0.12);
+  color: #059669;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.report-loading-copy h4 {
+  margin: 12px 0 8px;
+  color: #1e293b;
+  font-size: 20px;
+  line-height: 1.35;
+}
+
+.report-loading-copy p {
+  margin: 0;
 }
 
 .report-detail {
@@ -2918,6 +3296,33 @@ onBeforeUnmount(() => {
   flex-direction: column;
   gap: 16px;
   margin-top: 16px;
+}
+
+.completion-content {
+  max-width: 720px;
+}
+
+.completion-card {
+  width: 100%;
+  margin-top: 18px;
+  padding: 20px;
+  border: 1px solid #dbe6f7;
+  border-radius: 10px;
+  background: #fff;
+}
+
+.completion-stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.completion-tip {
+  margin: 0 0 16px;
+  color: #606266;
+  font-size: 14px;
+  line-height: 1.7;
 }
 
 .report-card {
@@ -2990,6 +3395,13 @@ onBeforeUnmount(() => {
   list-style: none;
   padding: 0;
   margin: 0;
+}
+
+.report-summary {
+  margin: 0 0 10px;
+  font-size: 13px;
+  line-height: 1.7;
+  color: #606266;
 }
 
 .report-card .analysis-list li {
@@ -3425,28 +3837,28 @@ onBeforeUnmount(() => {
   z-index: 1;
   display: flex;
   flex-direction: column;
-  background: #fff;
+  background: #f7faff;
   border-radius: 0;
   box-shadow: none;
   overflow: hidden;
 }
 
 .dialogue-header {
-  padding: 14px 28px;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  padding: 12px 28px;
+  background: linear-gradient(135deg, #4f7df3 0%, #6d5dfc 56%, #794fb0 100%);
   color: #fff;
 }
 
 .job-info-bar {
   max-width: 960px;
-  margin: 0 auto 12px;
+  margin: 0 auto 10px;
   width: 100%;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  padding: 12px 14px;
-  background: rgba(255, 255, 255, 0.14);
+  padding: 10px 14px;
+  background: rgba(255, 255, 255, 0.13);
   border: 1px solid rgba(255, 255, 255, 0.16);
   border-radius: 10px;
   backdrop-filter: blur(8px);
@@ -3461,12 +3873,12 @@ onBeforeUnmount(() => {
 
 .job-info-label {
   font-size: 11px;
-  letter-spacing: 0.08em;
+  letter-spacing: 0;
   opacity: 0.82;
 }
 
 .job-info-title {
-  font-size: 18px;
+  font-size: 17px;
   font-weight: 700;
   line-height: 1.3;
   word-break: break-word;
@@ -3501,8 +3913,8 @@ onBeforeUnmount(() => {
 }
 
 .ai-avatar {
-  width: 44px;
-  height: 44px;
+  width: 40px;
+  height: 40px;
   border-radius: 50%;
 }
 
@@ -3515,21 +3927,23 @@ onBeforeUnmount(() => {
 .ai-info p {
   margin: 0;
   font-size: 12px;
-  opacity: 0.9;
+  opacity: 0.88;
 }
 
 .session-meta {
   display: flex;
-  gap: 12px;
+  gap: 10px;
   align-items: center;
   font-size: 12px;
 }
 
 .sentiment-monitor {
-  margin-top: 12px;
-  padding: 12px;
-  background: rgba(255, 255, 255, 0.15);
-  border-radius: 6px;
+  max-width: 960px;
+  margin: 10px auto 0;
+  padding: 10px 12px;
+  background: rgba(255, 255, 255, 0.14);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 8px;
   display: flex;
   gap: 16px;
   align-items: center;
@@ -3540,6 +3954,14 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: center;
   gap: 8px;
+}
+
+.confidence-bar {
+  min-width: 180px;
+}
+
+.confidence-bar :deep(.el-progress) {
+  width: 96px;
 }
 
 .sentiment-indicator .label,
@@ -3553,7 +3975,7 @@ onBeforeUnmount(() => {
   flex: 1;
   overflow-y: auto;
   padding: 24px 32px;
-  background: #fafbfc;
+  background: #f7faff;
   scroll-behavior: smooth;
 }
 
@@ -3645,7 +4067,8 @@ onBeforeUnmount(() => {
 }
 
 .ai-message .message-body {
-  border-radius: 2px 12px 12px 12px;
+  border-radius: 4px 12px 12px 12px;
+  border-left: 3px solid #409eff;
 }
 
 .message-avatar {
@@ -3657,13 +4080,13 @@ onBeforeUnmount(() => {
 .message-avatar img {
   width: 100%;
   height: 100%;
-  border-radius: 8px;
+  border-radius: 10px;
 }
 
 .candidate-avatar {
   width: 40px;
   height: 40px;
-  border-radius: 8px;
+  border-radius: 10px;
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   color: #fff;
   display: flex;
@@ -3675,7 +4098,7 @@ onBeforeUnmount(() => {
 
 .message-content {
   flex: 1;
-  max-width: 75%;
+  max-width: min(75%, 980px);
 }
 
 .message-header {
@@ -3706,11 +4129,11 @@ onBeforeUnmount(() => {
   padding: 14px 18px;
   border-radius: 12px;
   background: #fff;
-  border: 1px solid #e4e7ed;
+  border: 1px solid #dbe6f7;
   line-height: 1.7;
   color: #2c3e50;
   font-size: 14px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+  box-shadow: 0 8px 22px rgba(50, 74, 117, 0.06);
   word-break: break-word;
   overflow-wrap: break-word;
 }
@@ -3728,25 +4151,39 @@ onBeforeUnmount(() => {
 
 .candidate-message .message-content {
   flex: 0 0 auto;
-  max-width: 75%;
+  max-width: min(68%, 860px);
   display: flex;
   flex-direction: column;
   align-items: flex-end;
 }
 
 .candidate-message .message-body {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: linear-gradient(135deg, #5f7bea 0%, #7551b5 100%);
   color: #fff;
   border: none;
   border-radius: 12px 2px 12px 12px;
-  box-shadow: 0 2px 6px rgba(102, 126, 234, 0.25);
+  box-shadow: 0 10px 24px rgba(92, 112, 211, 0.24);
+}
+
+.question-kicker {
+  margin-bottom: 8px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #2563eb;
 }
 
 .message-tags {
-  margin-top: 8px;
+  margin-top: 10px;
   display: flex;
   gap: 6px;
   flex-wrap: wrap;
+  align-items: center;
+}
+
+.tag-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: #64748b;
 }
 
 .ai-feedback {
@@ -3841,29 +4278,55 @@ onBeforeUnmount(() => {
 
 /* ==================== 输入区 ==================== */
 .input-area {
-  padding: 16px 20px;
+  padding: 16px 28px 18px;
   background: #fff;
-  border-top: 1px solid #e4e7ed;
+  border-top: 1px solid #dbe6f7;
 }
 
 .context-hint {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 8px 12px;
-  margin-bottom: 12px;
-  background: #fff7e6;
+  max-width: 1080px;
+  margin: 0 auto 12px;
+  padding: 10px 12px;
+  background: #fff8e8;
   border-left: 3px solid #e6a23c;
-  border-radius: 4px;
-  font-size: 12px;
-  color: #606266;
+  border-radius: 8px;
+  font-size: 13px;
+  color: #4b5563;
+  line-height: 1.6;
+}
+
+.answer-label {
+  max-width: 1080px;
+  margin: 0 auto 8px;
+  font-size: 13px;
+  font-weight: 700;
+  color: #24364f;
 }
 
 .input-wrapper {
-  margin-bottom: 12px;
+  max-width: 1080px;
+  margin: 0 auto 12px;
+}
+
+.input-wrapper :deep(.el-textarea__inner) {
+  min-height: 92px !important;
+  border-radius: 10px;
+  border-color: #d8e2f2;
+  box-shadow: none;
+  line-height: 1.7;
+}
+
+.input-wrapper :deep(.el-textarea__inner:focus) {
+  border-color: #409eff;
+  box-shadow: 0 0 0 3px rgba(64, 158, 255, 0.12);
 }
 
 .input-controls {
+  max-width: 1080px;
+  margin: 0 auto;
   display: flex;
   justify-content: space-between;
   align-items: center;

@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware 
 from dotenv import load_dotenv
+import os
 from database import Base, engine
 from models.user import User
 from models.job import Job
@@ -62,6 +63,12 @@ app.include_router(immersive_dialogue_router)
 app.include_router(job_requirements_router)
 app.include_router(saved_job_router)
 app.include_router(hr_invitation_router)
+
+@app.on_event("startup")
+async def preload_ocr_models():
+    if os.getenv("OCR_PRELOAD", "1").lower() not in {"0", "false", "no"}:
+        from paddleocr_local import preload_paddleocr_async
+        preload_paddleocr_async()
 
 @app.get("/")
 def read_root():
