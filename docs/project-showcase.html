@@ -1,0 +1,889 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>基于人工智能体的人岗匹配心理特质评估系统 | 项目展示</title>
+  <meta name="description" content="基于人工智能体的人岗匹配心理特质评估系统作品集展示页，展示岗位建模、评估会话、多智能体面试、人格评分与可解释性匹配报告。">
+  <style>
+    :root {
+      --bg: #f7f5ef;
+      --panel: #fffefa;
+      --panel-soft: #fbfaf6;
+      --ink: #171717;
+      --muted: #68645c;
+      --line: #dedbd2;
+      --line-strong: #c9c4b8;
+      --accent: #5f63d8;
+      --accent-soft: #ececff;
+      --warm: #d86945;
+      --shadow: 0 24px 70px rgba(43, 39, 31, 0.08);
+      --radius-lg: 28px;
+      --radius-md: 18px;
+      --radius-sm: 12px;
+      color-scheme: light;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html {
+      scroll-behavior: smooth;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background:
+        linear-gradient(180deg, rgba(255, 254, 250, 0.78), rgba(247, 245, 239, 0.96)),
+        var(--bg);
+      color: var(--ink);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif;
+      line-height: 1.65;
+    }
+
+    a {
+      color: inherit;
+      text-decoration: none;
+    }
+
+    button {
+      font: inherit;
+    }
+
+    .page {
+      width: min(1640px, calc(100% - 56px));
+      margin: 0 auto;
+    }
+
+    .topbar {
+      position: sticky;
+      top: 0;
+      z-index: 20;
+      display: grid;
+      grid-template-columns: 310px 1fr auto;
+      gap: 28px;
+      align-items: center;
+      padding: 28px 0 18px;
+      background: rgba(247, 245, 239, 0.86);
+      backdrop-filter: blur(18px);
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 13px;
+      min-width: 0;
+    }
+
+    .brand-logo {
+      width: 42px;
+      height: 42px;
+      flex: 0 0 auto;
+      display: block;
+      border-radius: 12px;
+      object-fit: contain;
+      box-shadow: 0 8px 22px rgba(95, 99, 216, 0.12);
+    }
+
+    .brand-text {
+      min-width: 0;
+    }
+
+    .brand-name {
+      display: block;
+      overflow: hidden;
+      color: var(--ink);
+      font-size: 18px;
+      font-weight: 750;
+      letter-spacing: 0;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .brand-sub {
+      display: block;
+      margin-top: 2px;
+      overflow: hidden;
+      color: var(--muted);
+      font-size: 12px;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .module-tabs {
+      display: flex;
+      justify-content: center;
+      gap: 8px;
+      min-width: 0;
+      overflow-x: auto;
+      scrollbar-width: none;
+    }
+
+    .module-tabs::-webkit-scrollbar {
+      display: none;
+    }
+
+    .tab-button,
+    .ghost-button,
+    .primary-button {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 44px;
+      border-radius: 999px;
+      cursor: pointer;
+      transition: background 180ms ease, border-color 180ms ease, color 180ms ease, transform 180ms ease, box-shadow 180ms ease;
+      white-space: nowrap;
+    }
+
+    .tab-button {
+      border: 1px solid transparent;
+      background: transparent;
+      color: #494641;
+      padding: 0 16px;
+      font-size: 15px;
+    }
+
+    .tab-button:hover,
+    .tab-button:focus-visible {
+      border-color: var(--line);
+      background: rgba(255, 254, 250, 0.74);
+      outline: none;
+    }
+
+    .tab-button.active {
+      border-color: #161616;
+      background: #161616;
+      color: #ffffff;
+      box-shadow: 0 10px 24px rgba(22, 22, 22, 0.12);
+    }
+
+    .top-actions {
+      display: flex;
+      gap: 10px;
+      justify-content: flex-end;
+    }
+
+    .ghost-button,
+    .primary-button {
+      border: 1px solid var(--line);
+      padding: 0 18px;
+      font-weight: 650;
+    }
+
+    .ghost-button {
+      background: rgba(255, 254, 250, 0.72);
+      color: #4d4942;
+    }
+
+    .primary-button {
+      border-color: #171717;
+      background: #171717;
+      color: #ffffff;
+    }
+
+    .ghost-button:hover,
+    .primary-button:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 12px 26px rgba(43, 39, 31, 0.10);
+    }
+
+    .hero {
+      display: grid;
+      grid-template-columns: minmax(0, 0.88fr) minmax(520px, 1.12fr);
+      gap: 52px;
+      align-items: stretch;
+      min-height: calc(100vh - 104px);
+      padding: 34px 0 54px;
+    }
+
+    .content-panel {
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      min-height: 680px;
+      padding: 26px 0 38px;
+    }
+
+    .eyebrow {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      width: max-content;
+      max-width: 100%;
+      margin: 0 0 30px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: rgba(255, 254, 250, 0.72);
+      color: #4c4942;
+      padding: 8px 12px;
+      font-size: 13px;
+      font-weight: 650;
+    }
+
+    .eyebrow::before {
+      content: "";
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--accent);
+      box-shadow: 0 0 0 5px rgba(95, 99, 216, 0.12);
+    }
+
+    h1 {
+      max-width: 760px;
+      margin: 0;
+      color: #141414;
+      font-family: Georgia, "Times New Roman", "Noto Serif SC", SimSun, serif;
+      font-size: clamp(50px, 5vw, 90px);
+      font-weight: 520;
+      letter-spacing: 0;
+      line-height: 1.05;
+    }
+
+    .lead {
+      max-width: 710px;
+      margin: 28px 0 0;
+      color: #37342f;
+      font-size: 20px;
+      line-height: 1.75;
+    }
+
+    .module-copy {
+      min-height: 260px;
+      margin-top: 36px;
+    }
+
+    .module-copy h2 {
+      margin: 0 0 14px;
+      color: #171717;
+      font-size: 28px;
+      letter-spacing: 0;
+      line-height: 1.25;
+    }
+
+    .module-copy p {
+      max-width: 720px;
+      margin: 0 0 22px;
+      color: var(--muted);
+      font-size: 16px;
+    }
+
+    .points {
+      display: grid;
+      gap: 11px;
+      max-width: 720px;
+      margin: 0;
+      padding: 0;
+      list-style: none;
+    }
+
+    .points li {
+      display: grid;
+      grid-template-columns: 26px 1fr;
+      gap: 10px;
+      align-items: start;
+      color: #36332e;
+      font-size: 15px;
+    }
+
+    .points li::before {
+      content: "";
+      width: 9px;
+      height: 9px;
+      margin-top: 8px;
+      border-radius: 50%;
+      background: var(--accent);
+      box-shadow: 0 0 0 6px var(--accent-soft);
+    }
+
+    .meta-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 12px;
+      max-width: 740px;
+      margin-top: 34px;
+    }
+
+    .meta-item {
+      min-height: 94px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius-sm);
+      background: rgba(255, 254, 250, 0.66);
+      padding: 16px;
+    }
+
+    .meta-label {
+      display: block;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .meta-value {
+      display: block;
+      margin-top: 7px;
+      color: #1d1c1a;
+      font-size: 15px;
+      font-weight: 700;
+      line-height: 1.45;
+    }
+
+    .media-panel {
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      min-height: 680px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius-lg);
+      background: linear-gradient(180deg, rgba(255, 254, 250, 0.96), rgba(250, 249, 244, 0.96));
+      box-shadow: var(--shadow);
+      overflow: hidden;
+    }
+
+    .media-toolbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      min-height: 66px;
+      border-bottom: 1px solid var(--line);
+      padding: 0 22px;
+    }
+
+    .window-dots {
+      display: flex;
+      gap: 8px;
+    }
+
+    .window-dots i {
+      display: block;
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: #d9d4ca;
+    }
+
+    .window-dots i:nth-child(1) {
+      background: #d96b50;
+    }
+
+    .window-dots i:nth-child(2) {
+      background: #d9bd56;
+    }
+
+    .window-dots i:nth-child(3) {
+      background: #6fae77;
+    }
+
+    .media-title {
+      overflow: hidden;
+      color: #4f4b43;
+      font-size: 14px;
+      font-weight: 700;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .status-pill {
+      border: 1px solid rgba(95, 99, 216, 0.18);
+      border-radius: 999px;
+      background: rgba(95, 99, 216, 0.08);
+      color: #4e50af;
+      padding: 6px 10px;
+      font-size: 12px;
+      font-weight: 750;
+      white-space: nowrap;
+    }
+
+    .media-stage {
+      position: relative;
+      display: grid;
+      place-items: center;
+      flex: 1;
+      min-height: 0;
+      padding: 34px;
+    }
+
+    .screen-frame {
+      position: relative;
+      display: grid;
+      width: 100%;
+      aspect-ratio: 16 / 10;
+      border: 1px solid var(--line-strong);
+      border-radius: 22px;
+      background: #f4f2eb;
+      overflow: hidden;
+      box-shadow: 0 20px 50px rgba(43, 39, 31, 0.09);
+    }
+
+    .screen-frame video,
+    .screen-frame img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+      background: #f4f2eb;
+    }
+
+    .video-missing {
+      position: absolute;
+      right: 16px;
+      bottom: 16px;
+      max-width: calc(100% - 32px);
+      border: 1px solid rgba(23, 23, 23, 0.12);
+      border-radius: 999px;
+      background: rgba(255, 254, 250, 0.88);
+      color: #4b4740;
+      padding: 8px 12px;
+      font-size: 12px;
+      font-weight: 700;
+      backdrop-filter: blur(12px);
+    }
+
+    .module-index {
+      display: grid;
+      grid-template-columns: repeat(6, minmax(0, 1fr));
+      gap: 8px;
+      border-top: 1px solid var(--line);
+      padding: 14px;
+      background: rgba(255, 254, 250, 0.58);
+    }
+
+    .index-card {
+      min-height: 66px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius-sm);
+      background: rgba(255, 254, 250, 0.7);
+      color: #615d55;
+      padding: 11px 10px;
+      cursor: pointer;
+      text-align: left;
+      transition: border-color 180ms ease, background 180ms ease, color 180ms ease;
+    }
+
+    .index-card strong {
+      display: block;
+      overflow: hidden;
+      font-size: 13px;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .index-card span {
+      display: block;
+      margin-top: 4px;
+      overflow: hidden;
+      font-size: 11px;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .index-card.active {
+      border-color: rgba(95, 99, 216, 0.36);
+      background: var(--accent-soft);
+      color: #31339a;
+    }
+
+    .detail-band {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 18px;
+      padding: 16px 0 64px;
+    }
+
+    .detail-card {
+      border: 1px solid var(--line);
+      border-radius: var(--radius-md);
+      background: rgba(255, 254, 250, 0.70);
+      padding: 24px;
+    }
+
+    .detail-card h3 {
+      margin: 0 0 10px;
+      font-size: 17px;
+      letter-spacing: 0;
+    }
+
+    .detail-card p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .fade {
+      animation: fadeIn 220ms ease both;
+    }
+
+    @keyframes fadeIn {
+      from {
+        opacity: 0;
+        transform: translateY(6px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    @media (max-width: 1180px) {
+      .topbar {
+        grid-template-columns: 1fr;
+        gap: 14px;
+      }
+
+      .module-tabs {
+        justify-content: flex-start;
+      }
+
+      .top-actions {
+        justify-content: flex-start;
+      }
+
+      .hero {
+        grid-template-columns: 1fr;
+        min-height: 0;
+      }
+
+      .content-panel,
+      .media-panel {
+        min-height: 0;
+      }
+
+      .media-panel {
+        height: auto;
+      }
+    }
+
+    @media (max-width: 760px) {
+      .page {
+        width: min(100% - 28px, 1640px);
+      }
+
+      .topbar {
+        padding-top: 18px;
+      }
+
+      .top-actions {
+        display: none;
+      }
+
+      .hero {
+        gap: 26px;
+        padding-top: 18px;
+      }
+
+      h1 {
+        font-size: 42px;
+      }
+
+      .lead {
+        font-size: 17px;
+      }
+
+      .module-copy {
+        min-height: 0;
+      }
+
+      .meta-grid,
+      .detail-band {
+        grid-template-columns: 1fr;
+      }
+
+      .media-toolbar {
+        padding: 0 16px;
+      }
+
+      .media-stage {
+        padding: 16px;
+      }
+
+      .module-index {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <header class="topbar" aria-label="项目展示导航">
+      <a class="brand" href="#top" aria-label="返回项目总览">
+        <img class="brand-logo" src="../frontend/public/logo.svg" alt="人岗匹配评估系统标识">
+        <span class="brand-text">
+          <span class="brand-name">人工智能人岗匹配评估系统</span>
+          <span class="brand-sub">项目作品展示</span>
+        </span>
+      </a>
+
+      <nav class="module-tabs" aria-label="模块切换">
+        <button class="tab-button active" type="button" data-module="overview">项目总览</button>
+        <button class="tab-button" type="button" data-module="jobModel">岗位建模</button>
+        <button class="tab-button" type="button" data-module="session">评估会话</button>
+        <button class="tab-button" type="button" data-module="interview">多智能体面试</button>
+        <button class="tab-button" type="button" data-module="personality">人格评分</button>
+        <button class="tab-button" type="button" data-module="report">匹配报告</button>
+      </nav>
+
+      <div class="top-actions">
+        <a class="ghost-button" href="./current/SYSTEM_FUNCTIONAL_ARCHITECTURE.md">系统文档</a>
+        <a class="primary-button" href="../README.md">项目仓库</a>
+      </div>
+    </header>
+
+    <main id="top" class="hero">
+      <section class="content-panel" aria-live="polite">
+        <div class="eyebrow" id="moduleEyebrow">本科毕业设计 · 智能招聘评估平台</div>
+        <h1 id="moduleHeadline">基于人工智能体的人岗匹配心理特质评估系统</h1>
+        <p class="lead" id="moduleLead">围绕多智能体协同面试、大五人格建模与岗位匹配分析，构建从岗位建模、评估会话到可解释性报告生成的完整招聘评估流程。</p>
+
+        <div class="module-copy fade" id="moduleCopy">
+          <h2>用一个页面讲清楚系统闭环</h2>
+          <p>展示页采用左侧说明、右侧录屏的结构，把论文中的设计思想和项目中的真实页面对应起来，便于面试官快速理解系统价值。</p>
+          <ul class="points">
+            <li>从岗位要求出发，经过评估会话和多智能体面试形成候选人人格评分。</li>
+            <li>后端服务负责人格评分与人岗匹配计算，前端只承担交互与可视化。</li>
+            <li>最终输出评估结果，包含匹配度、维度拆解、证据说明和建议。</li>
+          </ul>
+        </div>
+
+        <div class="meta-grid" aria-label="项目技术信息">
+          <div class="meta-item">
+            <span class="meta-label">前端技术</span>
+            <span class="meta-value">Vue 3 / TypeScript / Element Plus</span>
+          </div>
+          <div class="meta-item">
+            <span class="meta-label">后端技术</span>
+            <span class="meta-value">FastAPI / SQLAlchemy / Python</span>
+          </div>
+          <div class="meta-item">
+            <span class="meta-label">核心方法</span>
+            <span class="meta-value">大五人格 / 多智能体协同 / 人岗匹配</span>
+          </div>
+        </div>
+      </section>
+
+      <aside class="media-panel" aria-label="系统功能演示">
+        <div class="media-toolbar">
+          <div class="window-dots" aria-hidden="true"><i></i><i></i><i></i></div>
+          <div class="media-title" id="mediaTitle">overview.mp4 · 系统完整流程</div>
+          <div class="status-pill">真实功能录屏位</div>
+        </div>
+
+        <div class="media-stage">
+          <div class="screen-frame">
+            <video id="moduleVideo" autoplay muted loop playsinline poster="./screenshots/chapter5/home-page.png">
+              <source id="moduleSource" src="./assets/showcase/overview.mp4" type="video/mp4">
+            </video>
+            <img id="moduleFallback" src="./screenshots/chapter5/home-page.png" alt="系统项目总览截图" hidden>
+            <div class="video-missing" id="videoMissing">未放入录屏时自动显示项目截图</div>
+          </div>
+        </div>
+
+        <div class="module-index" aria-label="模块快速选择">
+          <button class="index-card active" type="button" data-module="overview">
+            <strong>项目总览</strong><span>完整流程与技术栈</span>
+          </button>
+          <button class="index-card" type="button" data-module="jobModel">
+            <strong>岗位建模</strong><span>岗位模板与岗位实例</span>
+          </button>
+          <button class="index-card" type="button" data-module="session">
+            <strong>评估会话</strong><span>每次评估独立记录</span>
+          </button>
+          <button class="index-card" type="button" data-module="interview">
+            <strong>多智能体面试</strong><span>三类智能体协同</span>
+          </button>
+          <button class="index-card" type="button" data-module="personality">
+            <strong>人格评分</strong><span>基础人格与场景人格</span>
+          </button>
+          <button class="index-card" type="button" data-module="report">
+            <strong>匹配报告</strong><span>可解释的评估结果</span>
+          </button>
+        </div>
+      </aside>
+    </main>
+
+    <section class="detail-band" aria-label="项目补充说明">
+      <article class="detail-card">
+        <h3>展示页定位</h3>
+        <p>面向 BOSS 作品集和技术面试场景，突出系统流程、工程设计和个人实现职责，不替代论文，也不写成接口说明。</p>
+      </article>
+      <article class="detail-card">
+        <h3>录屏放置方式</h3>
+        <p>将录屏命名为 overview.mp4、job-model.mp4、session.mp4、interview.mp4、personality.mp4、report.mp4，并放入 docs/assets/showcase。</p>
+      </article>
+      <article class="detail-card">
+        <h3>面试讲述顺序</h3>
+        <p>建议按“岗位建模、评估会话、多智能体面试、人格评分、匹配报告”的顺序讲，最后回到系统完整闭环。</p>
+      </article>
+    </section>
+  </div>
+
+  <script>
+    const modules = {
+      overview: {
+        eyebrow: "本科毕业设计 · 智能招聘评估平台",
+        headline: "基于人工智能体的人岗匹配心理特质评估系统",
+        lead: "围绕多智能体协同面试、大五人格建模与岗位匹配分析，构建从岗位建模、评估会话到可解释性报告生成的完整招聘评估流程。",
+        title: "用一个页面讲清楚系统闭环",
+        body: "该模块用于展示系统的整体价值：候选人从岗位浏览进入评估流程，人力资源人员可管理岗位和候选人，系统最终形成可解释的人岗匹配报告。",
+        points: [
+          "前端采用 Vue 3、TypeScript 和 Element Plus，承担页面交互、流程引导与结果可视化。",
+          "后端采用 FastAPI、SQLAlchemy 与 MySQL，集中处理人格评分、评估会话和匹配计算。",
+          "系统核心链路为岗位模板、岗位实例、评估会话、人格评分和评估结果。"
+        ],
+        video: "./assets/showcase/overview.mp4",
+        fallback: "./screenshots/chapter5/home-page.png",
+        alt: "候选人首页与系统总览截图",
+        mediaTitle: "overview.mp4 · 系统完整流程"
+      },
+      jobModel: {
+        eyebrow: "岗位模板 / 岗位实例",
+        headline: "岗位要求先被建模，后续评估才有依据",
+        lead: "系统将岗位抽象要求与具体招聘任务分离，既能复用岗位模板，又能面向具体岗位实例进行评估。",
+        title: "双层岗位建模的设计思路",
+        body: "岗位模板用于沉淀通用能力要求和人格倾向，岗位实例用于承载具体部门、招聘说明和当前候选人评估任务。这种结构让人岗匹配不是简单按岗位名称判断，而是按岗位要求进行结构化计算。",
+        points: [
+          "岗位模板负责表达岗位类型的稳定要求，例如沟通、尽责性、抗压能力等维度。",
+          "岗位实例对应一次真实招聘需求，关联候选人、评估会话和最终报告。",
+          "人力资源端岗位管理页面承担录入、维护和查看职责，后端服务负责保存结构化岗位要求。"
+        ],
+        video: "./assets/showcase/job-model.mp4",
+        fallback: "./screenshots/chapter5/hr-job-manage-page.png",
+        alt: "人力资源端岗位管理页面截图",
+        mediaTitle: "job-model.mp4 · 岗位模板与岗位实例"
+      },
+      session: {
+        eyebrow: "评估会话",
+        headline: "每一次评估都必须被会话隔离",
+        lead: "评估会话是面试、评分与报告之间的流程边界，用于保证不同候选人和不同岗位实例之间的数据不会混淆。",
+        title: "评估会话控制系统流程",
+        body: "候选人开始面试前，系统会围绕岗位实例建立评估会话。会话记录面试进度、回答内容、智能体输出、人格评分与报告状态，是后端维持评估一致性的关键对象。",
+        points: [
+          "评估会话绑定候选人和岗位实例，作为后续所有评估数据的归属边界。",
+          "面试状态、回答记录、人格评分和评估结果均围绕会话流转。",
+          "前端负责展示流程状态，后端通过服务层统一推进评估步骤。"
+        ],
+        video: "./assets/showcase/session.mp4",
+        fallback: "./screenshots/chapter5/interviews-page.png",
+        alt: "我的面试与评估会话页面截图",
+        mediaTitle: "session.mp4 · 评估会话创建与推进"
+      },
+      interview: {
+        eyebrow: "多智能体面试",
+        headline: "多智能体协同完成结构化面试",
+        lead: "系统通过面试智能体、评价智能体和决策智能体分工协作，在对话过程中持续收集人格证据。",
+        title: "三类智能体的协作方式",
+        body: "面试智能体负责生成问题并维持对话节奏，评价智能体根据回答提取人格表现，决策智能体判断面试是否继续和如何形成综合结论。多智能体结构让面试过程具备更清晰的职责边界。",
+        points: [
+          "面试问题结合候选人背景、岗位要求和当前对话历史生成。",
+          "回答分析关注大五人格维度及岗位场景中的行为倾向。",
+          "决策智能体根据回答质量、轮次深度和评分覆盖情况推进或结束面试。"
+        ],
+        video: "./assets/showcase/interview.mp4",
+        fallback: "./screenshots/chapter5/interviews-page.png",
+        alt: "多智能体面试页面截图",
+        mediaTitle: "interview.mp4 · 多智能体面试对话"
+      },
+      personality: {
+        eyebrow: "人格评分",
+        headline: "人格评分在后端形成，而不是停留在页面展示",
+        lead: "系统围绕大五人格模型生成人格评分，并区分基础人格与场景人格两类分析视角。",
+        title: "基础人格与场景人格的评分链路",
+        body: "基础人格描述候选人相对稳定的人格倾向，场景人格描述其在特定岗位情境下的表现。评分逻辑集中在后端服务中，前端使用雷达图和维度说明进行可视化。",
+        points: [
+          "基础人格体现候选人的稳定人格结构，用于形成个人画像。",
+          "场景人格结合岗位情境与面试回答，反映特定工作场景中的行为表现。",
+          "人格评分为后续人岗匹配提供可计算、可解释的中间结果。"
+        ],
+        video: "./assets/showcase/personality.mp4",
+        fallback: "./screenshots/chapter5/profile-page.png",
+        alt: "人格画像与评分页面截图",
+        mediaTitle: "personality.mp4 · 人格评分与人格雷达图"
+      },
+      report: {
+        eyebrow: "评估结果",
+        headline: "最终报告要能解释为什么匹配",
+        lead: "系统不是只给出一个分数，而是生成包含总匹配度、维度拆解、证据解释和建议的可解释性报告。",
+        title: "人岗匹配报告的表达重点",
+        body: "评估结果综合岗位要求、候选人人格评分和面试证据，形成面向人力资源人员与候选人的分析结论。报告页面强调从分数到证据再到建议的可解释性链路。",
+        points: [
+          "总匹配度用于快速判断候选人与岗位实例的整体适配程度。",
+          "维度拆解展示大五人格与岗位要求之间的匹配关系。",
+          "证据说明和建议帮助面试官理解结果来源，也便于候选人进行后续改进。"
+        ],
+        video: "./assets/showcase/report.mp4",
+        fallback: "./screenshots/chapter5/reports-page.png",
+        alt: "人岗匹配评估报告页面截图",
+        mediaTitle: "report.mp4 · 可解释性匹配报告"
+      }
+    };
+
+    const tabButtons = Array.from(document.querySelectorAll(".tab-button"));
+    const indexCards = Array.from(document.querySelectorAll(".index-card"));
+    const moduleEyebrow = document.getElementById("moduleEyebrow");
+    const moduleHeadline = document.getElementById("moduleHeadline");
+    const moduleLead = document.getElementById("moduleLead");
+    const moduleCopy = document.getElementById("moduleCopy");
+    const mediaTitle = document.getElementById("mediaTitle");
+    const moduleVideo = document.getElementById("moduleVideo");
+    const moduleSource = document.getElementById("moduleSource");
+    const moduleFallback = document.getElementById("moduleFallback");
+    const videoMissing = document.getElementById("videoMissing");
+
+    function setActive(moduleKey) {
+      const data = modules[moduleKey] || modules.overview;
+
+      tabButtons.forEach((button) => {
+        button.classList.toggle("active", button.dataset.module === moduleKey);
+      });
+      indexCards.forEach((card) => {
+        card.classList.toggle("active", card.dataset.module === moduleKey);
+      });
+
+      moduleEyebrow.textContent = data.eyebrow;
+      moduleHeadline.textContent = data.headline;
+      moduleLead.textContent = data.lead;
+      moduleCopy.classList.remove("fade");
+      void moduleCopy.offsetWidth;
+      moduleCopy.innerHTML = `
+        <h2>${data.title}</h2>
+        <p>${data.body}</p>
+        <ul class="points">
+          ${data.points.map((point) => `<li>${point}</li>`).join("")}
+        </ul>
+      `;
+      moduleCopy.classList.add("fade");
+
+      mediaTitle.textContent = data.mediaTitle;
+      moduleFallback.src = data.fallback;
+      moduleFallback.alt = data.alt;
+      moduleVideo.poster = data.fallback;
+      moduleSource.src = data.video;
+      moduleVideo.hidden = false;
+      moduleFallback.hidden = true;
+      videoMissing.textContent = "正在尝试加载录屏，未放入时显示项目截图";
+      moduleVideo.load();
+
+      const playPromise = moduleVideo.play();
+      if (playPromise) {
+        playPromise.catch(() => showFallback());
+      }
+    }
+
+    function showFallback() {
+      moduleVideo.hidden = true;
+      moduleFallback.hidden = false;
+      videoMissing.textContent = "录屏未放入，当前显示项目截图";
+    }
+
+    moduleVideo.addEventListener("error", showFallback);
+    moduleSource.addEventListener("error", showFallback);
+
+    [...tabButtons, ...indexCards].forEach((control) => {
+      control.addEventListener("click", () => setActive(control.dataset.module));
+    });
+  </script>
+</body>
+</html>

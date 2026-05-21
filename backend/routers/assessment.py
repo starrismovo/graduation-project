@@ -61,7 +61,7 @@ from services.agent_scoring_fusion import (
     validate_agent_scores,
     generate_fusion_report,
 )
-from services.job_requirement_service import matching_engine
+from services.job_requirement_service import matching_engine, skill_name_matches
 from services.report_agent import report_agent
 from services.psychology_detail_service import build_psychology_detail
 from models.assessment import EvaluationResult
@@ -189,6 +189,13 @@ def _apply_hard_skill_gate(
         "reasons": reasons,
         "recommendation": recommendation,
     }
+
+
+ASSESSMENT_SKILL_EVIDENCE_ALIASES = {
+    "产品思维": ["产品思维", "创新能力", "用户洞察", "问题解决"],
+    "用户研究": ["用户研究", "用户洞察", "沟通能力"],
+    "需求分析": ["需求分析", "问题解决", "逻辑思维", "沟通能力"],
+}
 
 
 def _coerce_dict(value: Any) -> Dict[str, Any]:
@@ -1422,6 +1429,7 @@ async def save_assessment_result(
 
         def _assessment_skill_score(scores: Dict[str, float]) -> Optional[float]:
             skill_dimensions = [
+                "产品思维", "用户研究", "需求分析",
                 "专业能力", "技术深度", "问题解决", "逻辑思维",
                 "学习能力", "创新能力", "用户洞察", "战略思维",
                 "沟通能力", "团队协作", "团队合作", "文化契合",
@@ -1438,6 +1446,34 @@ async def save_assessment_result(
                 return None
             return round(max(0.0, min(100.0, sum(values) / len(values))), 1)
 
+        assessment_evidence = request.assessment_evidence or {}
+
+        def _skills_verified_by_assessment(required: List[JobSkillRequirement]) -> List[str]:
+            verified_from_evidence = [
+                str(item).strip()
+                for item in (assessment_evidence.get("verified_skills") or [])
+                if str(item).strip()
+            ]
+            verified: List[str] = []
+            for skill_req in required:
+                skill_name = skill_req.skill_name
+                related_dimensions = ASSESSMENT_SKILL_EVIDENCE_ALIASES.get(skill_name, [skill_name])
+                related_scores: List[float] = []
+                for dimension in related_dimensions:
+                    try:
+                        score_value = observed_all_scores.get(dimension)
+                        score = float(score_value) if score_value is not None else None
+                    except (TypeError, ValueError):
+                        score = None
+                    if score is not None and score > 0:
+                        related_scores.append(score * 10 if score <= 10 else score)
+                if related_scores and (sum(related_scores) / len(related_scores)) >= 60:
+                    verified.append(skill_name)
+                    continue
+                if any(skill_name_matches(item, skill_name) for item in verified_from_evidence):
+                    verified.append(skill_name)
+            return list(dict.fromkeys(verified))
+
         if required_skills:
             resume_skill_match, matched_skills, missing_skills = matching_engine.calculate_skill_match(
                 candidate_skills,
@@ -1445,12 +1481,25 @@ async def save_assessment_result(
             )
             assessment_skill_match = _assessment_skill_score(observed_all_scores)
             if assessment_skill_match is not None:
-                skill_match = round(resume_skill_match * 0.5 + assessment_skill_match * 0.5, 1)
+                skill_match = (
+                    round(resume_skill_match * 0.5 + assessment_skill_match * 0.5, 1)
+                    if candidate_skills
+                    else assessment_skill_match
+                )
             else:
                 skill_match = resume_skill_match
         else:
             assessment_skill_match = _assessment_skill_score(observed_all_scores)
             skill_match, matched_skills, missing_skills = assessment_skill_match or 50.0, [], []
+
+        assessment_verified_skills = _skills_verified_by_assessment(required_skills)
+        if assessment_verified_skills:
+            matched_skills = list(dict.fromkeys([*matched_skills, *assessment_verified_skills]))
+            missing_skills = [
+                skill
+                for skill in missing_skills
+                if not any(skill_name_matches(verified, skill) for verified in assessment_verified_skills)
+            ]
 
         candidate_personality = {
             key: value * 10

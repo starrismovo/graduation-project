@@ -1,1 +1,3 @@
 backend/.ocr_cache/
+backend/招聘数据/*.log
+frontend/public/*.mp4

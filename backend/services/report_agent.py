@@ -11,6 +11,7 @@ from typing import Dict, Any, List, Optional
 
 from models.assessment import CandidatePersonalityProfile
 from models.job import Job
+from services.job_requirement_service import skill_name_matches
 from services.personality_scoring import normalize_big_five_scores
 
 
@@ -467,6 +468,12 @@ class ReportAgent:
 
         all_matched = list(dict.fromkeys([*matched_skills, *verified_from_evidence]))
         all_missing = list(dict.fromkeys([*missing_skills, *missing_from_evidence]))
+        if all_matched and all_missing:
+            all_missing = [
+                skill
+                for skill in all_missing
+                if not any(skill_name_matches(matched, skill) for matched in all_matched)
+            ]
         if all_matched:
             strengths.insert(0, f"已形成岗位能力证据：{', '.join(all_matched[:5])}")
         if personality_evidence:

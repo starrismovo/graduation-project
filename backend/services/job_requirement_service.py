@@ -40,6 +40,34 @@ SKILL_LIBRARY = {
     "scrum": {"type": "methodology", "category": "methodology"},
 }
 
+SKILL_ALIASES = {
+    "产品思维": ["产品规划", "产品设计", "产品能力", "产品方法论", "产品分析", "产品策略", "产品经理"],
+    "用户研究": ["用户调研", "用户访谈", "用户洞察", "用户分析", "用研", "可用性测试"],
+    "需求分析": ["需求管理", "需求调研", "需求拆解", "需求梳理", "需求文档", "prd", "原型设计"],
+    "数据看板": ["数据分析", "数据可视化", "bi", "dashboard", "指标体系"],
+    "SQL基础": ["sql", "mysql", "postgresql", "数据库查询"],
+}
+
+
+def _normalize_skill_text(value: str) -> str:
+    return "".join(str(value or "").lower().replace("（", "(").replace("）", ")").split())
+
+
+def _skill_terms(skill_name: str) -> List[str]:
+    terms = [skill_name, *SKILL_ALIASES.get(skill_name, [])]
+    normalized_terms = [_normalize_skill_text(term) for term in terms if str(term).strip()]
+    return list(dict.fromkeys(normalized_terms))
+
+
+def skill_name_matches(candidate_skill: str, required_skill: str) -> bool:
+    candidate = _normalize_skill_text(candidate_skill)
+    if not candidate:
+        return False
+    for term in _skill_terms(required_skill):
+        if candidate == term or term in candidate or candidate in term:
+            return True
+    return False
+
 # 岗位类别与人格特质的默认映射
 ROLE_PERSONALITY_DEFAULTS = {
     "backend": {
@@ -330,7 +358,6 @@ class MatchingEngine:
         Returns:
             (匹配度 0-100, 已匹配的技能, 缺失的关键技能)
         """
-        candidate_skills_lower = [s.lower() for s in candidate_skills]
         matched = []
         missing = []
         
@@ -338,10 +365,9 @@ class MatchingEngine:
         matched_priority = 0
         
         for skill_req in required_skills:
-            skill_name_lower = skill_req.skill_name.lower()
             total_priority += skill_req.priority_score
             
-            if skill_name_lower in candidate_skills_lower:
+            if any(skill_name_matches(candidate_skill, skill_req.skill_name) for candidate_skill in candidate_skills):
                 matched.append(skill_req.skill_name)
                 matched_priority += skill_req.priority_score
             elif skill_req.is_must_have:
